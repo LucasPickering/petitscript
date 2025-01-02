@@ -1,0 +1,4 @@
+[toolchain]
+# Keep in sync w/ MSRV
+channel = "1.80.0"
+components = ["cargo", "clippy", "rustfmt"]

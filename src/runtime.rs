@@ -3,7 +3,7 @@ mod scope;
 use crate::{
     error::Result,
     runtime::scope::Scope,
-    value::{Function, Number, Value},
+    value::{Function, Number, Value, ValueKind},
     Error,
 };
 use boa_ast::{
@@ -16,6 +16,7 @@ use boa_ast::{
     Declaration, Expression, Script, Statement, StatementList,
     StatementListItem,
 };
+use id_arena::Arena;
 
 pub struct Runtime {
     script: Script,
@@ -39,8 +40,11 @@ impl Runtime {
     }
 }
 
+/// TODO
 #[derive(Debug, Default)]
 struct RuntimeState {
+    /// TODO
+    arena: Arena<ValueKind>,
     scope: Scope,
     stack: Vec<StackFrame>,
 }
@@ -138,12 +142,16 @@ impl RuntimeState {
         match expression {
             Expression::Identifier(identifier) => todo!(),
             Expression::Literal(literal) => match literal {
-                Literal::Null => Ok(Value::Null),
-                Literal::Undefined => Ok(Value::Undefined),
-                Literal::Bool(b) => Ok(Value::Boolean(*b)),
+                Literal::Null => Ok(ValueKind::Null.into()),
+                Literal::Undefined => Ok(ValueKind::Undefined.into()),
+                Literal::Bool(b) => Ok(ValueKind::Boolean(*b).into()),
                 Literal::String(sym) => todo!(),
-                Literal::Num(f) => Ok(Value::Number(Number::Float(*f))),
-                Literal::Int(i) => Ok(Value::Number(Number::Int(*i as i64))),
+                Literal::Num(f) => {
+                    Ok(ValueKind::Number(Number::Float(*f)).into())
+                }
+                Literal::Int(i) => {
+                    Ok(ValueKind::Number(Number::Int(*i as i64)).into())
+                }
                 Literal::BigInt(big_int) => todo!(),
             },
             Expression::TemplateLiteral(template_literal) => todo!(),
@@ -151,18 +159,20 @@ impl RuntimeState {
             Expression::ObjectLiteral(object_literal) => todo!(),
             Expression::Spread(spread) => todo!(),
             Expression::FunctionExpression(function_expression) => {
-                Ok(Value::Function(Function {
+                Ok(ValueKind::Function(Function {
                     name: None, // TODO
                     parameters: function_expression.parameters().clone(),
                     body: function_expression.body().clone(),
-                }))
+                })
+                .into())
             }
             Expression::ArrowFunction(arrow_function) => {
-                Ok(Value::Function(Function {
+                Ok(ValueKind::Function(Function {
                     name: None, // TODO
                     parameters: arrow_function.parameters().clone(),
                     body: arrow_function.body().clone(),
-                }))
+                })
+                .into())
             }
             Expression::Call(call) => {
                 let function = self.eval(call.function())?;
@@ -274,18 +284,22 @@ impl RuntimeState {
     /// TODO
     fn access(
         &mut self,
-        value: &Value,
+        value: &ValueKind,
         access: &PropertyAccessField,
     ) -> Result<Value> {
-        let key = match access {
+        let key: Value = match access {
             PropertyAccessField::Const(sym) => todo!(),
-            PropertyAccessField::Expr(expression) => self.eval(&*expression)?,
+            PropertyAccessField::Expr(expression) => {
+                self.eval(&*expression)?.into()
+            }
         };
+        todo!()
     }
 
     /// Call a function and return its return value
     fn call(&mut self, function: Value, args: Vec<Value>) -> Result<Value> {
-        let Value::Function(function) = function else {
+        let ValueKind::Function(function) = function.resolve(&self.arena)?
+        else {
             todo!("error")
         };
 
@@ -312,7 +326,7 @@ impl StackFrame {
     fn new(global_scope: Scope) -> Self {
         Self {
             scope: global_scope.child(),
-            return_value: Value::Undefined,
+            return_value: ValueKind::Undefined.into(),
         }
     }
 }

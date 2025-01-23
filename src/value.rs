@@ -2,22 +2,62 @@
 
 use crate::Result;
 use boa_ast::function::{FormalParameterList, FunctionBody};
+use id_arena::Arena;
 use indexmap::IndexMap;
+
+type ValueRef = id_arena::Id<ValueKind>;
 
 /// TODO
 #[derive(Debug)]
-pub enum Value {
+pub struct Value(ValueInner);
+
+impl Value {
+    /// TODO
+    pub fn resolve<'a>(
+        &'a self,
+        arena: &'a Arena<ValueKind>,
+    ) -> Result<&ValueKind> {
+        match &self.0 {
+            ValueInner::Owned(value) => Ok(value),
+            ValueInner::Borrowed(id) => {
+                arena.get(*id).ok_or_else(|| todo!("error"))
+            }
+        }
+    }
+}
+
+impl From<ValueKind> for Value {
+    fn from(value: ValueKind) -> Self {
+        Self(ValueInner::Owned(value))
+    }
+}
+
+impl From<ValueRef> for Value {
+    fn from(value: ValueRef) -> Self {
+        Self(ValueInner::Borrowed(value))
+    }
+}
+
+#[derive(Debug)]
+enum ValueInner {
+    Owned(ValueKind),
+    Borrowed(ValueRef),
+}
+
+/// TODO
+#[derive(Debug)]
+pub enum ValueKind {
     Null,
     Undefined,
     Boolean(bool),
     Number(Number),
     String(String),
-    Array(Vec<Self>),
-    Object(IndexMap<String, Self>),
+    Array(Vec<ValueRef>),
+    Object(IndexMap<String, ValueRef>),
     Function(Function),
 }
 
-impl Value {
+impl ValueKind {
     /// TODO
     pub fn to_bool(&self) -> bool {
         match self {

@@ -16,7 +16,8 @@ use boa_ast::{
     Declaration, Expression, Script, Statement, StatementList,
     StatementListItem,
 };
-use id_arena::Arena;
+use boa_interner::{Interner, Sym};
+use std::ops::Deref;
 
 pub struct Runtime {
     script: Script,
@@ -25,10 +26,10 @@ pub struct Runtime {
 
 impl Runtime {
     /// TODO
-    pub fn new(script: Script) -> Runtime {
+    pub fn new(interner: Interner, script: Script) -> Runtime {
         Self {
             script,
-            state: RuntimeState::default(),
+            state: RuntimeState::new(interner),
         }
     }
 
@@ -41,15 +42,22 @@ impl Runtime {
 }
 
 /// TODO
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct RuntimeState {
-    /// TODO
-    arena: Arena<ValueKind>,
     scope: Scope,
     stack: Vec<StackFrame>,
+    interner: Interner,
 }
 
 impl RuntimeState {
+    fn new(interner: Interner) -> Self {
+        Self {
+            scope: Scope::new(),
+            stack: Vec::new(),
+            interner,
+        }
+    }
+
     /// TODO
     fn exec_all(
         &mut self,
@@ -181,12 +189,12 @@ impl RuntimeState {
                     .iter()
                     .map(|arg| self.eval(arg))
                     .collect::<Result<_>>()?;
-                self.call(function, args)
+                self.call(&function, args)
             }
             Expression::PropertyAccess(access) => match access {
                 PropertyAccess::Simple(access) => {
                     let value = self.eval(access.target())?;
-                    self.access(&value, access)
+                    Ok(self.access(&value, access.field())?.clone())
                 }
                 PropertyAccess::Private(_) => todo!("not allowed"),
                 PropertyAccess::Super(_) => todo!("not allowed"),
@@ -282,24 +290,23 @@ impl RuntimeState {
     }
 
     /// TODO
-    fn access(
+    fn access<'a>(
         &mut self,
-        value: &ValueKind,
+        value: &'a Value,
         access: &PropertyAccessField,
-    ) -> Result<Value> {
+    ) -> Result<&'a Value> {
         let key: Value = match access {
-            PropertyAccessField::Const(sym) => todo!(),
-            PropertyAccessField::Expr(expression) => {
-                self.eval(&*expression)?.into()
+            PropertyAccessField::Const(symbol) => {
+                self.resolve_sym(*symbol).into()
             }
+            PropertyAccessField::Expr(expression) => self.eval(expression)?,
         };
-        todo!()
+        value.get(&key)
     }
 
     /// Call a function and return its return value
-    fn call(&mut self, function: Value, args: Vec<Value>) -> Result<Value> {
-        let ValueKind::Function(function) = function.resolve(&self.arena)?
-        else {
+    fn call(&mut self, function: &Value, args: Vec<Value>) -> Result<Value> {
+        let ValueKind::Function(function) = function.deref() else {
             todo!("error")
         };
 
@@ -310,6 +317,11 @@ impl RuntimeState {
         self.exec_all(function.body.statement_list())?;
         let frame = self.stack.pop().expect("Just pushed to stack");
         Ok(frame.return_value)
+    }
+
+    /// TODO
+    fn resolve_sym(&self, symbol: Sym) -> &str {
+        self.interner.resolve_expect(symbol).utf8().expect("TODO")
     }
 }
 

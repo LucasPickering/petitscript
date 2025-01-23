@@ -22,6 +22,6 @@ pub fn run(path: impl AsRef<Path>) -> Result<()> {
     let mut interner = Interner::new();
     let script = parser.parse_script(&scope, &mut interner)?;
 
-    let mut runtime = Runtime::new(script);
+    let mut runtime = Runtime::new(interner, script);
     runtime.run()
 }

@@ -1,4 +1,4 @@
-use crate::value::ValueKind;
+use crate::value::Value;
 use boa_ast::declaration::VariableList;
 use indexmap::IndexMap;
 use std::{
@@ -30,14 +30,14 @@ impl Scope {
     }
 
     /// TODO
-    pub fn get(&self, name: &str) -> Option<Ref<'_, ValueKind>> {
+    pub fn get(&self, name: &str) -> Option<Ref<'_, Value>> {
         self.inner
             .get(name)
             .or_else(|| self.parent.as_ref()?.get(name))
     }
 
     /// TODO
-    pub fn declare(&mut self, name: String, value: ValueKind, mutable: bool) {
+    pub fn declare(&mut self, name: String, value: Value, mutable: bool) {
         self.inner
             .bindings
             .borrow_mut()
@@ -50,7 +50,7 @@ impl Scope {
     }
 
     /// TODO
-    pub fn set(&mut self, value: ValueKind) {
+    pub fn set(&mut self, value: Value) {
         todo!()
     }
 }
@@ -63,7 +63,7 @@ struct Bindings {
 
 impl Bindings {
     /// TODO
-    fn get(&self, name: &str) -> Option<Ref<'_, ValueKind>> {
+    fn get(&self, name: &str) -> Option<Ref<'_, Value>> {
         Ref::filter_map(self.bindings.borrow(), |bindings| {
             bindings.get(name).map(|binding| &binding.value)
         })
@@ -79,6 +79,6 @@ impl Bindings {
 /// TODO
 #[derive(Debug)]
 struct Binding {
-    value: ValueKind,
+    value: Value,
     mutable: bool,
 }

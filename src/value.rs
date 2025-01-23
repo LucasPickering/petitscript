@@ -2,46 +2,33 @@
 
 use crate::Result;
 use boa_ast::function::{FormalParameterList, FunctionBody};
-use id_arena::Arena;
 use indexmap::IndexMap;
-
-type ValueRef = id_arena::Id<ValueKind>;
+use std::{ops::Deref, rc::Rc};
 
 /// TODO
-#[derive(Debug)]
-pub struct Value(ValueInner);
-
-impl Value {
-    /// TODO
-    pub fn resolve<'a>(
-        &'a self,
-        arena: &'a Arena<ValueKind>,
-    ) -> Result<&ValueKind> {
-        match &self.0 {
-            ValueInner::Owned(value) => Ok(value),
-            ValueInner::Borrowed(id) => {
-                arena.get(*id).ok_or_else(|| todo!("error"))
-            }
-        }
-    }
-}
+/// TODO is clone the best option?
+#[derive(Clone, Debug)]
+pub struct Value(Rc<ValueKind>);
 
 impl From<ValueKind> for Value {
     fn from(value: ValueKind) -> Self {
-        Self(ValueInner::Owned(value))
+        Self(Rc::new(value))
     }
 }
 
-impl From<ValueRef> for Value {
-    fn from(value: ValueRef) -> Self {
-        Self(ValueInner::Borrowed(value))
+/// TODO remove this - we should be able to optimize so we don't need it
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        ValueKind::String(value.to_owned()).into()
     }
 }
 
-#[derive(Debug)]
-enum ValueInner {
-    Owned(ValueKind),
-    Borrowed(ValueRef),
+impl Deref for Value {
+    type Target = ValueKind;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 /// TODO
@@ -52,8 +39,8 @@ pub enum ValueKind {
     Boolean(bool),
     Number(Number),
     String(String),
-    Array(Vec<ValueRef>),
-    Object(IndexMap<String, ValueRef>),
+    Array(Vec<Value>),
+    Object(IndexMap<String, Value>),
     Function(Function),
 }
 
@@ -72,7 +59,7 @@ impl ValueKind {
     }
 
     /// TODO
-    pub fn get(&self, key: &Self) -> Result<&Self> {
+    pub fn get(&self, key: &Self) -> Result<&Value> {
         match (self, key) {
             (Self::Array(array), Self::Number(index)) => todo!(),
             // TODO support number keys here?
@@ -83,7 +70,7 @@ impl ValueKind {
 }
 
 /// TODO
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Number {
     Int(i64),
     Float(f64),
@@ -91,10 +78,10 @@ pub enum Number {
 
 impl Number {
     /// TODO
-    pub fn to_bool(&self) -> bool {
+    pub fn to_bool(self) -> bool {
         match self {
-            Number::Int(i) => *i != 0,
-            Number::Float(f) => todo!(),
+            Number::Int(i) => i != 0,
+            Number::Float(f) => f == 0.0,
         }
     }
 }

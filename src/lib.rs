@@ -10,7 +10,10 @@ use boa_interner::Interner;
 use boa_parser::{Parser, Source};
 use std::path::Path;
 
-pub use error::{Error, Result};
+pub use crate::{
+    error::{Error, Result},
+    runtime::Runtime,
+};
 
 pub fn run(path: impl AsRef<Path>) -> Result<()> {
     let source = Source::from_filepath(path.as_ref())?;
@@ -18,6 +21,7 @@ pub fn run(path: impl AsRef<Path>) -> Result<()> {
     let scope = Scope::new_global();
     let mut interner = Interner::new();
     let script = parser.parse_script(&scope, &mut interner)?;
-    dbg!(script);
-    Ok(())
+
+    let mut runtime = Runtime::new(script);
+    runtime.run()
 }

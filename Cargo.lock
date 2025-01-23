@@ -340,7 +340,6 @@ dependencies = [
  "boa_parser",
  "indexmap",
  "thiserror",
- "winnow",
 ]
 
 [[package]]
@@ -547,15 +546,6 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
-
-[[package]]
-name = "winnow"
-version = "0.6.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6f5bb5257f2407a5425c6e749bfd9692192a73e70a6060516ac04f889087d68"
-dependencies = [
- "memchr",
-]
 
 [[package]]
 name = "writeable"

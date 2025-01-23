@@ -19,7 +19,6 @@ boa_interner = {path = "../boa/core/interner", default-features = false}
 boa_parser = {path = "../boa/core/parser", default-features = false}
 indexmap = {version = "2.7.0", features = ["serde"]}
 thiserror = "2.0.10"
-winnow = "0.6.21"
 
 [workspace.metadata.release]
 pre-release-replacements = [

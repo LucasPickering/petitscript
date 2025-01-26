@@ -1,20 +1,15 @@
+mod eval;
 mod scope;
 
 use crate::{
     error::Result,
-    runtime::scope::Scope,
-    value::{Function, Number, Value, ValueKind},
+    runtime::{eval::Evaluate, scope::Scope},
+    value::{Value, ValueKind},
     Error,
 };
 use boa_ast::{
-    declaration::LexicalDeclaration,
-    expression::{
-        access::{PropertyAccess, PropertyAccessField},
-        literal::Literal,
-        Identifier,
-    },
-    Declaration, Expression, Script, Statement, StatementList,
-    StatementListItem,
+    declaration::{Binding, LexicalDeclaration, VariableList},
+    Declaration, Script, Statement, StatementList, StatementListItem,
 };
 use boa_interner::{Interner, Sym};
 use std::ops::Deref;
@@ -86,11 +81,13 @@ impl RuntimeState {
             Statement::Block(block) => self.exec_all(block.statement_list()),
             Statement::Empty => Ok(None),
             Statement::Expression(expression) => {
-                self.eval(expression)?;
+                // Expression may have side effects, so evaluate it and throw
+                // away the outcome
+                expression.eval(self)?;
                 Ok(None)
             }
             Statement::If(if_statement) => {
-                if self.eval(if_statement.cond())?.to_bool() {
+                if if_statement.cond().eval(self)?.to_bool() {
                     self.exec(if_statement.body())
                 } else if let Some(statement) = if_statement.else_node() {
                     self.exec(statement)
@@ -101,14 +98,14 @@ impl RuntimeState {
             Statement::DoWhileLoop(do_while_loop) => {
                 loop {
                     self.exec(do_while_loop.body())?;
-                    if !self.eval(do_while_loop.cond())?.to_bool() {
+                    if !do_while_loop.cond().eval(self)?.to_bool() {
                         break;
                     }
                 }
                 Ok(None)
             }
             Statement::WhileLoop(while_loop) => {
-                while self.eval(while_loop.condition())?.to_bool() {
+                while while_loop.condition().eval(self)?.to_bool() {
                     self.exec(while_loop.body())?;
                 }
                 Ok(None)
@@ -123,7 +120,7 @@ impl RuntimeState {
             Statement::Return(ret) => {
                 let mut frame = self.stack.pop().ok_or(Error::IllegalReturn)?;
                 if let Some(expression) = ret.target() {
-                    frame.return_value = self.eval(expression)?;
+                    frame.return_value = expression.eval(self)?;
                 }
                 // Exit the function
                 Ok(Some(Terminate::Function))
@@ -145,120 +142,6 @@ impl RuntimeState {
         }
     }
 
-    /// Evaluate an expression
-    fn eval(&mut self, expression: &Expression) -> Result<Value> {
-        match expression {
-            Expression::Identifier(identifier) => todo!(),
-            Expression::Literal(literal) => match literal {
-                Literal::Null => Ok(ValueKind::Null.into()),
-                Literal::Undefined => Ok(ValueKind::Undefined.into()),
-                Literal::Bool(b) => Ok(ValueKind::Boolean(*b).into()),
-                Literal::String(sym) => todo!(),
-                Literal::Num(f) => {
-                    Ok(ValueKind::Number(Number::Float(*f)).into())
-                }
-                Literal::Int(i) => {
-                    Ok(ValueKind::Number(Number::Int(*i as i64)).into())
-                }
-                Literal::BigInt(big_int) => todo!(),
-            },
-            Expression::TemplateLiteral(template_literal) => todo!(),
-            Expression::ArrayLiteral(array_literal) => todo!(),
-            Expression::ObjectLiteral(object_literal) => todo!(),
-            Expression::Spread(spread) => todo!(),
-            Expression::FunctionExpression(function_expression) => {
-                Ok(ValueKind::Function(Function {
-                    name: None, // TODO
-                    parameters: function_expression.parameters().clone(),
-                    body: function_expression.body().clone(),
-                })
-                .into())
-            }
-            Expression::ArrowFunction(arrow_function) => {
-                Ok(ValueKind::Function(Function {
-                    name: None, // TODO
-                    parameters: arrow_function.parameters().clone(),
-                    body: arrow_function.body().clone(),
-                })
-                .into())
-            }
-            Expression::Call(call) => {
-                let function = self.eval(call.function())?;
-                let args = call
-                    .args()
-                    .iter()
-                    .map(|arg| self.eval(arg))
-                    .collect::<Result<_>>()?;
-                self.call(&function, args)
-            }
-            Expression::PropertyAccess(access) => match access {
-                PropertyAccess::Simple(access) => {
-                    let value = self.eval(access.target())?;
-                    Ok(self.access(&value, access.field())?.clone())
-                }
-                PropertyAccess::Private(_) => todo!("not allowed"),
-                PropertyAccess::Super(_) => todo!("not allowed"),
-            },
-            Expression::Optional(access) => todo!(),
-            Expression::Assign(assign) => todo!(),
-            Expression::Unary(unary) => todo!(),
-            Expression::Update(update) => todo!(),
-            Expression::Binary(binary) => todo!(),
-            Expression::BinaryInPrivate(binary_in_private) => todo!(),
-            Expression::Conditional(conditional) => {
-                if self.eval(conditional.condition())?.to_bool() {
-                    self.eval(conditional.if_true())
-                } else {
-                    self.eval(conditional.if_false())
-                }
-            }
-            Expression::Parenthesized(parenthesized) => {
-                self.eval(parenthesized.expression())
-            }
-
-            // ===== UNSUPPORTED =====
-            // All AST nodes below are unsupported in our language
-            Expression::RegExpLiteral(_) => todo!("not allowed"),
-            Expression::ImportCall(_) => Err(Error::Unsupported {
-                name: "`import()`",
-                help: "Use the `import` keyword instead",
-            }),
-
-            Expression::TaggedTemplate(_) => Err(Error::Unsupported {
-                name: "tagged template",
-                help: "For simplicity, tagged templates are not supported",
-            }),
-
-            Expression::NewTarget | Expression::ImportMeta => {
-                Err(Error::Unsupported {
-                    name: "TODO",
-                    help: "TODO",
-                })
-            }
-
-            // async
-            Expression::AsyncArrowFunction(_)
-            | Expression::AsyncFunctionExpression(_)
-            | Expression::Await(_) => Err(Error::Unsupported {
-                name: "`async`",
-                help: "All operations must be synchronous",
-            }),
-
-            // generator
-            Expression::GeneratorExpression(_)
-            | Expression::AsyncGeneratorExpression(_)
-            | Expression::Yield(_) => todo!("not allowed"),
-
-            // class
-            Expression::ClassExpression(_)
-            | Expression::This
-            | Expression::New(_)
-            | Expression::SuperCall(_) => todo!("not allowed"),
-
-            _ => todo!(),
-        }
-    }
-
     /// TODO
     fn declare(&mut self, declaration: &Declaration) -> Result<()> {
         match declaration {
@@ -272,7 +155,7 @@ impl RuntimeState {
                         (variable_list, true)
                     }
                 };
-                self.scope.declare_all(variables, mutable);
+                self.declare_all(variables, mutable)?;
                 Ok(())
             }
             // ===== UNSUPPORTED =====
@@ -289,19 +172,35 @@ impl RuntimeState {
         }
     }
 
-    /// TODO
-    fn access<'a>(
+    // TODO
+    fn declare_all(
         &mut self,
-        value: &'a Value,
-        access: &PropertyAccessField,
-    ) -> Result<&'a Value> {
-        let key: Value = match access {
-            PropertyAccessField::Const(symbol) => {
-                self.resolve_sym(*symbol).into()
+        variables: &VariableList,
+        mutable: bool,
+    ) -> Result<()> {
+        for variable in variables.as_ref() {
+            let value = variable
+                .init()
+                .map(|expr| expr.eval(self))
+                .transpose()?
+                .unwrap_or_default();
+            match variable.binding() {
+                Binding::Identifier(identifier) => {
+                    let name = self.resolve_sym(identifier.sym())?.to_owned();
+                    self.scope.declare(name, value, mutable);
+                }
+                Binding::Pattern(pattern) => todo!(),
             }
-            PropertyAccessField::Expr(expression) => self.eval(expression)?,
-        };
-        value.get(&key)
+        }
+        Ok(())
+    }
+
+    /// TODO
+    fn resolve_sym(&self, symbol: Sym) -> Result<&str> {
+        self.interner
+            .resolve_expect(symbol)
+            .utf8()
+            .ok_or_else(|| todo!())
     }
 
     /// Call a function and return its return value
@@ -317,11 +216,6 @@ impl RuntimeState {
         self.exec_all(function.body.statement_list())?;
         let frame = self.stack.pop().expect("Just pushed to stack");
         Ok(frame.return_value)
-    }
-
-    /// TODO
-    fn resolve_sym(&self, symbol: Sym) -> &str {
-        self.interner.resolve_expect(symbol).utf8().expect("TODO")
     }
 }
 

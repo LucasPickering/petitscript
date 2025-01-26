@@ -1,10 +1,6 @@
-use crate::value::Value;
-use boa_ast::declaration::VariableList;
+use crate::{value::Value, Error, Result};
 use indexmap::IndexMap;
-use std::{
-    cell::{Ref, RefCell},
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 /// TODO
 #[derive(Debug, Default)]
@@ -30,10 +26,15 @@ impl Scope {
     }
 
     /// TODO
-    pub fn get(&self, name: &str) -> Option<Ref<'_, Value>> {
+    pub fn get(&self, name: &str) -> Result<Value> {
         self.inner
             .get(name)
+            // Check the parent
             .or_else(|| self.parent.as_ref()?.get(name))
+            // No go!
+            .ok_or_else(|| Error::Reference {
+                name: name.to_owned(),
+            })
     }
 
     /// TODO
@@ -44,14 +45,10 @@ impl Scope {
             .insert(name, Binding { value, mutable });
     }
 
-    // TODO
-    pub fn declare_all(&mut self, variables: &VariableList, mutable: bool) {
-        todo!()
-    }
-
     /// TODO
-    pub fn set(&mut self, value: Value) {
-        todo!()
+    pub fn set(&mut self, name: &str, value: Value) -> Result<()> {
+        // TODO recursion
+        self.inner.set(name, value)
     }
 }
 
@@ -63,16 +60,28 @@ struct Bindings {
 
 impl Bindings {
     /// TODO
-    fn get(&self, name: &str) -> Option<Ref<'_, Value>> {
-        Ref::filter_map(self.bindings.borrow(), |bindings| {
-            bindings.get(name).map(|binding| &binding.value)
-        })
-        .ok()
+    fn get(&self, name: &str) -> Option<Value> {
+        self.bindings
+            .borrow()
+            .get(name)
+            .map(|binding| binding.value.clone())
     }
 
     /// TODO
-    fn set(&self, name: &str) {
-        todo!()
+    fn set(&self, name: &str, value: Value) -> Result<()> {
+        let mut bindings = self.bindings.borrow_mut();
+        let binding =
+            bindings
+                .get_mut(name)
+                .ok_or_else(|| Error::ImmutableAssign {
+                    name: name.to_owned(),
+                })?;
+        if binding.mutable {
+            binding.value = value;
+            Ok(())
+        } else {
+            todo!("error")
+        }
     }
 }
 

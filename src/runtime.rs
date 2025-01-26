@@ -4,7 +4,7 @@ mod scope;
 use crate::{
     error::Result,
     runtime::{eval::Evaluate, scope::Scope},
-    value::{Value, ValueKind},
+    value::Value,
     Error,
 };
 use boa_ast::{
@@ -205,7 +205,7 @@ impl RuntimeState {
 
     /// Call a function and return its return value
     fn call(&mut self, function: &Value, args: Vec<Value>) -> Result<Value> {
-        let ValueKind::Function(function) = function.deref() else {
+        let Value::Function(function) = function.deref() else {
             todo!("error")
         };
 
@@ -232,7 +232,7 @@ impl StackFrame {
     fn new(global_scope: Scope) -> Self {
         Self {
             scope: global_scope.child(),
-            return_value: ValueKind::Undefined.into(),
+            return_value: Value::Undefined,
         }
     }
 }

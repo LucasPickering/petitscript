@@ -2,66 +2,27 @@
 
 use crate::Result;
 use boa_ast::function::{FormalParameterList, FunctionBody};
-use indexmap::IndexMap;
 use std::{
     fmt::{self, Display},
-    ops::{Add, Deref},
+    ops::Add,
     rc::Rc,
 };
 
 /// TODO
-/// TODO is clone the best option?
 #[derive(Clone, Debug, Default)]
-pub struct Value(Rc<ValueKind>);
-
-impl From<ValueKind> for Value {
-    fn from(value: ValueKind) -> Self {
-        Self(Rc::new(value))
-    }
-}
-
-impl From<Number> for Value {
-    fn from(value: Number) -> Self {
-        Self(Rc::new(ValueKind::Number(value)))
-    }
-}
-
-/// TODO remove this - we should be able to optimize so we don't need it
-impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        ValueKind::String(value.to_owned()).into()
-    }
-}
-
-impl Deref for Value {
-    type Target = ValueKind;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", *self.0)
-    }
-}
-
-/// TODO
-#[derive(Debug, Default)]
-pub enum ValueKind {
+pub enum Value {
     #[default]
     Undefined,
     Null,
     Boolean(bool),
     Number(Number),
-    String(String),
+    String(Rc<str>),
     Array(Rc<[Value]>),
     Object(Rc<[(String, Value)]>),
-    Function(Function),
+    Function(Rc<Function>),
 }
 
-impl ValueKind {
+impl Value {
     /// TODO
     pub fn to_bool(&self) -> bool {
         match self {
@@ -78,14 +39,14 @@ impl ValueKind {
     /// TODO
     pub fn to_number(&self) -> Option<Number> {
         match self {
-            ValueKind::Undefined => todo!(),
-            ValueKind::Null | ValueKind::Boolean(false) => Some(0.into()),
-            ValueKind::Boolean(true) => Some(1.into()),
-            ValueKind::Number(number) => Some(*number),
-            ValueKind::String(_)
-            | ValueKind::Array(_)
-            | ValueKind::Object(_)
-            | ValueKind::Function(_) => None,
+            Value::Undefined => todo!(),
+            Value::Null | Value::Boolean(false) => Some(0.into()),
+            Value::Boolean(true) => Some(1.into()),
+            Value::Number(number) => Some(*number),
+            Value::String(_)
+            | Value::Array(_)
+            | Value::Object(_)
+            | Value::Function(_) => None,
         }
     }
 
@@ -100,18 +61,41 @@ impl ValueKind {
     }
 }
 
-impl Display for ValueKind {
+impl From<Number> for Value {
+    fn from(value: Number) -> Self {
+        Value::Number(value)
+    }
+}
+
+/// TODO remove this - we should be able to optimize so we don't need it
+impl From<&str> for Value {
+    fn from(value: &str) -> Self {
+        Value::String(value.into())
+    }
+}
+
+impl From<Function> for Value {
+    fn from(value: Function) -> Self {
+        Value::Function(value.into())
+    }
+}
+
+impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ValueKind::Undefined => write!(f, "undefined"),
-            ValueKind::Null => write!(f, "null"),
-            ValueKind::Boolean(b) => write!(f, "{b}"),
-            ValueKind::Number(number) => write!(f, "{number}"),
-            ValueKind::String(s) => write!(f, "{s}"),
-            ValueKind::Array(vec) => todo!(),
+            Value::Undefined => write!(f, "undefined"),
+            Value::Null => write!(f, "null"),
+            Value::Boolean(b) => write!(f, "{b}"),
+            Value::Number(number) => write!(f, "{number}"),
+            Value::String(s) => write!(f, "{s}"),
+            Value::Array(vec) => todo!(),
             // lol
-            ValueKind::Object(index_map) => write!(f, "[object Object]"),
-            ValueKind::Function(function) => todo!(),
+            Value::Object(index_map) => write!(f, "[object Object]"),
+            Value::Function(function) => write!(
+                f,
+                "[Function: {}",
+                function.name.as_deref().unwrap_or("(anonymous)")
+            ),
         }
     }
 }
@@ -135,7 +119,10 @@ impl Number {
 
 impl Display for Number {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        match self {
+            Number::Int(i) => write!(f, "{i}"),
+            Number::Float(n) => write!(f, "{n}"),
+        }
     }
 }
 

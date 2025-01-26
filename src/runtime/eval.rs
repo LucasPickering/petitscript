@@ -2,7 +2,7 @@
 
 use crate::{
     runtime::RuntimeState,
-    value::{Function, Number, Value, ValueKind},
+    value::{Function, Number, Value},
     Error, Result,
 };
 use boa_ast::{
@@ -44,19 +44,19 @@ impl Evaluate for Expression {
             }
             Expression::Spread(spread) => spread.eval(state),
             Expression::FunctionExpression(function_expression) => {
-                Ok(ValueKind::Function(Function {
+                Ok(Function {
                     name: None, // TODO
                     parameters: function_expression.parameters().clone(),
                     body: function_expression.body().clone(),
-                })
+                }
                 .into())
             }
             Expression::ArrowFunction(arrow_function) => {
-                Ok(ValueKind::Function(Function {
+                Ok(Function {
                     name: None, // TODO
                     parameters: arrow_function.parameters().clone(),
                     body: arrow_function.body().clone(),
-                })
+                }
                 .into())
             }
             Expression::Call(call) => {
@@ -133,14 +133,12 @@ impl Evaluate for Expression {
 impl Evaluate for Literal {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
         match self {
-            Self::Null => Ok(ValueKind::Null.into()),
-            Self::Undefined => Ok(ValueKind::Undefined.into()),
-            Self::Bool(b) => Ok(ValueKind::Boolean(*b).into()),
+            Self::Null => Ok(Value::Null),
+            Self::Undefined => Ok(Value::Undefined),
+            Self::Bool(b) => Ok(Value::Boolean(*b)),
             Self::String(sym) => state.resolve_sym(*sym).map(Value::from),
-            Self::Num(f) => Ok(ValueKind::Number(Number::Float(*f)).into()),
-            Self::Int(i) => {
-                Ok(ValueKind::Number(Number::Int(*i as i64)).into())
-            }
+            Self::Num(f) => Ok(Value::Number(Number::Float(*f))),
+            Self::Int(i) => Ok(Value::Number(Number::Int(*i as i64))),
             Self::BigInt(big_int) => todo!(),
         }
     }
@@ -172,7 +170,7 @@ impl Evaluate for ArrayLiteral {
                     .eval(state)
             })
             .collect::<Result<Vec<_>>>()?;
-        Ok(ValueKind::Array(vec.into()).into())
+        Ok(Value::Array(vec.into()))
     }
 }
 

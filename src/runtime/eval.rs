@@ -10,6 +10,7 @@ use boa_ast::{
         access::{PropertyAccess, PropertyAccessField},
         literal::{ArrayLiteral, Literal, ObjectLiteral, TemplateLiteral},
         operator::{
+            assign::{AssignOp, AssignTarget},
             binary::{ArithmeticOp, BinaryOp},
             Assign, Binary, Unary, Update,
         },
@@ -211,13 +212,51 @@ impl Evaluate for PropertyAccess {
 
 impl Evaluate for Optional {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
-        todo!()
+        let target = self.target().eval(state)?;
+        match target {
+            Value::Undefined | Value::Null => Ok(Value::Undefined),
+            Value::Boolean(_)
+            | Value::Number(_)
+            | Value::String(_)
+            | Value::Array(_)
+            | Value::Object(_)
+            | Value::Function(_) => todo!(),
+        }
     }
 }
 
 impl Evaluate for Assign {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
-        todo!()
+        let name = match self.lhs() {
+            AssignTarget::Identifier(identifier) => {
+                state.resolve_sym(identifier.sym())?.to_owned()
+            }
+            AssignTarget::Access(property_access) => todo!("not allowed"),
+            AssignTarget::Pattern(pattern) => todo!(),
+        };
+        let value = self.rhs().eval(state)?;
+        match self.op() {
+            AssignOp::Assign => {
+                state.scope.set(&name, value.clone())?;
+                // Return assigned value
+                Ok(value)
+            }
+            AssignOp::Add => todo!(),
+            AssignOp::Sub => todo!(),
+            AssignOp::Mul => todo!(),
+            AssignOp::Div => todo!(),
+            AssignOp::Mod => todo!(),
+            AssignOp::Exp => todo!(),
+            AssignOp::And => todo!(),
+            AssignOp::Or => todo!(),
+            AssignOp::Xor => todo!(),
+            AssignOp::Shl => todo!(),
+            AssignOp::Shr => todo!(),
+            AssignOp::Ushr => todo!(),
+            AssignOp::BoolAnd => todo!(),
+            AssignOp::BoolOr => todo!(),
+            AssignOp::Coalesce => todo!(),
+        }
     }
 }
 

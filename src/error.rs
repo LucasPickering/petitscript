@@ -1,3 +1,4 @@
+use crate::value::Value;
 use std::io;
 use thiserror::Error;
 
@@ -5,6 +6,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
+    /// TODO
+    #[error(
+        "Cannot export value {new} under name {name}; \
+        it has already been exported with value {old}"
+    )]
+    AlreadyExported {
+        name: String,
+        old: Value,
+        new: Value,
+    },
+
     #[error(transparent)]
     Parse(#[from] boa_parser::Error),
     #[error(transparent)]

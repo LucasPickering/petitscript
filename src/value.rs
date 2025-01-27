@@ -88,9 +88,8 @@ impl Display for Value {
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(number) => write!(f, "{number}"),
             Value::String(s) => write!(f, "{s}"),
-            Value::Array(vec) => todo!(),
-            // lol
-            Value::Object(index_map) => write!(f, "[object Object]"),
+            Value::Array(vec) => write!(f, "[todo]"),
+            Value::Object(map) => write!(f, "{{todo}}"),
             Value::Function(function) => write!(
                 f,
                 "[Function: {}",

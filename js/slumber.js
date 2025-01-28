@@ -78,7 +78,7 @@ const recipeBase = {
   },
 };
 
-const requests = {
+export const requests = {
   login: {
     request: {
       method: "POST",

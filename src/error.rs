@@ -1,4 +1,4 @@
-use crate::value::Value;
+use crate::value::{Value, ValueType};
 use std::io;
 use thiserror::Error;
 
@@ -33,6 +33,12 @@ pub enum Error {
     /// Reference to an identifier that isn't bound
     #[error("{name} is not defined")]
     Reference { name: String },
+
+    #[error("Type error: expected {expected}, received {actual}")]
+    Type {
+        expected: ValueType,
+        actual: ValueType,
+    },
 
     /// User tried to use an ES6 feature that we don't support
     #[error("Operation not supported: {name}; {help}")]

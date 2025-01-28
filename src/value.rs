@@ -1,6 +1,6 @@
 //! Runtime values
 
-use crate::{runtime::scope::Scope, Result};
+use crate::{runtime::scope::Scope, Error, Result};
 use boa_ast::{
     function::{FormalParameterList, FunctionBody},
     StatementListItem,
@@ -19,14 +19,15 @@ pub enum Value {
     Null,
     Boolean(bool),
     Number(Number),
-    String(Rc<str>),
+    String(JsString),
     Array(Array),
     Object(Object),
     Function(Function),
 }
 
 impl Value {
-    /// TODO
+    /// Coerce this value to a boolean. Truthy values return true, falsy values
+    /// return false.
     pub fn to_bool(&self) -> bool {
         match self {
             Self::Undefined | Self::Null => false,
@@ -39,44 +40,81 @@ impl Value {
         }
     }
 
-    /// TODO
+    /// Coernce this value to a number.
+    /// | Type        | Value   | Coercion |
+    /// | ----------- | ------- | -------- |
+    /// | `undefined` |         | `NaN`    |
+    /// | `null`      |         | `0`      |
+    /// | `boolean`   | `false` | `0`      |
+    /// | `boolean`   | `true`  | `1`      |
+    /// | `number`    |         | Itself   |
+    /// | `string`    |         | `None`   |
+    /// | `array`     |         | `None`   |
+    /// | `object`    |         | `None`   |
+    /// | `function`  |         | `None`   |
     pub fn to_number(&self) -> Option<Number> {
         match self {
-            Value::Undefined => todo!(),
-            Value::Null | Value::Boolean(false) => Some(0.into()),
-            Value::Boolean(true) => Some(1.into()),
-            Value::Number(number) => Some(*number),
-            Value::String(_)
-            | Value::Array(_)
-            | Value::Object(_)
-            | Value::Function(_) => None,
+            Self::Undefined => Some(f64::NAN.into()),
+            Self::Null | Self::Boolean(false) => Some(0.into()),
+            Self::Boolean(true) => Some(1.into()),
+            Self::Number(number) => Some(*number),
+            Self::String(_)
+            | Self::Array(_)
+            | Self::Object(_)
+            | Self::Function(_) => None,
         }
     }
 
-    /// TODO
+    /// If this value is an array, get the inner array. Otherwise return a type
+    /// error.
     pub fn try_into_array(self) -> Result<Array> {
         if let Self::Array(array) = self {
             Ok(array)
         } else {
-            todo!("error")
+            Err(Error::Type {
+                expected: ValueType::Array,
+                actual: self.type_(),
+            })
         }
     }
 
-    /// TODO
+    /// If this value is an object, get the inner object. Otherwise return a
+    /// type error.
     pub fn try_into_object(self) -> Result<Object> {
         if let Self::Object(object) = self {
             Ok(object)
         } else {
-            todo!("error")
+            Err(Error::Type {
+                expected: ValueType::Object,
+                actual: self.type_(),
+            })
         }
     }
 
-    /// TODO
+    /// If this value is a function, get the inner function. Otherwise return a
+    /// type error.
     pub fn try_into_function(self) -> Result<Function> {
         if let Self::Function(function) = self {
             Ok(function)
         } else {
-            todo!("error")
+            Err(Error::Type {
+                expected: ValueType::Function,
+                actual: self.type_(),
+            })
+        }
+    }
+
+    /// Get the type of this value
+    pub fn type_(&self) -> ValueType {
+        match self {
+            Self::Undefined => ValueType::Undefined,
+            Self::Null => ValueType::Null,
+            Self::Boolean(_) => ValueType::Boolean,
+            Self::Number(_) => ValueType::Number,
+            Self::String(_) => ValueType::String,
+            Self::Array(_) => ValueType::Array,
+            Self::Object(_) => ValueType::Object,
+            Self::Function(_) => ValueType::Function,
         }
     }
 
@@ -123,19 +161,44 @@ impl From<Function> for Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO pretty printing param
         match self {
             Value::Undefined => write!(f, "undefined"),
             Value::Null => write!(f, "null"),
             Value::Boolean(b) => write!(f, "{b}"),
             Value::Number(number) => write!(f, "{number}"),
-            Value::String(s) => write!(f, "{s}"),
-            Value::Array(vec) => write!(f, "[todo]"),
-            Value::Object(map) => write!(f, "{{todo}}"),
-            Value::Function(function) => write!(
-                f,
-                "[Function: {}]",
-                function.name().unwrap_or("(anonymous)")
-            ),
+            Value::String(string) => write!(f, "{string}"),
+            Value::Array(array) => write!(f, "{array}"),
+            Value::Object(object) => write!(f, "{object}"),
+            Value::Function(function) => write!(f, "{function}",),
+        }
+    }
+}
+
+/// Possible types for a value
+#[derive(Copy, Clone, Debug)]
+pub enum ValueType {
+    Undefined,
+    Null,
+    Boolean,
+    Number,
+    String,
+    Array,
+    Object,
+    Function,
+}
+
+impl Display for ValueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Undefined => write!(f, "undefined"),
+            Self::Null => write!(f, "null"),
+            Self::Boolean => write!(f, "boolean"),
+            Self::Number => write!(f, "number"),
+            Self::String => write!(f, "string"),
+            Self::Array => write!(f, "array"),
+            Self::Object => write!(f, "object"),
+            Self::Function => write!(f, "function"),
         }
     }
 }
@@ -198,6 +261,30 @@ impl Add for Number {
     }
 }
 
+/// A reference-counted immutable string
+#[derive(Clone, Debug, Default)]
+pub struct JsString(Rc<str>);
+
+impl Deref for JsString {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for JsString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{}\"", self.0)
+    }
+}
+
+impl From<&str> for JsString {
+    fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+
 /// TODO
 #[derive(Clone, Debug, Default)]
 pub struct Array(Rc<Vec<Value>>);
@@ -251,6 +338,21 @@ impl From<Vec<Value>> for Array {
     }
 }
 
+impl Display for Array {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, element) in self.0.iter().enumerate() {
+            if i > 0 {
+                // TODO pretty printing
+                write!(f, ", ")?;
+            }
+            write!(f, "{element}")?;
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
 /// TODO
 /// TODO disallow duplication - maybe we need our own indexmap?
 #[derive(Clone, Debug, Default)]
@@ -299,6 +401,21 @@ impl Object {
     }
 }
 
+impl Display for Object {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for (i, (key, value)) in self.0.iter().enumerate() {
+            if i > 0 {
+                // TODO pretty printing
+                write!(f, ", ")?;
+            }
+            write!(f, "{key}: {value}")?;
+        }
+        write!(f, "}}")?;
+        Ok(())
+    }
+}
+
 /// TODO
 #[derive(Clone, Debug)]
 pub struct Function(Rc<FunctionInner>);
@@ -332,6 +449,12 @@ impl Function {
     /// Get the body's list of executable statements
     pub(super) fn body(&self) -> &[StatementListItem] {
         self.0.body.statements()
+    }
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
     }
 }
 

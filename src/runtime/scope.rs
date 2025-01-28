@@ -1,4 +1,6 @@
-use crate::{stdlib::stdlib, value::Value, Error, Result};
+use crate::{
+    runtime::state::RuntimeState, stdlib::stdlib, value::Value, Error, Result,
+};
 use indexmap::IndexMap;
 use std::{cell::RefCell, rc::Rc};
 
@@ -69,6 +71,24 @@ impl Scope {
             }
             SetOutcome::Ok => Ok(()),
             SetOutcome::Err(error) => Err(error),
+        }
+    }
+
+    /// TODO
+    pub fn bind(
+        &self,
+        state: &RuntimeState,
+        binding: &boa_ast::declaration::Binding,
+        value: Value,
+        mutable: bool,
+    ) -> Result<Vec<String>> {
+        match binding {
+            boa_ast::declaration::Binding::Identifier(identifier) => {
+                let name = state.resolve_sym(identifier.sym()).to_owned();
+                self.declare(name.clone(), value, mutable);
+                Ok(vec![name])
+            }
+            boa_ast::declaration::Binding::Pattern(pattern) => todo!(),
         }
     }
 }

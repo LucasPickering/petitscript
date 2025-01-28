@@ -25,6 +25,7 @@ use boa_ast::{
     property::PropertyName,
     Expression,
 };
+use std::iter;
 
 /// TODO
 pub trait Evaluate {
@@ -284,7 +285,7 @@ impl Evaluate for Assign {
         let value = self.rhs().eval(state)?;
         match self.op() {
             AssignOp::Assign => {
-                state.scope_mut().set(&name, value.clone())?;
+                state.scope().set(&name, value.clone())?;
                 // Return assigned value
                 Ok(value)
             }
@@ -349,23 +350,7 @@ impl Value {
     /// not a function, return an error
     fn call(&self, args: &[Value], state: &mut RuntimeState) -> Result<Value> {
         match self {
-            Self::Function(function) => {
-                // Start with the function's captured scope
-                let scope = function.scope().child();
-                // Add args to scope
-                // TODO add args to scope
-
-                // TODO use guard pattern for this instead
-                state.push_scope(scope);
-                let return_value = match function.body().exec(state)? {
-                    Some(Terminate::Return {
-                        return_value: Some(return_value),
-                    }) => return_value,
-                    _ => Value::Undefined,
-                };
-                state.pop_scope();
-                Ok(return_value)
-            }
+            Self::Function(function) => function.call(args, state),
             Self::Native(function) => function.call(args),
             Self::Undefined
             | Self::Null
@@ -378,5 +363,41 @@ impl Value {
                 actual: self.type_(),
             }),
         }
+    }
+}
+
+impl Function {
+    fn call(&self, args: &[Value], state: &mut RuntimeState) -> Result<Value> {
+        // Start with the function's captured scope
+        let scope = self.scope().child();
+        // TODO bindings added to the scope after this point shouldn't be
+        // captured
+
+        // Add args to scope
+        // If we got fewer args than the function has defined, we'll pad it out
+        // with undefineds (or use the init expression defined in the func)
+        let args_iter =
+            args.iter().cloned().map(Some).chain(iter::repeat(None));
+        for (parameter, value) in self.parameters().iter().zip(args_iter) {
+            let value = if let Some(value) = value {
+                value
+            } else if let Some(init) = parameter.variable().init() {
+                // If the arg wasn't given, fall back to the init expression
+                init.eval(state)?
+            } else {
+                // No init expression, use undefined
+                Value::Undefined
+            };
+            scope.bind(state, parameter.variable().binding(), value, false)?;
+        }
+
+        let _ = state.push_scope(scope); // Scope will be auto-popped
+        let return_value = match self.body().exec(state)? {
+            Some(Terminate::Return {
+                return_value: Some(return_value),
+            }) => return_value,
+            _ => Value::Undefined,
+        };
+        Ok(return_value)
     }
 }

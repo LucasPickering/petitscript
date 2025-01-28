@@ -1,6 +1,6 @@
 use crate::{runtime::scope::Scope, value::Value, Result};
 use boa_ast::{
-    function::{FormalParameterList, FunctionBody},
+    function::{FormalParameter, FormalParameterList, FunctionBody},
     StatementListItem,
 };
 use std::{
@@ -36,6 +36,11 @@ impl Function {
     /// TODO
     pub(crate) fn scope(&self) -> &Scope {
         &self.0.scope
+    }
+
+    /// TODO
+    pub(crate) fn parameters(&self) -> &[FormalParameter] {
+        self.0.parameters.as_ref()
     }
 
     /// Get the body's list of executable statements

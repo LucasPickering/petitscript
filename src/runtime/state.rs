@@ -45,22 +45,9 @@ impl<'int> RuntimeState<'int> {
     }
 
     /// TODO
-    pub fn scope_mut(&mut self) -> &mut Scope {
-        if let Some(last) = self.scope_stack.last_mut() {
-            last
-        } else {
-            &mut self.global_scope
-        }
-    }
-
-    /// TODO
-    pub fn push_scope(&mut self, scope: Scope) {
+    pub fn push_scope(&mut self, scope: Scope) -> ScopeGuard<'_, 'int> {
         self.scope_stack.push(scope);
-    }
-
-    /// TODO
-    pub fn pop_scope(&mut self) {
-        self.scope_stack.pop();
+        ScopeGuard { state: self }
     }
 
     /// TODO
@@ -101,5 +88,17 @@ impl<'int> RuntimeState<'int> {
                 })
                 .collect::<Result<_>>()?,
         })
+    }
+}
+
+/// TODO
+#[must_use]
+pub struct ScopeGuard<'a, 'int> {
+    state: &'a mut RuntimeState<'int>,
+}
+
+impl<'a, 'int> Drop for ScopeGuard<'a, 'int> {
+    fn drop(&mut self) {
+        self.state.scope_stack.pop();
     }
 }

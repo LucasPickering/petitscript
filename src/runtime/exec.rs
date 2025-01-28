@@ -226,19 +226,13 @@ impl Execute for Declaration {
                         .map(|expr| expr.eval(state))
                         .transpose()?
                         .unwrap_or_default();
-                    match variable.binding() {
-                        Binding::Identifier(identifier) => {
-                            let name =
-                                state.resolve_sym(identifier.sym()).to_owned();
-                            state.scope_mut().declare(
-                                name.clone(),
-                                value,
-                                mutable,
-                            );
-                            declared.push(name);
-                        }
-                        Binding::Pattern(pattern) => todo!(),
-                    }
+                    let names = state.scope().bind(
+                        state,
+                        variable.binding(),
+                        value,
+                        mutable,
+                    )?;
+                    declared.extend(names);
                 }
 
                 Ok(declared)
@@ -263,7 +257,7 @@ impl Execute for FunctionDeclaration {
     fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
         let name = state.resolve_sym(self.name().sym()).to_owned();
         // TODO make sure we aren't capturing names declared after the fn
-        let scope = state.scope_mut();
+        let scope = state.scope();
         let function = Function::new(
             Some(name.clone()),
             self.parameters().clone(),

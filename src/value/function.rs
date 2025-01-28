@@ -34,11 +34,6 @@ impl Function {
     }
 
     /// TODO
-    pub fn call(&self, args: &[Value]) -> Result<Value> {
-        todo!()
-    }
-
-    /// TODO
     pub(crate) fn scope(&self) -> &Scope {
         &self.0.scope
     }

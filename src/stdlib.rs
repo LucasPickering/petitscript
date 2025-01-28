@@ -10,6 +10,7 @@ pub fn stdlib() -> Module {
     }
 }
 
+/// `console` module
 fn console() -> Object {
     Object::default().insert("log", console_log.into())
 }

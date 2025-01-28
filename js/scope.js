@@ -10,7 +10,7 @@ function g() {
   y = 10;
 }
 
-console.log(x);
+console.log(x, y);
 f();
 g();
-console.log(x);
+console.log(x, y);

@@ -1,8 +1,9 @@
 use std::env;
 
-fn main() -> petit_js::Result<()> {
+fn main() {
     let path = env::args().nth(1).expect("Expected path");
-    let module = petit_js::load(&path)?;
-    println!("{module:#}");
-    Ok(())
+    match petit_js::load(&path) {
+        Ok(module) => println!("{module:#}"),
+        Err(error) => println!("{error}"),
+    }
 }

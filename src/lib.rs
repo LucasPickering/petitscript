@@ -3,6 +3,7 @@
 
 mod error;
 mod runtime;
+mod stdlib;
 mod value;
 
 use boa_ast::scope::Scope;
@@ -14,6 +15,7 @@ use crate::runtime::module::Module;
 pub use crate::{
     error::{Error, Result},
     runtime::Runtime,
+    value::Value,
 };
 
 /// TODO

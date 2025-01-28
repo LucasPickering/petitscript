@@ -1,10 +1,14 @@
 //! Runtime values
 
-use crate::{runtime::scope::Scope, Error, Result};
-use boa_ast::{
-    function::{FormalParameterList, FunctionBody},
-    StatementListItem,
-};
+mod array;
+mod function;
+mod object;
+
+pub use array::Array;
+pub use function::{Function, NativeFunction, NativeFunctionTrait};
+pub use object::Object;
+
+use crate::{Error, Result};
 use std::{
     fmt::{self, Display},
     ops::{Add, Deref},
@@ -23,6 +27,7 @@ pub enum Value {
     Array(Array),
     Object(Object),
     Function(Function),
+    Native(NativeFunction),
 }
 
 impl Value {
@@ -34,9 +39,10 @@ impl Value {
             Self::Boolean(b) => *b,
             Self::Number(number) => number.to_bool(),
             Self::String(s) => !s.is_empty(),
-            Self::Array(_) => true,
-            Self::Object(_) => true,
-            Self::Function(_) => true,
+            Self::Array(_)
+            | Self::Object(_)
+            | Self::Function(_)
+            | Self::Native(_) => true,
         }
     }
 
@@ -61,7 +67,8 @@ impl Value {
             Self::String(_)
             | Self::Array(_)
             | Self::Object(_)
-            | Self::Function(_) => None,
+            | Self::Function(_)
+            | Self::Native(_) => None,
         }
     }
 
@@ -114,16 +121,16 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
-            Self::Function(_) => ValueType::Function,
+            Self::Function(_) | Self::Native(_) => ValueType::Function,
         }
     }
 
     /// TODO
-    pub fn get(&self, key: &Self) -> Result<&Value> {
+    pub fn get(&self, key: &Self) -> Result<Value> {
         match (self, key) {
             (Self::Array(array), Self::Number(index)) => todo!(),
             // TODO support number keys here?
-            (Self::Object(object), Self::String(key)) => todo!(),
+            (Self::Object(object), Self::String(key)) => Ok(object.get(key)),
             _ => todo!("error"),
         }
     }
@@ -159,18 +166,25 @@ impl From<Function> for Value {
     }
 }
 
+impl<F: NativeFunctionTrait> From<F> for Value {
+    fn from(function: F) -> Self {
+        Self::Native(function.into())
+    }
+}
+
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO pretty printing param
         match self {
-            Value::Undefined => write!(f, "undefined"),
-            Value::Null => write!(f, "null"),
-            Value::Boolean(b) => write!(f, "{b}"),
-            Value::Number(number) => write!(f, "{number}"),
-            Value::String(string) => write!(f, "{string}"),
-            Value::Array(array) => write!(f, "{array}"),
-            Value::Object(object) => write!(f, "{object}"),
-            Value::Function(function) => write!(f, "{function}",),
+            Self::Undefined => write!(f, "undefined"),
+            Self::Null => write!(f, "null"),
+            Self::Boolean(b) => write!(f, "{b}"),
+            Self::Number(number) => write!(f, "{number}"),
+            Self::String(string) => write!(f, "{string}"),
+            Self::Array(array) => write!(f, "{array}"),
+            Self::Object(object) => write!(f, "{object}"),
+            Self::Function(function) => write!(f, "{function}"),
+            Self::Native(function) => write!(f, "{function}"),
         }
     }
 }
@@ -283,187 +297,4 @@ impl From<&str> for JsString {
     fn from(value: &str) -> Self {
         Self(value.into())
     }
-}
-
-/// TODO
-#[derive(Clone, Debug, Default)]
-pub struct Array(Rc<Vec<Value>>);
-
-impl Array {
-    /// TODO
-    pub fn insert(self, value: Value) -> Self {
-        self.with_inner(|vec| vec.push(value))
-    }
-
-    /// TODO
-    /// TODO better name?
-    pub fn insert_all(self, other: Self) -> Self {
-        // If we're the sole owner of the other object, we can move the items
-        // out. Otherwise we have to clone them over
-        match Rc::try_unwrap(other.0) {
-            // If this object is empty, and we now own the other one, just point
-            // to its buffer and avoid all copies. This optimizes for a common
-            // pattern {...obj1, field: "value"}, to avoid repeated allocations
-            Ok(other) if self.0.is_empty() => {
-                self.with_inner(|vec| *vec = other)
-            }
-            // We own the other one, so we can move each inner item into our
-            // buffer without cloning
-            Ok(other) => self.with_inner(|vec| vec.extend(other)),
-            // Other object is shared (uncommon case) - we need to clone all its
-            // contents
-            Err(other) => {
-                self.with_inner(|vec| vec.extend(other.iter().cloned()))
-            }
-        }
-    }
-
-    /// TODO
-    fn with_inner(mut self, f: impl FnOnce(&mut Vec<Value>)) -> Self {
-        // TODO explain
-        if let Some(vec) = Rc::get_mut(&mut self.0) {
-            f(vec);
-            self
-        } else {
-            let mut vec = self.0.deref().clone();
-            f(&mut vec);
-            Self(vec.into())
-        }
-    }
-}
-
-impl From<Vec<Value>> for Array {
-    fn from(value: Vec<Value>) -> Self {
-        Self(value.into())
-    }
-}
-
-impl Display for Array {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[")?;
-        for (i, element) in self.0.iter().enumerate() {
-            if i > 0 {
-                // TODO pretty printing
-                write!(f, ", ")?;
-            }
-            write!(f, "{element}")?;
-        }
-        write!(f, "]")?;
-        Ok(())
-    }
-}
-
-/// TODO
-/// TODO disallow duplication - maybe we need our own indexmap?
-#[derive(Clone, Debug, Default)]
-pub struct Object(Rc<Vec<(String, Value)>>);
-
-impl Object {
-    /// TODO
-    pub fn insert(self, name: String, value: Value) -> Self {
-        self.with_inner(|vec| vec.push((name, value)))
-    }
-
-    /// TODO
-    /// TODO better name?
-    pub fn insert_all(self, other: Self) -> Self {
-        // If we're the sole owner of the other object, we can move the items
-        // out. Otherwise we have to clone them over
-        match Rc::try_unwrap(other.0) {
-            // If this object is empty, and we now own the other one, just point
-            // to its buffer and avoid all copies. This optimizes for a common
-            // pattern {...obj1, field: "value"}, to avoid repeated allocations
-            Ok(other) if self.0.is_empty() => {
-                self.with_inner(|vec| *vec = other)
-            }
-            // We own the other one, so we can move each inner item into our
-            // buffer without cloning
-            Ok(other) => self.with_inner(|vec| vec.extend(other)),
-            // Other object is shared (uncommon case) - we need to clone all its
-            // contents
-            Err(other) => {
-                self.with_inner(|vec| vec.extend(other.iter().cloned()))
-            }
-        }
-    }
-
-    /// TODO
-    fn with_inner(mut self, f: impl FnOnce(&mut Vec<(String, Value)>)) -> Self {
-        // TODO explain
-        if let Some(vec) = Rc::get_mut(&mut self.0) {
-            f(vec);
-            self
-        } else {
-            let mut vec = self.0.deref().clone();
-            f(&mut vec);
-            Self(vec.into())
-        }
-    }
-}
-
-impl Display for Object {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{")?;
-        for (i, (key, value)) in self.0.iter().enumerate() {
-            if i > 0 {
-                // TODO pretty printing
-                write!(f, ", ")?;
-            }
-            write!(f, "{key}: {value}")?;
-        }
-        write!(f, "}}")?;
-        Ok(())
-    }
-}
-
-/// TODO
-#[derive(Clone, Debug)]
-pub struct Function(Rc<FunctionInner>);
-
-impl Function {
-    pub fn new(
-        name: Option<String>,
-        parameters: FormalParameterList,
-        body: FunctionBody,
-        scope: Scope,
-    ) -> Self {
-        let inner = FunctionInner {
-            name,
-            parameters,
-            body,
-            scope,
-        };
-        Self(Rc::new(inner))
-    }
-
-    /// TODO
-    pub fn name(&self) -> Option<&str> {
-        self.0.name.as_deref()
-    }
-
-    /// TODO
-    pub(super) fn scope(&self) -> &Scope {
-        &self.0.scope
-    }
-
-    /// Get the body's list of executable statements
-    pub(super) fn body(&self) -> &[StatementListItem] {
-        self.0.body.statements()
-    }
-}
-
-impl Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
-    }
-}
-
-#[derive(Debug)]
-struct FunctionInner {
-    name: Option<String>,
-    parameters: FormalParameterList,
-    body: FunctionBody,
-    /// Captured variables. This is defined at function definition, and will be
-    /// exposed to all calls of the function
-    scope: Scope,
 }

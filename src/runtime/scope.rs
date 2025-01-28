@@ -1,4 +1,4 @@
-use crate::{value::Value, Error, Result};
+use crate::{stdlib::stdlib, value::Value, Error, Result};
 use indexmap::IndexMap;
 use std::{cell::RefCell, rc::Rc};
 
@@ -13,6 +13,16 @@ impl Scope {
     /// Create a new empty scope
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a global scope, which will include the standard library
+    pub fn global() -> Self {
+        let lib = stdlib();
+        let mut scope = Self::new();
+        for (name, value) in lib.named {
+            scope.declare(name, value, false);
+        }
+        scope
     }
 
     /// TODO

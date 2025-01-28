@@ -27,7 +27,7 @@ pub struct RuntimeState<'int> {
 impl<'int> RuntimeState<'int> {
     pub fn new(interner: &'int Interner) -> Self {
         Self {
-            global_scope: Scope::new(),
+            global_scope: Scope::global(),
             scope_stack: Vec::new(),
             export_default: None,
             export_names: Vec::new(),

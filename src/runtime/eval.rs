@@ -5,7 +5,7 @@ use crate::{
         exec::{Execute, Terminate},
         RuntimeState,
     },
-    value::{Array, Function, Number, Object, Value},
+    value::{Array, Function, Number, Object, Value, ValueType},
     Error, Result,
 };
 use boa_ast::{
@@ -70,14 +70,13 @@ impl Evaluate for Expression {
             )
             .into()),
             Expression::Call(call) => {
-                let function =
-                    call.function().eval(state)?.try_into_function()?;
+                let function = call.function().eval(state)?;
                 let args = call
                     .args()
                     .iter()
                     .map(|arg| arg.eval(state))
-                    .collect::<Result<_>>()?;
-                function.call(args, state)
+                    .collect::<Result<Vec<_>>>()?;
+                function.call(&args, state)
             }
             Expression::PropertyAccess(access) => access.eval(state),
             Expression::Optional(access) => access.eval(state),
@@ -249,7 +248,7 @@ impl Evaluate for PropertyAccess {
                         expression.eval(state)?
                     }
                 };
-                value.get(&key).cloned()
+                value.get(&key)
             }
             Self::Private(_) => todo!("not allowed"),
             Self::Super(_) => todo!("not allowed"),
@@ -267,7 +266,8 @@ impl Evaluate for Optional {
             | Value::String(_)
             | Value::Array(_)
             | Value::Object(_)
-            | Value::Function(_) => todo!(),
+            | Value::Function(_)
+            | Value::Native(_) => todo!(),
         }
     }
 }
@@ -344,28 +344,39 @@ impl Evaluate for Binary {
     }
 }
 
-impl Function {
-    /// Call the function with the given arguments, and return its return value
-    fn call(
-        &self,
-        args: Vec<Value>,
-        state: &mut RuntimeState,
-    ) -> Result<Value> {
-        // Start with the function's captured scope
-        let scope = self.scope().child();
-        // Add args to scope
-        // TODO add args to scope
+impl Value {
+    /// If the value is a function, call it and return its return value. If it's
+    /// not a function, return an error
+    fn call(&self, args: &[Value], state: &mut RuntimeState) -> Result<Value> {
+        match self {
+            Self::Function(function) => {
+                // Start with the function's captured scope
+                let scope = function.scope().child();
+                // Add args to scope
+                // TODO add args to scope
 
-        // TODO use guard pattern for this instead
-        state.push_scope(scope);
-        let return_value = match self.body().exec(state)? {
-            Some(Terminate::Return {
-                return_value: Some(return_value),
-            }) => return_value,
-            _ => Value::Undefined,
-        };
-        state.pop_scope();
-
-        Ok(return_value)
+                // TODO use guard pattern for this instead
+                state.push_scope(scope);
+                let return_value = match function.body().exec(state)? {
+                    Some(Terminate::Return {
+                        return_value: Some(return_value),
+                    }) => return_value,
+                    _ => Value::Undefined,
+                };
+                state.pop_scope();
+                Ok(return_value)
+            }
+            Self::Native(function) => function.call(args),
+            Self::Undefined
+            | Self::Null
+            | Self::Boolean(_)
+            | Self::Number(_)
+            | Self::String(_)
+            | Self::Array(_)
+            | Self::Object(_) => Err(Error::Type {
+                expected: ValueType::Function,
+                actual: self.type_(),
+            }),
+        }
     }
 }

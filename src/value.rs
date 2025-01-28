@@ -1,7 +1,10 @@
 //! Runtime values
 
-use crate::Result;
-use boa_ast::function::{FormalParameterList, FunctionBody};
+use crate::{runtime::scope::Scope, Result};
+use boa_ast::{
+    function::{FormalParameterList, FunctionBody},
+    StatementListItem,
+};
 use std::{
     fmt::{self, Display},
     ops::{Add, Deref},
@@ -19,7 +22,7 @@ pub enum Value {
     String(Rc<str>),
     Array(Array),
     Object(Object),
-    Function(Rc<Function>),
+    Function(Function),
 }
 
 impl Value {
@@ -69,6 +72,15 @@ impl Value {
     }
 
     /// TODO
+    pub fn try_into_function(self) -> Result<Function> {
+        if let Self::Function(function) = self {
+            Ok(function)
+        } else {
+            todo!("error")
+        }
+    }
+
+    /// TODO
     pub fn get(&self, key: &Self) -> Result<&Value> {
         match (self, key) {
             (Self::Array(array), Self::Number(index)) => todo!(),
@@ -105,7 +117,7 @@ impl From<Object> for Value {
 
 impl From<Function> for Value {
     fn from(function: Function) -> Self {
-        Self::Function(function.into())
+        Self::Function(function)
     }
 }
 
@@ -122,7 +134,7 @@ impl Display for Value {
             Value::Function(function) => write!(
                 f,
                 "[Function: {}]",
-                function.name.as_deref().unwrap_or("(anonymous)")
+                function.name().unwrap_or("(anonymous)")
             ),
         }
     }
@@ -288,9 +300,47 @@ impl Object {
 }
 
 /// TODO
+#[derive(Clone, Debug)]
+pub struct Function(Rc<FunctionInner>);
+
+impl Function {
+    pub fn new(
+        name: Option<String>,
+        parameters: FormalParameterList,
+        body: FunctionBody,
+        scope: Scope,
+    ) -> Self {
+        let inner = FunctionInner {
+            name,
+            parameters,
+            body,
+            scope,
+        };
+        Self(Rc::new(inner))
+    }
+
+    /// TODO
+    pub fn name(&self) -> Option<&str> {
+        self.0.name.as_deref()
+    }
+
+    /// TODO
+    pub(super) fn scope(&self) -> &Scope {
+        &self.0.scope
+    }
+
+    /// Get the body's list of executable statements
+    pub(super) fn body(&self) -> &[StatementListItem] {
+        self.0.body.statements()
+    }
+}
+
 #[derive(Debug)]
-pub struct Function {
-    pub name: Option<String>,
-    pub parameters: FormalParameterList,
-    pub body: FunctionBody,
+struct FunctionInner {
+    name: Option<String>,
+    parameters: FormalParameterList,
+    body: FunctionBody,
+    /// Captured variables. This is defined at function definition, and will be
+    /// exposed to all calls of the function
+    scope: Scope,
 }

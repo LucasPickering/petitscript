@@ -2,7 +2,7 @@
 
 use crate::{
     runtime::{eval::Evaluate, RuntimeState},
-    value::Function,
+    value::{Function, Value},
     Error, Result,
 };
 use boa_ast::{
@@ -116,13 +116,11 @@ impl Execute for Statement {
             Self::Continue(_) => Ok(None),
             Self::Break(_) => Ok(None),
             Self::Return(ret) => {
-                let mut frame =
-                    state.stack.pop().ok_or(Error::IllegalReturn)?;
-                if let Some(expression) = ret.target() {
-                    frame.return_value = expression.eval(state)?;
-                }
-                // Exit the function
-                Ok(None)
+                let return_value = ret
+                    .target()
+                    .map(|expression| expression.eval(state))
+                    .transpose()?;
+                Ok(Some(Terminate::Return { return_value }))
             }
             Self::Labelled(labelled) => todo!(),
             Self::Throw(throw) => todo!(),
@@ -181,7 +179,7 @@ impl Execute for ExportDeclaration {
             ) => {
                 let name = function_declaration.exec(state)?;
                 // Fetch the function we just declared. Should never fail
-                let value = state.scope.get(&name)?;
+                let value = state.scope().get(&name)?;
                 state.export_default(value)
             }
             ExportDeclaration::DefaultAssignmentExpression(expression) => {
@@ -232,7 +230,11 @@ impl Execute for Declaration {
                         Binding::Identifier(identifier) => {
                             let name =
                                 state.resolve_sym(identifier.sym()).to_owned();
-                            state.scope.declare(name.clone(), value, mutable);
+                            state.scope_mut().declare(
+                                name.clone(),
+                                value,
+                                mutable,
+                            );
                             declared.push(name);
                         }
                         Binding::Pattern(pattern) => todo!(),
@@ -260,12 +262,15 @@ impl Execute for FunctionDeclaration {
 
     fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
         let name = state.resolve_sym(self.name().sym()).to_owned();
-        let function = Function {
-            name: Some(name.clone()),
-            parameters: self.parameters().clone(),
-            body: self.body().clone(),
-        };
-        state.scope.declare(name.clone(), function.into(), false);
+        // TODO make sure we aren't capturing names declared after the fn
+        let scope = state.scope_mut();
+        let function = Function::new(
+            Some(name.clone()),
+            self.parameters().clone(),
+            self.body().clone(),
+            scope.clone(),
+        );
+        scope.declare(name.clone(), function.into(), false);
         Ok(name)
     }
 }
@@ -274,7 +279,16 @@ impl Execute for FunctionDeclaration {
 #[derive(Debug)]
 #[must_use]
 pub enum Terminate {
-    LoopIteration { label: Option<String> },
-    Loop { label: Option<String> },
-    Function,
+    /// Skip to the entire of the current loop iteration
+    Continue {
+        /// Name the loop to skip to the end of
+        label: Option<String>,
+    },
+    /// Break out of the current loop
+    Break {
+        /// Name the loop to skip to break
+        label: Option<String>,
+    },
+    /// Return from the current function, optionally with a return value
+    Return { return_value: Option<Value> },
 }

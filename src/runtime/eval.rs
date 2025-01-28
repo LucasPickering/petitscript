@@ -1,7 +1,10 @@
 //! Expression evaluation
 
 use crate::{
-    runtime::RuntimeState,
+    runtime::{
+        exec::{Execute, Terminate},
+        RuntimeState,
+    },
     value::{Array, Function, Number, Object, Value},
     Error, Result,
 };
@@ -35,7 +38,7 @@ impl Evaluate for Expression {
         match self {
             Expression::Identifier(identifier) => {
                 let name = state.resolve_sym(identifier.sym());
-                state.scope.get(name)
+                state.scope().get(name)
             }
             Expression::Literal(literal) => literal.eval(state),
             Expression::TemplateLiteral(template_literal) => {
@@ -48,30 +51,33 @@ impl Evaluate for Expression {
                 object_literal.eval(state)
             }
             Expression::Spread(spread) => spread.eval(state),
-            Expression::FunctionExpression(function) => Ok(Function {
-                name: function
+            Expression::FunctionExpression(function) => Ok(Function::new(
+                function
                     .name()
                     .map(|name| state.resolve_sym(name.sym()).to_owned()),
-                parameters: function.parameters().clone(),
-                body: function.body().clone(),
-            }
+                function.parameters().clone(),
+                function.body().clone(),
+                state.scope().clone(),
+            )
             .into()),
-            Expression::ArrowFunction(function) => Ok(Function {
-                name: function
+            Expression::ArrowFunction(function) => Ok(Function::new(
+                function
                     .name()
                     .map(|name| state.resolve_sym(name.sym()).to_owned()),
-                parameters: function.parameters().clone(),
-                body: function.body().clone(),
-            }
+                function.parameters().clone(),
+                function.body().clone(),
+                state.scope().clone(),
+            )
             .into()),
             Expression::Call(call) => {
-                let function = call.function().eval(state)?;
+                let function =
+                    call.function().eval(state)?.try_into_function()?;
                 let args = call
                     .args()
                     .iter()
                     .map(|arg| arg.eval(state))
                     .collect::<Result<_>>()?;
-                state.call(&function, args)
+                function.call(args, state)
             }
             Expression::PropertyAccess(access) => access.eval(state),
             Expression::Optional(access) => access.eval(state),
@@ -190,7 +196,7 @@ impl Evaluate for ObjectLiteral {
                 PropertyDefinition::IdentifierReference(identifier) => {
                     // Shorthand notation: { field }
                     let name = state.resolve_sym(identifier.sym()).to_owned();
-                    let value = state.scope.get(&name)?;
+                    let value = state.scope().get(&name)?;
                     Ok::<_, Error>(acc.insert(name, value))
                 }
                 PropertyDefinition::Property(property_name, expression) => {
@@ -278,7 +284,7 @@ impl Evaluate for Assign {
         let value = self.rhs().eval(state)?;
         match self.op() {
             AssignOp::Assign => {
-                state.scope.set(&name, value.clone())?;
+                state.scope_mut().set(&name, value.clone())?;
                 // Return assigned value
                 Ok(value)
             }
@@ -335,5 +341,31 @@ impl Evaluate for Binary {
             BinaryOp::Logical(logical_op) => todo!(),
             BinaryOp::Comma => todo!(),
         }
+    }
+}
+
+impl Function {
+    /// Call the function with the given arguments, and return its return value
+    fn call(
+        &self,
+        args: Vec<Value>,
+        state: &mut RuntimeState,
+    ) -> Result<Value> {
+        // Start with the function's captured scope
+        let scope = self.scope().child();
+        // Add args to scope
+        // TODO add args to scope
+
+        // TODO use guard pattern for this instead
+        state.push_scope(scope);
+        let return_value = match self.body().exec(state)? {
+            Some(Terminate::Return {
+                return_value: Some(return_value),
+            }) => return_value,
+            _ => Value::Undefined,
+        };
+        state.pop_scope();
+
+        Ok(return_value)
     }
 }

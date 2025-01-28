@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use std::{cell::RefCell, rc::Rc};
 
 /// TODO
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Scope {
     parent: Option<Bindings>,
     inner: Bindings,
@@ -53,7 +53,7 @@ impl Scope {
 }
 
 /// TODO
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Bindings {
     bindings: Rc<RefCell<IndexMap<String, Binding>>>,
 }

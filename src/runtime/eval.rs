@@ -2,13 +2,16 @@
 
 use crate::{
     runtime::RuntimeState,
-    value::{Function, Number, Value},
+    value::{Array, Function, Number, Object, Value},
     Error, Result,
 };
 use boa_ast::{
     expression::{
         access::{PropertyAccess, PropertyAccessField},
-        literal::{ArrayLiteral, Literal, ObjectLiteral, TemplateLiteral},
+        literal::{
+            ArrayLiteral, Literal, ObjectLiteral, PropertyDefinition,
+            TemplateLiteral,
+        },
         operator::{
             assign::{AssignOp, AssignTarget},
             binary::{ArithmeticOp, BinaryOp},
@@ -16,6 +19,7 @@ use boa_ast::{
         },
         Optional, Spread,
     },
+    property::PropertyName,
     Expression,
 };
 
@@ -30,7 +34,7 @@ impl Evaluate for Expression {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
         match self {
             Expression::Identifier(identifier) => {
-                let name = state.resolve_sym(identifier.sym())?;
+                let name = state.resolve_sym(identifier.sym());
                 state.scope.get(name)
             }
             Expression::Literal(literal) => literal.eval(state),
@@ -44,22 +48,22 @@ impl Evaluate for Expression {
                 object_literal.eval(state)
             }
             Expression::Spread(spread) => spread.eval(state),
-            Expression::FunctionExpression(function_expression) => {
-                Ok(Function {
-                    name: None, // TODO
-                    parameters: function_expression.parameters().clone(),
-                    body: function_expression.body().clone(),
-                }
-                .into())
+            Expression::FunctionExpression(function) => Ok(Function {
+                name: function
+                    .name()
+                    .map(|name| state.resolve_sym(name.sym()).to_owned()),
+                parameters: function.parameters().clone(),
+                body: function.body().clone(),
             }
-            Expression::ArrowFunction(arrow_function) => {
-                Ok(Function {
-                    name: None, // TODO
-                    parameters: arrow_function.parameters().clone(),
-                    body: arrow_function.body().clone(),
-                }
-                .into())
+            .into()),
+            Expression::ArrowFunction(function) => Ok(Function {
+                name: function
+                    .name()
+                    .map(|name| state.resolve_sym(name.sym()).to_owned()),
+                parameters: function.parameters().clone(),
+                body: function.body().clone(),
             }
+            .into()),
             Expression::Call(call) => {
                 let function = call.function().eval(state)?;
                 let args = call
@@ -137,7 +141,7 @@ impl Evaluate for Literal {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
             Self::Bool(b) => Ok(Value::Boolean(*b)),
-            Self::String(sym) => state.resolve_sym(*sym).map(Value::from),
+            Self::String(sym) => Ok(state.resolve_sym(*sym).into()),
             Self::Num(f) => Ok(Value::Number(Number::Float(*f))),
             Self::Int(i) => Ok(Value::Number(Number::Int(*i as i64))),
             Self::BigInt(big_int) => todo!(),
@@ -153,31 +157,68 @@ impl Evaluate for TemplateLiteral {
 
 impl Evaluate for ArrayLiteral {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
-        // TODO handle spread
-        // Collect into a vec, then pull the slice out. Since the iterator is
-        // a known size, this should allocate only as much capacity as we need
-        let vec = self
-            .as_ref()
-            .iter()
-            // Empty array elements are a goofy feature, and don't serve any
-            // purpose with immutable semantics
-            .map(|element| {
-                element
-                    .as_ref()
-                    .ok_or(Error::Unsupported {
-                        name: "empty array elements",
-                        help: "Use `undefined` instead",
-                    })?
-                    .eval(state)
-            })
-            .collect::<Result<Vec<_>>>()?;
-        Ok(Value::Array(vec.into()))
+        let array = self.as_ref().iter().try_fold(
+            Array::default(),
+            |acc, element| match element {
+                // Empty array elements are a goofy feature, and don't serve
+                // any purpose with immutable semantics
+                None => Err(Error::Unsupported {
+                    name: "empty array elements",
+                    help: "Use `undefined` instead",
+                }),
+                // These are optimized to avoid allocations where possible
+                Some(Expression::Spread(spread)) => {
+                    let array =
+                        spread.target().eval(state)?.try_into_array()?;
+                    Ok(acc.insert_all(array))
+                }
+                Some(expr) => {
+                    let value = expr.eval(state)?;
+                    Ok(acc.insert(value))
+                }
+            },
+        )?;
+        Ok(array.into())
     }
 }
 
 impl Evaluate for ObjectLiteral {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
-        todo!()
+        let object = self.properties().as_ref().iter().try_fold(
+            Object::default(),
+            |acc, property| match property {
+                PropertyDefinition::IdentifierReference(identifier) => {
+                    // Shorthand notation: { field }
+                    let name = state.resolve_sym(identifier.sym()).to_owned();
+                    let value = state.scope.get(&name)?;
+                    Ok::<_, Error>(acc.insert(name, value))
+                }
+                PropertyDefinition::Property(property_name, expression) => {
+                    let name = match property_name {
+                        // {field: "value"}
+                        PropertyName::Literal(sym) => {
+                            state.resolve_sym(*sym).to_owned()
+                        }
+                        // {["field"]: "value"}
+                        PropertyName::Computed(expression) => {
+                            // TODO should we fail for non-string props instead?
+                            expression.eval(state)?.to_string()
+                        }
+                    };
+                    let value = expression.eval(state)?;
+                    Ok(acc.insert(name, value))
+                }
+                PropertyDefinition::SpreadObject(expression) => {
+                    let object = expression.eval(state)?.try_into_object()?;
+                    Ok(acc.insert_all(object))
+                }
+                PropertyDefinition::MethodDefinition(_) => todo!("not allowed"),
+                PropertyDefinition::CoverInitializedName(_, _) => {
+                    todo!("wtf is this??")
+                }
+            },
+        )?;
+        Ok(object.into())
     }
 }
 
@@ -196,7 +237,7 @@ impl Evaluate for PropertyAccess {
                 let value = access.target().eval(state)?;
                 let key: Value = match access.field() {
                     PropertyAccessField::Const(symbol) => {
-                        state.resolve_sym(*symbol)?.into()
+                        state.resolve_sym(*symbol).into()
                     }
                     PropertyAccessField::Expr(expression) => {
                         expression.eval(state)?
@@ -229,7 +270,7 @@ impl Evaluate for Assign {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
         let name = match self.lhs() {
             AssignTarget::Identifier(identifier) => {
-                state.resolve_sym(identifier.sym())?.to_owned()
+                state.resolve_sym(identifier.sym()).to_owned()
             }
             AssignTarget::Access(property_access) => todo!("not allowed"),
             AssignTarget::Pattern(pattern) => todo!(),

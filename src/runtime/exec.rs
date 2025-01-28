@@ -2,10 +2,14 @@
 
 use crate::{
     runtime::{eval::Evaluate, RuntimeState},
+    value::Function,
     Error, Result,
 };
 use boa_ast::{
-    declaration::{ExportDeclaration, ImportDeclaration, LexicalDeclaration},
+    declaration::{
+        Binding, ExportDeclaration, ImportDeclaration, LexicalDeclaration,
+    },
+    function::FunctionDeclaration,
     statement::Block,
     Declaration, ModuleItem, Statement, StatementListItem,
 };
@@ -167,17 +171,22 @@ impl Execute for ExportDeclaration {
             ExportDeclaration::ReExport { kind, specifier } => todo!(),
             ExportDeclaration::List(_) => todo!(),
             ExportDeclaration::Declaration(declaration) => {
-                for declared in declaration.exec(state)? {
-                    // TODO error on duplicate export
-                    state.export_names.push(declared);
+                for name in declaration.exec(state)? {
+                    state.export(name)?;
                 }
                 Ok(())
             }
             ExportDeclaration::DefaultFunctionDeclaration(
                 function_declaration,
-            ) => todo!(),
+            ) => {
+                let name = function_declaration.exec(state)?;
+                // Fetch the function we just declared. Should never fail
+                let value = state.scope.get(&name)?;
+                state.export_default(value)
+            }
             ExportDeclaration::DefaultAssignmentExpression(expression) => {
-                todo!()
+                let value = expression.eval(state)?;
+                state.export_default(value)
             }
 
             ExportDeclaration::VarStatement(_)
@@ -197,7 +206,10 @@ impl Execute for Declaration {
 
     fn exec(&self, state: &mut RuntimeState) -> Result<Vec<String>> {
         match self {
-            Self::FunctionDeclaration(function_declaration) => todo!(),
+            Self::FunctionDeclaration(function) => {
+                let name = function.exec(state)?;
+                Ok(vec![name])
+            }
             Self::Lexical(lexical_declaration) => {
                 let (variables, mutable) = match lexical_declaration {
                     LexicalDeclaration::Const(variable_list) => {
@@ -207,7 +219,27 @@ impl Execute for Declaration {
                         (variable_list, true)
                     }
                 };
-                state.declare_all(variables, mutable)
+
+                // Track the list of declared names
+                let mut declared = Vec::with_capacity(variables.as_ref().len());
+                for variable in variables.as_ref() {
+                    let value = variable
+                        .init()
+                        .map(|expr| expr.eval(state))
+                        .transpose()?
+                        .unwrap_or_default();
+                    match variable.binding() {
+                        Binding::Identifier(identifier) => {
+                            let name =
+                                state.resolve_sym(identifier.sym()).to_owned();
+                            state.scope.declare(name.clone(), value, mutable);
+                            declared.push(name);
+                        }
+                        Binding::Pattern(pattern) => todo!(),
+                    }
+                }
+
+                Ok(declared)
             }
             // ===== UNSUPPORTED =====
             // All AST nodes below are unsupported in our language
@@ -219,6 +251,22 @@ impl Execute for Declaration {
             }),
             Self::GeneratorDeclaration(_) => todo!("not allowed"),
         }
+    }
+}
+
+impl Execute for FunctionDeclaration {
+    /// Emit declared name
+    type Output = String;
+
+    fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
+        let name = state.resolve_sym(self.name().sym()).to_owned();
+        let function = Function {
+            name: Some(name.clone()),
+            parameters: self.parameters().clone(),
+            body: self.body().clone(),
+        };
+        state.scope.declare(name.clone(), function.into(), false);
+        Ok(name)
     }
 }
 

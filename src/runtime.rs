@@ -66,37 +66,27 @@ impl RuntimeState {
         }
     }
 
-    // TODO
-    fn declare_all(
-        &mut self,
-        variables: &VariableList,
-        mutable: bool,
-    ) -> Result<Vec<String>> {
-        let mut declared = Vec::with_capacity(variables.as_ref().len());
-        for variable in variables.as_ref() {
-            let value = variable
-                .init()
-                .map(|expr| expr.eval(self))
-                .transpose()?
-                .unwrap_or_default();
-            match variable.binding() {
-                Binding::Identifier(identifier) => {
-                    let name = self.resolve_sym(identifier.sym())?.to_owned();
-                    self.scope.declare(name.clone(), value, mutable);
-                    declared.push(name);
-                }
-                Binding::Pattern(pattern) => todo!(),
-            }
-        }
-        Ok(declared)
+    /// TODO
+    fn export(&mut self, name: String) -> Result<()> {
+        // TODO error on duplicate export
+        self.export_names.push(name);
+        Ok(())
     }
 
     /// TODO
-    fn resolve_sym(&self, symbol: Sym) -> Result<&str> {
-        self.interner
-            .resolve_expect(symbol)
-            .utf8()
-            .ok_or_else(|| todo!())
+    fn export_default(&mut self, value: Value) -> Result<()> {
+        // TODO error if something is already exported
+        self.export_default = Some(value);
+        Ok(())
+    }
+
+    /// Resolve a Boa interner symbol into the corresponding string
+    fn resolve_sym(&self, symbol: Sym) -> &str {
+        // This should only fail if the ID isn't valid UTF-8, or a bug
+        // somewhere. It's not worth propagating the potential error everywhere,
+        // since we plan to get rid of this eventually when replacing boa with
+        // our own parser.
+        self.interner.resolve_expect(symbol).utf8().expect("TODO")
     }
 
     /// Call a function and return its return value

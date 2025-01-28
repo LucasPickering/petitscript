@@ -4,7 +4,7 @@ use crate::Result;
 use boa_ast::function::{FormalParameterList, FunctionBody};
 use std::{
     fmt::{self, Display},
-    ops::Add,
+    ops::{Add, Deref},
     rc::Rc,
 };
 
@@ -17,8 +17,8 @@ pub enum Value {
     Boolean(bool),
     Number(Number),
     String(Rc<str>),
-    Array(Rc<[Value]>),
-    Object(Rc<[(String, Value)]>),
+    Array(Array),
+    Object(Object),
     Function(Rc<Function>),
 }
 
@@ -51,6 +51,24 @@ impl Value {
     }
 
     /// TODO
+    pub fn try_into_array(self) -> Result<Array> {
+        if let Self::Array(array) = self {
+            Ok(array)
+        } else {
+            todo!("error")
+        }
+    }
+
+    /// TODO
+    pub fn try_into_object(self) -> Result<Object> {
+        if let Self::Object(object) = self {
+            Ok(object)
+        } else {
+            todo!("error")
+        }
+    }
+
+    /// TODO
     pub fn get(&self, key: &Self) -> Result<&Value> {
         match (self, key) {
             (Self::Array(array), Self::Number(index)) => todo!(),
@@ -63,20 +81,31 @@ impl Value {
 
 impl From<Number> for Value {
     fn from(value: Number) -> Self {
-        Value::Number(value)
+        Self::Number(value)
     }
 }
 
-/// TODO remove this - we should be able to optimize so we don't need it
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
-        Value::String(value.into())
+        Self::String(value.into())
+    }
+}
+
+impl From<Array> for Value {
+    fn from(array: Array) -> Self {
+        Self::Array(array)
+    }
+}
+
+impl From<Object> for Value {
+    fn from(object: Object) -> Self {
+        Self::Object(object)
     }
 }
 
 impl From<Function> for Value {
-    fn from(value: Function) -> Self {
-        Value::Function(value.into())
+    fn from(function: Function) -> Self {
+        Self::Function(function.into())
     }
 }
 
@@ -92,7 +121,7 @@ impl Display for Value {
             Value::Object(map) => write!(f, "{{todo}}"),
             Value::Function(function) => write!(
                 f,
-                "[Function: {}",
+                "[Function: {}]",
                 function.name.as_deref().unwrap_or("(anonymous)")
             ),
         }
@@ -153,6 +182,107 @@ impl Add for Number {
                 (lhs + (rhs as f64)).into()
             }
             (Number::Float(lhs), Number::Float(rhs)) => (lhs + rhs).into(),
+        }
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug, Default)]
+pub struct Array(Rc<Vec<Value>>);
+
+impl Array {
+    /// TODO
+    pub fn insert(self, value: Value) -> Self {
+        self.with_inner(|vec| vec.push(value))
+    }
+
+    /// TODO
+    /// TODO better name?
+    pub fn insert_all(self, other: Self) -> Self {
+        // If we're the sole owner of the other object, we can move the items
+        // out. Otherwise we have to clone them over
+        match Rc::try_unwrap(other.0) {
+            // If this object is empty, and we now own the other one, just point
+            // to its buffer and avoid all copies. This optimizes for a common
+            // pattern {...obj1, field: "value"}, to avoid repeated allocations
+            Ok(other) if self.0.is_empty() => {
+                self.with_inner(|vec| *vec = other)
+            }
+            // We own the other one, so we can move each inner item into our
+            // buffer without cloning
+            Ok(other) => self.with_inner(|vec| vec.extend(other)),
+            // Other object is shared (uncommon case) - we need to clone all its
+            // contents
+            Err(other) => {
+                self.with_inner(|vec| vec.extend(other.iter().cloned()))
+            }
+        }
+    }
+
+    /// TODO
+    fn with_inner(mut self, f: impl FnOnce(&mut Vec<Value>)) -> Self {
+        // TODO explain
+        if let Some(vec) = Rc::get_mut(&mut self.0) {
+            f(vec);
+            self
+        } else {
+            let mut vec = self.0.deref().clone();
+            f(&mut vec);
+            Self(vec.into())
+        }
+    }
+}
+
+impl From<Vec<Value>> for Array {
+    fn from(value: Vec<Value>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// TODO
+/// TODO disallow duplication - maybe we need our own indexmap?
+#[derive(Clone, Debug, Default)]
+pub struct Object(Rc<Vec<(String, Value)>>);
+
+impl Object {
+    /// TODO
+    pub fn insert(self, name: String, value: Value) -> Self {
+        self.with_inner(|vec| vec.push((name, value)))
+    }
+
+    /// TODO
+    /// TODO better name?
+    pub fn insert_all(self, other: Self) -> Self {
+        // If we're the sole owner of the other object, we can move the items
+        // out. Otherwise we have to clone them over
+        match Rc::try_unwrap(other.0) {
+            // If this object is empty, and we now own the other one, just point
+            // to its buffer and avoid all copies. This optimizes for a common
+            // pattern {...obj1, field: "value"}, to avoid repeated allocations
+            Ok(other) if self.0.is_empty() => {
+                self.with_inner(|vec| *vec = other)
+            }
+            // We own the other one, so we can move each inner item into our
+            // buffer without cloning
+            Ok(other) => self.with_inner(|vec| vec.extend(other)),
+            // Other object is shared (uncommon case) - we need to clone all its
+            // contents
+            Err(other) => {
+                self.with_inner(|vec| vec.extend(other.iter().cloned()))
+            }
+        }
+    }
+
+    /// TODO
+    fn with_inner(mut self, f: impl FnOnce(&mut Vec<(String, Value)>)) -> Self {
+        // TODO explain
+        if let Some(vec) = Rc::get_mut(&mut self.0) {
+            f(vec);
+            self
+        } else {
+            let mut vec = self.0.deref().clone();
+            f(&mut vec);
+            Self(vec.into())
         }
     }
 }

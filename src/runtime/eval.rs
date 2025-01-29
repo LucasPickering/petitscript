@@ -17,7 +17,9 @@ use boa_ast::{
         },
         operator::{
             assign::{AssignOp, AssignTarget},
-            binary::{ArithmeticOp, BinaryOp},
+            binary::{
+                ArithmeticOp, BinaryOp, BitwiseOp, LogicalOp, RelationalOp,
+            },
             Assign, Binary, Unary, Update,
         },
         Optional, Spread,
@@ -100,30 +102,27 @@ impl Evaluate for Expression {
             // ===== UNSUPPORTED =====
             // All AST nodes below are unsupported in our language
             Expression::RegExpLiteral(_) => todo!("not allowed"),
-            Expression::ImportCall(_) => Err(Error::Unsupported {
-                name: "`import()`",
-                help: "Use the `import` keyword instead",
-            }),
+            Expression::ImportCall(_) => Error::unsupported(
+                "`import()`",
+                "Use the `import` keyword instead",
+            ),
 
-            Expression::TaggedTemplate(_) => Err(Error::Unsupported {
-                name: "tagged template",
-                help: "For simplicity, tagged templates are not supported",
-            }),
+            Expression::TaggedTemplate(_) => Error::unsupported(
+                "tagged template",
+                "For simplicity, tagged templates are not supported",
+            ),
 
             Expression::NewTarget | Expression::ImportMeta => {
-                Err(Error::Unsupported {
-                    name: "TODO",
-                    help: "TODO",
-                })
+                Error::unsupported("TODO", "TODO")
             }
 
             // async
             Expression::AsyncArrowFunction(_)
             | Expression::AsyncFunctionExpression(_)
-            | Expression::Await(_) => Err(Error::Unsupported {
-                name: "`async`",
-                help: "All operations must be synchronous",
-            }),
+            | Expression::Await(_) => Error::unsupported(
+                "`async`",
+                "All operations must be synchronous",
+            ),
 
             // generator
             Expression::GeneratorExpression(_)
@@ -169,10 +168,10 @@ impl Evaluate for ArrayLiteral {
             |acc, element| match element {
                 // Empty array elements are a goofy feature, and don't serve
                 // any purpose with immutable semantics
-                None => Err(Error::Unsupported {
-                    name: "empty array elements",
-                    help: "Use `undefined` instead",
-                }),
+                None => Error::unsupported(
+                    "empty array elements",
+                    "Use `undefined` instead",
+                ),
                 // These are optimized to avoid allocations where possible
                 Some(Expression::Spread(spread)) => {
                     let array =
@@ -327,22 +326,51 @@ impl Evaluate for Binary {
         let lhs = self.lhs().eval(state)?;
         let rhs = self.rhs().eval(state)?;
         match self.op() {
-            BinaryOp::Arithmetic(arithmetic_op) => match arithmetic_op {
-                // TODO this isn't right
-                ArithmeticOp::Add => match (lhs.to_number(), rhs.to_number()) {
-                    (Some(lhs), Some(rhs)) => Ok((lhs + rhs).into()),
-                    _ => todo!(),
-                },
-                ArithmeticOp::Sub => todo!(),
-                ArithmeticOp::Div => todo!(),
-                ArithmeticOp::Mul => todo!(),
+            BinaryOp::Arithmetic(op) => match op {
+                ArithmeticOp::Add => Ok(lhs + rhs),
+                ArithmeticOp::Sub => Ok(lhs - rhs),
+                ArithmeticOp::Mul => Ok(lhs * rhs),
+                ArithmeticOp::Div => Ok(lhs / rhs),
                 ArithmeticOp::Exp => todo!(),
                 ArithmeticOp::Mod => todo!(),
             },
-            BinaryOp::Bitwise(_) => todo!(),
-            BinaryOp::Relational(_) => todo!(),
-            BinaryOp::Logical(_) => todo!(),
-            BinaryOp::Comma => todo!(),
+            BinaryOp::Bitwise(op) => match op {
+                BitwiseOp::And => todo!(),
+                BitwiseOp::Or => todo!(),
+                BitwiseOp::Xor => todo!(),
+                BitwiseOp::Shl => todo!(),
+                BitwiseOp::Shr => todo!(),
+                BitwiseOp::UShr => todo!(),
+            },
+            BinaryOp::Relational(op) => match op {
+                RelationalOp::StrictEqual => Ok((lhs == rhs).into()),
+                RelationalOp::StrictNotEqual => Ok((lhs != rhs).into()),
+                RelationalOp::GreaterThan => todo!(),
+                RelationalOp::GreaterThanOrEqual => todo!(),
+                RelationalOp::LessThan => todo!(),
+                RelationalOp::LessThanOrEqual => todo!(),
+                RelationalOp::In => todo!(),
+
+                // UNSUPPORTED OPERATIONS
+                // No classes, so no need for instanceof
+                RelationalOp::InstanceOf => {
+                    Error::unsupported("instanceof", "TODO")
+                }
+                // Loose equality semantics are dogshit, so just ban em
+                RelationalOp::Equal => {
+                    Error::unsupported("==", "Use `===` instead")
+                }
+                RelationalOp::NotEqual => {
+                    Error::unsupported("!=", "Use `!==` instead")
+                }
+            },
+            BinaryOp::Logical(op) => match op {
+                LogicalOp::And => Ok(lhs.and(&rhs).into()),
+                LogicalOp::Or => Ok(lhs.or(&rhs).into()),
+                LogicalOp::Coalesce => Ok(lhs.coalesce(rhs)),
+            },
+            // This just evalutes all expressions and returns the final one
+            BinaryOp::Comma => Ok(rhs),
         }
     }
 }

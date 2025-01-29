@@ -6,7 +6,7 @@ use std::{
 };
 
 /// TODO
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Array(Rc<Vec<Value>>);
 
 impl Array {

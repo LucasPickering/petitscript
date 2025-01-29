@@ -7,7 +7,8 @@ use std::{
 
 /// TODO
 /// TODO disallow duplication - maybe we need our own indexmap?
-#[derive(Clone, Debug, Default)]
+/// TODO ignore order in equality
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Object(Rc<Vec<(String, Value)>>);
 
 impl Object {

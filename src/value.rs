@@ -2,16 +2,18 @@
 
 mod array;
 mod function;
+mod number;
 mod object;
 
 pub use array::Array;
 pub use function::{Function, NativeFunction, NativeFunctionTrait};
+pub use number::Number;
 pub use object::Object;
 
 use crate::{Error, Result};
 use std::{
     fmt::{self, Display},
-    ops::{Add, Deref},
+    ops::{Add, Deref, Div, Mul, Rem, Sub},
     rc::Rc,
 };
 
@@ -134,6 +136,98 @@ impl Value {
             _ => todo!("error"),
         }
     }
+
+    /// Boolean AND operator (&&)
+    pub fn and(&self, other: &Self) -> bool {
+        todo!()
+    }
+
+    /// Boolean OR operator (||)
+    pub fn or(&self, other: &Self) -> bool {
+        todo!()
+    }
+
+    /// Apply nullish coalescing (??)
+    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing
+    pub fn coalesce(self, other: Self) -> Self {
+        match self {
+            Self::Undefined | Self::Null => other,
+            _ => self,
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO pretty printing param
+        match self {
+            Self::Undefined => write!(f, "undefined"),
+            Self::Null => write!(f, "null"),
+            Self::Boolean(b) => write!(f, "{b}"),
+            Self::Number(number) => write!(f, "{number}"),
+            Self::String(string) => write!(f, "{string}"),
+            Self::Array(array) => write!(f, "{array}"),
+            Self::Object(object) => write!(f, "{object}"),
+            Self::Function(function) => write!(f, "{function}"),
+            Self::Native(function) => write!(f, "{function}"),
+        }
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
+            (Self::Number(l0), Self::Number(r0)) => l0 == r0,
+            (Self::String(l0), Self::String(r0)) => l0 == r0,
+            (Self::Array(l0), Self::Array(r0)) => l0 == r0,
+            (Self::Object(l0), Self::Object(r0)) => l0 == r0,
+            // Functions are never equal
+            (Self::Function(_), Self::Function(_))
+            | (Self::Native(_), Self::Native(_)) => false,
+            _ => false,
+        }
+    }
+}
+
+impl Add for Value {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        // Add is unique from the other mathematical operations. For types that
+        // can't be converted to a number, we'll do string concatenation
+        match (self, rhs) {
+            (Self::Number(n1), Self::Number(n2)) => (n1 + n2).into(),
+            _ => todo!(),
+        }
+    }
+}
+
+/// Implement a numeric binary operator for [Value]
+macro_rules! impl_numeric_binary_op {
+    ($trait:ident, $func:ident, $op:tt) => {
+        impl $trait for Value {
+            type Output = Self;
+
+            fn $func(self, rhs: Self) -> Self::Output {
+                match (self.to_number(), rhs.to_number()) {
+                    (Some(lhs), Some(rhs)) => (lhs $op rhs).into(),
+                    _ => Number::NAN.into(),
+                }
+            }
+        }
+    };
+}
+
+impl_numeric_binary_op!(Sub, sub, -);
+impl_numeric_binary_op!(Mul, mul, *);
+impl_numeric_binary_op!(Div, div, /);
+impl_numeric_binary_op!(Rem, rem, %);
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+        Self::Boolean(b)
+    }
 }
 
 impl From<Number> for Value {
@@ -172,23 +266,6 @@ impl<F: NativeFunctionTrait> From<F> for Value {
     }
 }
 
-impl Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO pretty printing param
-        match self {
-            Self::Undefined => write!(f, "undefined"),
-            Self::Null => write!(f, "null"),
-            Self::Boolean(b) => write!(f, "{b}"),
-            Self::Number(number) => write!(f, "{number}"),
-            Self::String(string) => write!(f, "{string}"),
-            Self::Array(array) => write!(f, "{array}"),
-            Self::Object(object) => write!(f, "{object}"),
-            Self::Function(function) => write!(f, "{function}"),
-            Self::Native(function) => write!(f, "{function}"),
-        }
-    }
-}
-
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]
 pub enum ValueType {
@@ -217,66 +294,8 @@ impl Display for ValueType {
     }
 }
 
-/// TODO
-#[derive(Copy, Clone, Debug)]
-pub enum Number {
-    Int(i64),
-    Float(f64),
-}
-
-impl Number {
-    /// TODO
-    pub fn to_bool(self) -> bool {
-        match self {
-            Number::Int(i) => i != 0,
-            Number::Float(f) => f == 0.0,
-        }
-    }
-}
-
-impl Display for Number {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Number::Int(i) => write!(f, "{i}"),
-            Number::Float(n) => write!(f, "{n}"),
-        }
-    }
-}
-
-impl From<i64> for Number {
-    fn from(value: i64) -> Self {
-        Self::Int(value)
-    }
-}
-
-impl From<f64> for Number {
-    fn from(value: f64) -> Self {
-        Self::Float(value)
-    }
-}
-
-impl Add for Number {
-    type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Number::Int(lhs), Number::Int(rhs)) => {
-                lhs.wrapping_add(rhs).into()
-            }
-            // TODO handle overflow or w/e
-            (Number::Int(lhs), Number::Float(rhs)) => {
-                ((lhs as f64) + rhs).into()
-            }
-            (Number::Float(lhs), Number::Int(rhs)) => {
-                (lhs + (rhs as f64)).into()
-            }
-            (Number::Float(lhs), Number::Float(rhs)) => (lhs + rhs).into(),
-        }
-    }
-}
-
 /// A reference-counted immutable string
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct JsString(Rc<str>);
 
 impl Deref for JsString {

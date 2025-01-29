@@ -47,3 +47,14 @@ pub enum Error {
         help: &'static str,
     },
 }
+
+impl Error {
+    /// Helper for generating an [Unsupported](Error::Unsupported) error,
+    /// wrapped in a `Result` for Added Convenience
+    pub(crate) fn unsupported<T>(
+        name: &'static str,
+        help: &'static str,
+    ) -> Result<T> {
+        Err(Self::Unsupported { name, help })
+    }
+}

@@ -111,7 +111,6 @@ impl Execute for Statement {
                 Ok(None)
             }
             Self::ForLoop(_) => todo!(),
-            Self::ForInLoop(_) => todo!(),
             Self::ForOfLoop(_) => todo!(),
             Self::Switch(_) => todo!(),
             Self::Continue(labelled) => Ok(Some(Terminate::Continue {
@@ -137,14 +136,18 @@ impl Execute for Statement {
 
             // ===== UNSUPPORTED =====
             // All AST nodes below are unsupported in our language
-            Self::Var(_) => Err(Error::Unsupported {
-                name: "`var`",
-                help: "Use `let` or `const` instead",
-            }),
-            Self::With(_) => Err(Error::Unsupported {
-                name: "`with`",
-                help: "With blocks are deprecated in ECMAScript",
-            }),
+            Self::Var(_) => {
+                Error::unsupported("`var`", "Use `let` or `const` instead")
+            }
+            Self::With(_) => Error::unsupported(
+                "`with`",
+                "With blocks are deprecated in ECMAScript",
+            ),
+            // for..in is a shitty for-each loop that involves JS's prototype.
+            // for..of satisfies everything we need in our language
+            Self::ForInLoop(_) => {
+                Error::unsupported("for..in", "Use a for..of loop instead")
+            }
         }
     }
 }
@@ -251,10 +254,10 @@ impl Execute for Declaration {
             // All AST nodes below are unsupported in our language
             Self::ClassDeclaration(_)
             | Self::AsyncFunctionDeclaration(_)
-            | Self::AsyncGeneratorDeclaration(_) => Err(Error::Unsupported {
-                name: "`async`",
-                help: "All operations must be synchronous",
-            }),
+            | Self::AsyncGeneratorDeclaration(_) => Error::unsupported(
+                "`async`",
+                "All operations must be synchronous",
+            ),
             Self::GeneratorDeclaration(_) => todo!("not allowed"),
         }
     }

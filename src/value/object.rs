@@ -2,14 +2,14 @@ use crate::value::Value;
 use std::{
     fmt::{self, Display},
     ops::Deref as _,
-    rc::Rc,
+    sync::Arc,
 };
 
 /// TODO
 /// TODO disallow duplication - maybe we need our own indexmap?
 /// TODO ignore order in equality
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Object(Rc<Vec<(String, Value)>>);
+pub struct Object(Arc<Vec<(String, Value)>>);
 
 impl Object {
     /// Get a value from the object by key, or undefined if not present
@@ -31,7 +31,7 @@ impl Object {
     pub fn insert_all(self, other: Self) -> Self {
         // If we're the sole owner of the other object, we can move the items
         // out. Otherwise we have to clone them over
-        match Rc::try_unwrap(other.0) {
+        match Arc::try_unwrap(other.0) {
             // If this object is empty, and we now own the other one, just point
             // to its buffer and avoid all copies. This optimizes for a common
             // pattern {...obj1, field: "value"}, to avoid repeated allocations
@@ -52,7 +52,7 @@ impl Object {
     /// TODO
     fn with_inner(mut self, f: impl FnOnce(&mut Vec<(String, Value)>)) -> Self {
         // TODO explain
-        if let Some(vec) = Rc::get_mut(&mut self.0) {
+        if let Some(vec) = Arc::get_mut(&mut self.0) {
             f(vec);
             self
         } else {

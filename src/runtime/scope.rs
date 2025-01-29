@@ -2,7 +2,7 @@ use crate::{
     runtime::state::SymbolResolver, stdlib::stdlib, value::Value, Error, Result,
 };
 use indexmap::IndexMap;
-use std::{cell::RefCell, mem, rc::Rc};
+use std::{cell::RefCell, mem, sync::Arc};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
@@ -115,7 +115,7 @@ impl Bindings {
     /// TODO
     fn declare(&mut self, name: String, value: Value, mutable: bool) {
         let binding = if mutable {
-            Binding::Mutable(Rc::new(RefCell::new(value)))
+            Binding::Mutable(Arc::new(RefCell::new(value)))
         } else {
             Binding::Immutable(value)
         };
@@ -148,7 +148,7 @@ impl Bindings {
 #[derive(Clone, Debug)]
 enum Binding {
     Immutable(Value),
-    Mutable(Rc<RefCell<Value>>),
+    Mutable(Arc<RefCell<Value>>),
 }
 
 impl Binding {

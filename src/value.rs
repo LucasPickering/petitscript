@@ -14,7 +14,7 @@ use crate::{Error, Result};
 use std::{
     fmt::{self, Display},
     ops::{Add, Deref, Div, Mul, Rem, Sub},
-    rc::Rc,
+    sync::Arc,
 };
 
 /// TODO
@@ -296,7 +296,7 @@ impl Display for ValueType {
 
 /// A reference-counted immutable string
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct JsString(Rc<str>);
+pub struct JsString(Arc<str>);
 
 impl Deref for JsString {
     type Target = str;

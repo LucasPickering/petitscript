@@ -2,12 +2,12 @@ use crate::value::Value;
 use std::{
     fmt::{self, Display},
     ops::Deref as _,
-    rc::Rc,
+    sync::Arc,
 };
 
 /// TODO
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Array(Rc<Vec<Value>>);
+pub struct Array(Arc<Vec<Value>>);
 
 impl Array {
     /// TODO
@@ -20,7 +20,7 @@ impl Array {
     pub fn insert_all(self, other: Self) -> Self {
         // If we're the sole owner of the other object, we can move the items
         // out. Otherwise we have to clone them over
-        match Rc::try_unwrap(other.0) {
+        match Arc::try_unwrap(other.0) {
             // If this object is empty, and we now own the other one, just point
             // to its buffer and avoid all copies. This optimizes for a common
             // pattern {...obj1, field: "value"}, to avoid repeated allocations
@@ -41,7 +41,7 @@ impl Array {
     /// TODO
     fn with_inner(mut self, f: impl FnOnce(&mut Vec<Value>)) -> Self {
         // TODO explain
-        if let Some(vec) = Rc::get_mut(&mut self.0) {
+        if let Some(vec) = Arc::get_mut(&mut self.0) {
             f(vec);
             self
         } else {

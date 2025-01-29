@@ -5,12 +5,12 @@ use boa_ast::{
 };
 use std::{
     fmt::{self, Debug, Display},
-    rc::Rc,
+    sync::Arc,
 };
 
 /// TODO
 #[derive(Clone, Debug)]
-pub struct Function(Rc<FunctionInner>);
+pub struct Function(Arc<FunctionInner>);
 
 impl Function {
     pub fn new(
@@ -25,7 +25,7 @@ impl Function {
             body,
             scope,
         };
-        Self(Rc::new(inner))
+        Self(inner.into())
     }
 
     /// TODO
@@ -69,7 +69,7 @@ struct FunctionInner {
 #[derive(Clone)]
 pub struct NativeFunction {
     // TODO track name
-    function: Rc<dyn NativeFunctionTrait>,
+    function: Arc<dyn NativeFunctionTrait>,
 }
 
 impl NativeFunction {
@@ -96,7 +96,7 @@ impl Debug for NativeFunction {
 impl<F: NativeFunctionTrait> From<F> for NativeFunction {
     fn from(function: F) -> Self {
         Self {
-            function: Rc::new(function),
+            function: Arc::new(function),
         }
     }
 }

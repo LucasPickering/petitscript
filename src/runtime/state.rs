@@ -4,7 +4,7 @@ use crate::{
     value::Value,
 };
 use boa_interner::{Interner, Sym};
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// TODO
 #[derive(Debug)]
@@ -118,7 +118,7 @@ impl RuntimeState {
 /// TODO remove this once we're off of boa
 #[derive(Clone, Debug)]
 pub struct SymbolResolver {
-    interner: Rc<Interner>,
+    interner: Arc<Interner>,
 }
 
 impl SymbolResolver {

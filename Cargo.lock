@@ -339,6 +339,7 @@ dependencies = [
  "boa_interner",
  "boa_parser",
  "indexmap",
+ "serde",
  "thiserror",
 ]
 

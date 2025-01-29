@@ -184,4 +184,4 @@ export const requests = {
   },
 };
 
-export default () => ({ profiles, requests });
+export default { profiles, requests };

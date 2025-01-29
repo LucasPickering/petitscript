@@ -91,7 +91,7 @@ impl Div for Number {
 impl Rem for Number {
     type Output = Self;
 
-    fn rem(self, rhs: Self) -> Self::Output {
+    fn rem(self, _: Self) -> Self::Output {
         todo!()
     }
 }

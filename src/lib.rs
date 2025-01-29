@@ -15,7 +15,7 @@ use crate::runtime::module::Module;
 pub use crate::{
     error::{Error, Result},
     runtime::Runtime,
-    value::Value,
+    value::{Array, Function, JsString, Number, Object, Value},
 };
 
 /// TODO

@@ -138,12 +138,12 @@ impl Value {
     }
 
     /// Boolean AND operator (&&)
-    pub fn and(&self, other: &Self) -> bool {
+    pub fn and(&self, _: &Self) -> bool {
         todo!()
     }
 
     /// Boolean OR operator (||)
-    pub fn or(&self, other: &Self) -> bool {
+    pub fn or(&self, _: &Self) -> bool {
         todo!()
     }
 

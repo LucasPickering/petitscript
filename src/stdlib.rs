@@ -17,7 +17,6 @@ fn console() -> Object {
 
 /// Log values to stdout
 fn console_log(args: &[Value]) -> Result<Value> {
-    // TODO don't include quotes on strings here
     for (i, value) in args.iter().enumerate() {
         if i > 0 {
             print!(" ");

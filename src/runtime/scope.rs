@@ -1,12 +1,17 @@
 use crate::{
-    runtime::state::RuntimeState, stdlib::stdlib, value::Value, Error, Result,
+    runtime::state::SymbolResolver, stdlib::stdlib, value::Value, Error, Result,
 };
 use indexmap::IndexMap;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, mem, rc::Rc};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
-pub struct Scope(Rc<ScopeInner>);
+pub struct Scope {
+    /// TODO
+    parent: Option<Box<Self>>,
+    /// TODO
+    bindings: Bindings,
+}
 
 impl Scope {
     /// Create a new empty scope
@@ -17,7 +22,7 @@ impl Scope {
     /// Create a global scope, which will include the standard library
     pub fn global() -> Self {
         let lib = stdlib();
-        let scope = Self::new();
+        let mut scope = Self::new();
         for (name, value) in lib.named {
             scope.declare(name, value, false);
         }
@@ -25,27 +30,34 @@ impl Scope {
     }
 
     /// TODO
-    pub fn child(&self) -> Self {
-        Self(
-            ScopeInner {
-                parent: Some(self.clone()),
-                bindings: Default::default(),
-            }
-            .into(),
-        )
+    pub fn subscope(&mut self) {
+        let parent = mem::take(self);
+        // Self is now the child
+        self.parent = Some(Box::new(parent));
     }
 
     /// TODO
-    pub fn declare(&self, name: String, value: Value, mutable: bool) {
-        self.0.bindings.declare(name, value, mutable);
+    pub fn revert(&mut self) {
+        *self = *self.parent.take().expect("TODO");
+    }
+
+    /// TODO
+    pub fn capture(&self) -> Self {
+        // TODO flatten the scope
+        self.clone()
+    }
+
+    /// TODO
+    pub fn declare(&mut self, name: String, value: Value, mutable: bool) {
+        self.bindings.declare(name, value, mutable);
     }
 
     /// TODO
     pub fn get(&self, name: &str) -> Result<Value> {
-        match self.0.bindings.get(name) {
+        match self.bindings.get(name) {
             Some(value) => Ok(value),
             None => {
-                if let Some(parent) = self.0.parent.as_ref() {
+                if let Some(parent) = self.parent.as_ref() {
                     parent.get(name)
                 } else {
                     Err(Error::Reference {
@@ -58,9 +70,9 @@ impl Scope {
 
     /// TODO
     pub fn set(&self, name: &str, value: Value) -> Result<()> {
-        match self.0.bindings.set(name, value) {
+        match self.bindings.set(name, value) {
             SetOutcome::NotDefined(value) => {
-                if let Some(parent) = self.0.parent.as_ref() {
+                if let Some(parent) = self.parent.as_ref() {
                     parent.set(name, value)
                 } else {
                     // Var isn't defined anywhere
@@ -76,63 +88,75 @@ impl Scope {
 
     /// TODO
     pub fn bind(
-        &self,
-        state: &RuntimeState,
+        &mut self,
+        resolver: SymbolResolver,
         binding: &boa_ast::declaration::Binding,
         value: Value,
         mutable: bool,
     ) -> Result<Vec<String>> {
         match binding {
             boa_ast::declaration::Binding::Identifier(identifier) => {
-                let name = state.resolve_sym(identifier.sym()).to_owned();
+                let name = resolver.resolve(identifier.sym()).to_owned();
                 self.declare(name.clone(), value, mutable);
                 Ok(vec![name])
             }
-            boa_ast::declaration::Binding::Pattern(pattern) => todo!(),
+            boa_ast::declaration::Binding::Pattern(_) => todo!(),
         }
     }
 }
 
-#[derive(Debug, Default)]
-struct ScopeInner {
-    parent: Option<Scope>,
-    bindings: Bindings,
-}
-
 /// TODO
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct Bindings {
-    bindings: RefCell<IndexMap<String, Binding>>,
+    bindings: IndexMap<String, Binding>,
 }
 
 impl Bindings {
     /// TODO
-    fn declare(&self, name: String, value: Value, mutable: bool) {
-        self.bindings
-            .borrow_mut()
-            .insert(name, Binding { value, mutable });
+    fn declare(&mut self, name: String, value: Value, mutable: bool) {
+        let binding = if mutable {
+            Binding::Mutable(Rc::new(RefCell::new(value)))
+        } else {
+            Binding::Immutable(value)
+        };
+        self.bindings.insert(name, binding);
     }
 
     /// TODO
     fn get(&self, name: &str) -> Option<Value> {
-        self.bindings
-            .borrow()
-            .get(name)
-            .map(|binding| binding.value.clone())
+        self.bindings.get(name).map(|binding| binding.value())
     }
 
     /// TODO
     fn set(&self, name: &str, value: Value) -> SetOutcome {
-        let mut bindings = self.bindings.borrow_mut();
-        match bindings.get_mut(name) {
-            Some(binding) if binding.mutable => {
-                binding.value = value;
+        match self.bindings.get(name) {
+            Some(Binding::Mutable(binding)) => {
+                *binding.borrow_mut() = value;
                 SetOutcome::Ok
             }
-            Some(_) => SetOutcome::Err(Error::ImmutableAssign {
-                name: name.to_owned(),
-            }),
+            Some(Binding::Immutable(_)) => {
+                SetOutcome::Err(Error::ImmutableAssign {
+                    name: name.to_owned(),
+                })
+            }
             None => SetOutcome::NotDefined(value),
+        }
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+enum Binding {
+    Immutable(Value),
+    Mutable(Rc<RefCell<Value>>),
+}
+
+impl Binding {
+    /// Get a (refcounted) clone of the contained value
+    fn value(&self) -> Value {
+        match self {
+            Self::Immutable(value) => value.clone(),
+            Self::Mutable(value) => Value::clone(&*value.borrow()),
         }
     }
 }
@@ -145,11 +169,4 @@ enum SetOutcome {
     Ok,
     /// Fatal error setting the value
     Err(Error),
-}
-
-/// TODO
-#[derive(Debug)]
-struct Binding {
-    value: Value,
-    mutable: bool,
 }

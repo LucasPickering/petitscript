@@ -22,4 +22,11 @@ console.log(x, y);
 f(5);
 g();
 console.log(x, y);
-console.log(nested()());
+console.log("should be 4:", nested()());
+
+if (true) {
+  const ifScope = 3;
+  console.log("should be 3:", ifScope);
+}
+console.log("should error!");
+console.log(ifScope);

@@ -128,7 +128,7 @@ impl Value {
     /// TODO
     pub fn get(&self, key: &Self) -> Result<Value> {
         match (self, key) {
-            (Self::Array(array), Self::Number(index)) => todo!(),
+            (Self::Array(_), Self::Number(_)) => todo!(),
             // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => Ok(object.get(key)),
             _ => todo!("error"),
@@ -289,7 +289,7 @@ impl Deref for JsString {
 
 impl Display for JsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\"{}\"", self.0)
+        write!(f, "{}", self.0)
     }
 }
 

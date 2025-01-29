@@ -4,40 +4,43 @@ use crate::{
     value::Value,
 };
 use boa_interner::{Interner, Sym};
+use std::rc::Rc;
 
 /// TODO
 #[derive(Debug)]
-pub struct RuntimeState<'int> {
+pub struct RuntimeState {
     /// The topmost scope in a script/module. Global scope is unique in a few
     /// ways:
     /// - If the scope stack is empty, this will still be available
     /// - Only global names can be exported
     global_scope: Scope,
-    /// TODO
-    /// TODO use stack frames instead?
-    scope_stack: Vec<Scope>,
+    /// The function call stack. In our machine, a stack frame is simply a
+    /// scope of names. This should not be confused with the hierarchical
+    /// parent/child structure of frames. Pushing a new frame is *not* the same
+    /// as creating a subscope of the current scope.
+    stack_frames: Vec<Scope>,
     /// TODO
     export_default: Option<Value>,
     /// TODO
     export_names: Vec<String>,
     /// TODO
-    interner: &'int Interner,
+    resolver: SymbolResolver,
 }
 
-impl<'int> RuntimeState<'int> {
-    pub fn new(interner: &'int Interner) -> Self {
+impl RuntimeState {
+    pub fn new(resolver: SymbolResolver) -> Self {
         Self {
             global_scope: Scope::global(),
-            scope_stack: Vec::new(),
+            stack_frames: Vec::new(),
             export_default: None,
             export_names: Vec::new(),
-            interner,
+            resolver,
         }
     }
 
     /// TODO
     pub fn scope(&self) -> &Scope {
-        if let Some(last) = self.scope_stack.last() {
+        if let Some(last) = self.stack_frames.last() {
             last
         } else {
             &self.global_scope
@@ -45,9 +48,33 @@ impl<'int> RuntimeState<'int> {
     }
 
     /// TODO
-    pub fn push_scope(&mut self, scope: Scope) -> ScopeGuard<'_, 'int> {
-        self.scope_stack.push(scope);
-        ScopeGuard { state: self }
+    pub fn scope_mut(&mut self) -> &mut Scope {
+        if let Some(last) = self.stack_frames.last_mut() {
+            last
+        } else {
+            &mut self.global_scope
+        }
+    }
+
+    /// Execute a function within a new frame on the stack
+    pub fn with_frame<T>(
+        &mut self,
+        scope: Scope,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.stack_frames.push(scope);
+        let value = f(self);
+        self.stack_frames.pop();
+        value
+    }
+
+    /// Execute a function in a new scope that's a child of the current scope.
+    /// Use this for blocks such as ifs, loops, etc.
+    pub fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+        self.scope_mut().subscope();
+        let value = f(self);
+        self.scope_mut().revert();
+        value
     }
 
     /// TODO
@@ -64,13 +91,10 @@ impl<'int> RuntimeState<'int> {
         Ok(())
     }
 
-    /// Resolve a Boa interner symbol into the corresponding string
-    pub fn resolve_sym(&self, symbol: Sym) -> &str {
-        // This should only fail if the ID isn't valid UTF-8, or a bug
-        // somewhere. It's not worth propagating the potential error everywhere,
-        // since we plan to get rid of this eventually when replacing boa with
-        // our own parser.
-        self.interner.resolve_expect(symbol).utf8().expect("TODO")
+    /// Get an owned copy of the symbol resolver, so we can detach from the
+    /// state's lifetime
+    pub fn resolver(&self) -> SymbolResolver {
+        self.resolver.clone()
     }
 
     /// TODO
@@ -91,14 +115,25 @@ impl<'int> RuntimeState<'int> {
     }
 }
 
-/// TODO
-#[must_use]
-pub struct ScopeGuard<'a, 'int> {
-    state: &'a mut RuntimeState<'int>,
+/// TODO remove this once we're off of boa
+#[derive(Clone, Debug)]
+pub struct SymbolResolver {
+    interner: Rc<Interner>,
 }
 
-impl<'a, 'int> Drop for ScopeGuard<'a, 'int> {
-    fn drop(&mut self) {
-        self.state.scope_stack.pop();
+impl SymbolResolver {
+    pub fn new(interner: Interner) -> Self {
+        Self {
+            interner: interner.into(),
+        }
+    }
+
+    /// Resolve a Boa interner symbol into the corresponding string
+    pub fn resolve(&self, symbol: Sym) -> &str {
+        // This should only fail if the ID isn't valid UTF-8, or a bug
+        // somewhere. It's not worth propagating the potential error everywhere,
+        // since we plan to get rid of this eventually when replacing boa with
+        // our own parser.
+        self.interner.resolve_expect(symbol).utf8().expect("TODO")
     }
 }

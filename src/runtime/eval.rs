@@ -38,7 +38,8 @@ impl Evaluate for Expression {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
         match self {
             Expression::Identifier(identifier) => {
-                let name = state.resolve_sym(identifier.sym());
+                let resolver = state.resolver();
+                let name = resolver.resolve(identifier.sym());
                 state.scope().get(name)
             }
             Expression::Literal(literal) => literal.eval(state),
@@ -53,21 +54,21 @@ impl Evaluate for Expression {
             }
             Expression::Spread(spread) => spread.eval(state),
             Expression::FunctionExpression(function) => Ok(Function::new(
-                function
-                    .name()
-                    .map(|name| state.resolve_sym(name.sym()).to_owned()),
+                function.name().map(|name| {
+                    state.resolver().resolve(name.sym()).to_owned()
+                }),
                 function.parameters().clone(),
                 function.body().clone(),
-                state.scope().clone(),
+                state.scope().capture(),
             )
             .into()),
             Expression::ArrowFunction(function) => Ok(Function::new(
-                function
-                    .name()
-                    .map(|name| state.resolve_sym(name.sym()).to_owned()),
+                function.name().map(|name| {
+                    state.resolver().resolve(name.sym()).to_owned()
+                }),
                 function.parameters().clone(),
                 function.body().clone(),
-                state.scope().clone(),
+                state.scope().capture(),
             )
             .into()),
             Expression::Call(call) => {
@@ -147,16 +148,16 @@ impl Evaluate for Literal {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
             Self::Bool(b) => Ok(Value::Boolean(*b)),
-            Self::String(sym) => Ok(state.resolve_sym(*sym).into()),
+            Self::String(sym) => Ok(state.resolver().resolve(*sym).into()),
             Self::Num(f) => Ok(Value::Number(Number::Float(*f))),
             Self::Int(i) => Ok(Value::Number(Number::Int(*i as i64))),
-            Self::BigInt(big_int) => todo!(),
+            Self::BigInt(_) => todo!(),
         }
     }
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, _: &mut RuntimeState) -> Result<Value> {
         todo!()
     }
 }
@@ -195,7 +196,8 @@ impl Evaluate for ObjectLiteral {
             |acc, property| match property {
                 PropertyDefinition::IdentifierReference(identifier) => {
                     // Shorthand notation: { field }
-                    let name = state.resolve_sym(identifier.sym()).to_owned();
+                    let name =
+                        state.resolver().resolve(identifier.sym()).to_owned();
                     let value = state.scope().get(&name)?;
                     Ok::<_, Error>(acc.insert(name, value))
                 }
@@ -203,7 +205,7 @@ impl Evaluate for ObjectLiteral {
                     let name = match property_name {
                         // {field: "value"}
                         PropertyName::Literal(sym) => {
-                            state.resolve_sym(*sym).to_owned()
+                            state.resolver().resolve(*sym).to_owned()
                         }
                         // {["field"]: "value"}
                         PropertyName::Computed(expression) => {
@@ -229,7 +231,7 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for Spread {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, _: &mut RuntimeState) -> Result<Value> {
         // This should probably error in a general context. Array/object
         // literals can handle it manualy
         todo!()
@@ -243,7 +245,7 @@ impl Evaluate for PropertyAccess {
                 let value = access.target().eval(state)?;
                 let key: Value = match access.field() {
                     PropertyAccessField::Const(symbol) => {
-                        state.resolve_sym(*symbol).into()
+                        state.resolver().resolve(*symbol).into()
                     }
                     PropertyAccessField::Expr(expression) => {
                         expression.eval(state)?
@@ -277,10 +279,10 @@ impl Evaluate for Assign {
     fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
         let name = match self.lhs() {
             AssignTarget::Identifier(identifier) => {
-                state.resolve_sym(identifier.sym()).to_owned()
+                state.resolver().resolve(identifier.sym()).to_owned()
             }
-            AssignTarget::Access(property_access) => todo!("not allowed"),
-            AssignTarget::Pattern(pattern) => todo!(),
+            AssignTarget::Access(_) => todo!("not allowed"),
+            AssignTarget::Pattern(_) => todo!(),
         };
         let value = self.rhs().eval(state)?;
         match self.op() {
@@ -309,13 +311,13 @@ impl Evaluate for Assign {
 }
 
 impl Evaluate for Unary {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, _: &mut RuntimeState) -> Result<Value> {
         todo!()
     }
 }
 
 impl Evaluate for Update {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, _: &mut RuntimeState) -> Result<Value> {
         todo!()
     }
 }
@@ -337,9 +339,9 @@ impl Evaluate for Binary {
                 ArithmeticOp::Exp => todo!(),
                 ArithmeticOp::Mod => todo!(),
             },
-            BinaryOp::Bitwise(bitwise_op) => todo!(),
-            BinaryOp::Relational(relational_op) => todo!(),
-            BinaryOp::Logical(logical_op) => todo!(),
+            BinaryOp::Bitwise(_) => todo!(),
+            BinaryOp::Relational(_) => todo!(),
+            BinaryOp::Logical(_) => todo!(),
             BinaryOp::Comma => todo!(),
         }
     }
@@ -369,9 +371,7 @@ impl Value {
 impl Function {
     fn call(&self, args: &[Value], state: &mut RuntimeState) -> Result<Value> {
         // Start with the function's captured scope
-        let scope = self.scope().child();
-        // TODO bindings added to the scope after this point shouldn't be
-        // captured
+        let mut scope = self.scope().clone();
 
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out
@@ -388,16 +388,20 @@ impl Function {
                 // No init expression, use undefined
                 Value::Undefined
             };
-            scope.bind(state, parameter.variable().binding(), value, false)?;
+            scope.bind(
+                state.resolver(),
+                parameter.variable().binding(),
+                value,
+                false,
+            )?;
         }
 
-        let _ = state.push_scope(scope); // Scope will be auto-popped
-        let return_value = match self.body().exec(state)? {
+        // Push the new frame onto the stack and execute the function body
+        state.with_frame(scope, |state| match self.body().exec(state)? {
             Some(Terminate::Return {
                 return_value: Some(return_value),
-            }) => return_value,
-            _ => Value::Undefined,
-        };
-        Ok(return_value)
+            }) => Ok(return_value),
+            _ => Ok(Value::Undefined),
+        })
     }
 }

@@ -6,9 +6,7 @@ use crate::{
     Error, Result,
 };
 use boa_ast::{
-    declaration::{
-        Binding, ExportDeclaration, ImportDeclaration, LexicalDeclaration,
-    },
+    declaration::{ExportDeclaration, ImportDeclaration, LexicalDeclaration},
     function::FunctionDeclaration,
     statement::Block,
     Declaration, ModuleItem, Statement, StatementListItem,
@@ -76,8 +74,11 @@ impl Execute for Statement {
 
     fn exec(&self, state: &mut RuntimeState) -> Result<Option<Terminate>> {
         match self {
-            Self::Block(block) => block.exec(state),
             Self::Empty => Ok(None),
+            Self::Block(block) => {
+                // A block gets a new lexical scope
+                state.with_subscope(|state| block.exec(state))
+            }
             Self::Expression(expression) => {
                 // Expression may have side effects, so evaluate it and throw
                 // away the outcome
@@ -103,18 +104,26 @@ impl Execute for Statement {
                 Ok(None)
             }
             Self::WhileLoop(while_loop) => {
+                dbg!(while_loop);
                 while while_loop.condition().eval(state)?.to_bool() {
                     while_loop.body().exec(state)?;
                 }
                 Ok(None)
             }
-            Self::ForLoop(for_loop) => todo!(),
-            Self::ForInLoop(for_in_loop) => todo!(),
-            Self::ForOfLoop(for_of_loop) => todo!(),
-            Self::Switch(switch) => todo!(),
-            // TODO support labels
-            Self::Continue(_) => Ok(None),
-            Self::Break(_) => Ok(None),
+            Self::ForLoop(_) => todo!(),
+            Self::ForInLoop(_) => todo!(),
+            Self::ForOfLoop(_) => todo!(),
+            Self::Switch(_) => todo!(),
+            Self::Continue(labelled) => Ok(Some(Terminate::Continue {
+                label: labelled
+                    .label()
+                    .map(|label| state.resolver().resolve(label).to_owned()),
+            })),
+            Self::Break(labelled) => Ok(Some(Terminate::Break {
+                label: labelled
+                    .label()
+                    .map(|label| state.resolver().resolve(label).to_owned()),
+            })),
             Self::Return(ret) => {
                 let return_value = ret
                     .target()
@@ -122,8 +131,8 @@ impl Execute for Statement {
                     .transpose()?;
                 Ok(Some(Terminate::Return { return_value }))
             }
-            Self::Labelled(labelled) => todo!(),
-            Self::Throw(throw) => todo!(),
+            Self::Labelled(_) => todo!(),
+            Self::Throw(_) => todo!(),
             Self::Try(_) => todo!(),
 
             // ===== UNSUPPORTED =====
@@ -156,7 +165,7 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<()> {
+    fn exec(&self, _: &mut RuntimeState) -> Result<()> {
         todo!()
     }
 }
@@ -166,7 +175,7 @@ impl Execute for ExportDeclaration {
 
     fn exec(&self, state: &mut RuntimeState) -> Result<()> {
         match self {
-            ExportDeclaration::ReExport { kind, specifier } => todo!(),
+            ExportDeclaration::ReExport { .. } => todo!(),
             ExportDeclaration::List(_) => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
@@ -226,8 +235,9 @@ impl Execute for Declaration {
                         .map(|expr| expr.eval(state))
                         .transpose()?
                         .unwrap_or_default();
-                    let names = state.scope().bind(
-                        state,
+                    let resolver = state.resolver();
+                    let names = state.scope_mut().bind(
+                        resolver,
                         variable.binding(),
                         value,
                         mutable,
@@ -255,9 +265,9 @@ impl Execute for FunctionDeclaration {
     type Output = String;
 
     fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
-        let name = state.resolve_sym(self.name().sym()).to_owned();
+        let name = state.resolver().resolve(self.name().sym()).to_owned();
         // TODO make sure we aren't capturing names declared after the fn
-        let scope = state.scope();
+        let scope = state.scope_mut();
         let function = Function::new(
             Some(name.clone()),
             self.parameters().clone(),

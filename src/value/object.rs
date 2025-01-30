@@ -1,4 +1,5 @@
 use crate::value::Value;
+use indexmap::IndexMap;
 use std::{
     fmt::{self, Display},
     ops::Deref as _,
@@ -6,10 +7,8 @@ use std::{
 };
 
 /// TODO
-/// TODO disallow duplication - maybe we need our own indexmap?
-/// TODO ignore order in equality
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Object(Arc<Vec<(String, Value)>>);
+pub struct Object(Arc<IndexMap<String, Value>>);
 
 impl Object {
     /// Get a value from the object by key, or undefined if not present
@@ -23,7 +22,9 @@ impl Object {
 
     /// TODO
     pub fn insert(self, name: impl Into<String>, value: Value) -> Self {
-        self.with_inner(|vec| vec.push((name.into(), value)))
+        self.with_inner(|map| {
+            map.insert(name.into(), value);
+        })
     }
 
     /// TODO
@@ -40,17 +41,20 @@ impl Object {
             }
             // We own the other one, so we can move each inner item into our
             // buffer without cloning
-            Ok(other) => self.with_inner(|vec| vec.extend(other)),
+            Ok(other) => self.with_inner(|map| map.extend(other)),
             // Other object is shared (uncommon case) - we need to clone all its
             // contents
-            Err(other) => {
-                self.with_inner(|vec| vec.extend(other.iter().cloned()))
-            }
+            Err(other) => self.with_inner(|map| {
+                map.extend(other.iter().map(|(k, v)| (k.clone(), v.clone())))
+            }),
         }
     }
 
     /// TODO
-    fn with_inner(mut self, f: impl FnOnce(&mut Vec<(String, Value)>)) -> Self {
+    fn with_inner(
+        mut self,
+        f: impl FnOnce(&mut IndexMap<String, Value>),
+    ) -> Self {
         // TODO explain
         if let Some(vec) = Arc::get_mut(&mut self.0) {
             f(vec);

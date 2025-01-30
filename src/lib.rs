@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
+mod ast;
 mod error;
 mod runtime;
 mod stdlib;

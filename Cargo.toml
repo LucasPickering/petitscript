@@ -18,10 +18,11 @@ boa_ast = {path = "../boa/core/ast", default-features = false}
 boa_interner = {path = "../boa/core/interner", default-features = false}
 boa_parser = {path = "../boa/core/parser", default-features = false}
 indexmap = {version = "2.7.0", features = ["serde"]}
-serde = {version = "1.0.0", default-features = false, optional = true}
+serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
 thiserror = "2.0.10"
 
 [features]
+default = []
 serde = ["dep:serde"]
 
 [workspace.metadata.release]

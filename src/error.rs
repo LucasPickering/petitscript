@@ -1,4 +1,4 @@
-use crate::value::{Value, ValueType};
+use crate::value::ValueType;
 use std::io;
 use thiserror::Error;
 
@@ -7,20 +7,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     /// TODO
-    #[error(
-        "Cannot export value {new} under name {name}; \
-        it has already been exported with value {old}"
-    )]
-    AlreadyExported {
-        name: String,
-        old: Value,
-        new: Value,
-    },
-
-    #[error(transparent)]
-    Parse(#[from] boa_parser::Error),
-    #[error(transparent)]
-    Io(#[from] io::Error),
+    #[error("Name {name} is already exported")]
+    AlreadyExported { name: String },
 
     /// Attempted to return while not in a function
     #[error("Cannot return while not in function")]
@@ -29,6 +17,14 @@ pub enum Error {
     /// Second assignment to a `const` variable
     #[error("Assignment to immutable variable {name}")]
     ImmutableAssign { name: String },
+
+    /// TODO
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    /// TODO
+    #[error(transparent)]
+    Parse(#[from] boa_parser::Error),
 
     /// Reference to an identifier that isn't bound
     #[error("{name} is not defined")]

@@ -7,6 +7,7 @@ use std::{
 
 /// TODO
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Array(Arc<Vec<Value>>);
 
 impl Array {

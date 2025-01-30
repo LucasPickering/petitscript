@@ -16,7 +16,7 @@ use boa_interner::Interner;
 use std::path::Path;
 
 /// TODO
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Runtime {}
 
 impl Runtime {

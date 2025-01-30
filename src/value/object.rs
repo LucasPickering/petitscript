@@ -77,3 +77,23 @@ impl Display for Object {
         Ok(())
     }
 }
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Object {
+    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Object {
+    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+    }
+}

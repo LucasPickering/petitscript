@@ -55,6 +55,26 @@ impl Display for Function {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for Function {
+    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Function {
+    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+    }
+}
+
 #[derive(Debug)]
 struct FunctionInner {
     name: Option<String>,
@@ -102,13 +122,13 @@ impl<F: NativeFunctionTrait> From<F> for NativeFunction {
 }
 
 /// TODO doc and rename
-pub trait NativeFunctionTrait: 'static {
+pub trait NativeFunctionTrait: 'static + Send + Sync {
     fn call(&self, args: &[Value]) -> Result<Value>;
 }
 
 impl<F> NativeFunctionTrait for F
 where
-    F: 'static + Fn(&[Value]) -> Result<Value>,
+    F: 'static + Fn(&[Value]) -> Result<Value> + Send + Sync,
 {
     fn call(&self, args: &[Value]) -> Result<Value> {
         (self)(args)

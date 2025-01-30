@@ -155,6 +155,12 @@ impl Value {
             _ => self,
         }
     }
+
+    /// TODO better name?
+    #[cfg(feature = "serde")]
+    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
+        todo!()
+    }
 }
 
 impl Display for Value {
@@ -263,6 +269,26 @@ impl From<Function> for Value {
 impl<F: NativeFunctionTrait> From<F> for Value {
     fn from(function: F) -> Self {
         Self::Native(function.into())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Value {
+    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Value {
+    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
     }
 }
 

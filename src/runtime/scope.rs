@@ -2,7 +2,10 @@ use crate::{
     runtime::state::SymbolResolver, stdlib::stdlib, value::Value, Error, Result,
 };
 use indexmap::IndexMap;
-use std::{cell::RefCell, mem, sync::Arc};
+use std::{
+    mem,
+    sync::{Arc, RwLock},
+};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
@@ -115,7 +118,7 @@ impl Bindings {
     /// TODO
     fn declare(&mut self, name: String, value: Value, mutable: bool) {
         let binding = if mutable {
-            Binding::Mutable(Arc::new(RefCell::new(value)))
+            Binding::Mutable(Arc::new(RwLock::new(value)))
         } else {
             Binding::Immutable(value)
         };
@@ -131,7 +134,7 @@ impl Bindings {
     fn set(&self, name: &str, value: Value) -> SetOutcome {
         match self.bindings.get(name) {
             Some(Binding::Mutable(binding)) => {
-                *binding.borrow_mut() = value;
+                *binding.write().expect("TODO") = value;
                 SetOutcome::Ok
             }
             Some(Binding::Immutable(_)) => {
@@ -148,7 +151,7 @@ impl Bindings {
 #[derive(Clone, Debug)]
 enum Binding {
     Immutable(Value),
-    Mutable(Arc<RefCell<Value>>),
+    Mutable(Arc<RwLock<Value>>),
 }
 
 impl Binding {
@@ -156,7 +159,7 @@ impl Binding {
     fn value(&self) -> Value {
         match self {
             Self::Immutable(value) => value.clone(),
-            Self::Mutable(value) => Value::clone(&*value.borrow()),
+            Self::Mutable(value) => Value::clone(&*value.read().expect("TODO")),
         }
     }
 }

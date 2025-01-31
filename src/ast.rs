@@ -4,16 +4,16 @@
 // TODO comments on everything
 
 /// TODO
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Script {
     pub statements: Box<[Statement]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Statement {
     Block(Block),
-    Lexical(LexicalDeclaration),
-    Function(FunctionDeclaration),
+    Expression(Expression),
+    Declaration(Declaration),
 
     If(If),
     ForLoop(ForLoop),
@@ -25,39 +25,51 @@ pub enum Statement {
     Break(Option<Label>),
     Continue(Option<Label>),
 
-    Import {},
-    Export {},
-    ExportDefault(Expression),
+    Import(ImportDeclaration),
+    Export(ExportDeclaration),
+    // TODO: switch, labels, throw, try, catch, finally
 }
 
 /// A collection of statements, delineated by {}. This denotes a new
 /// lexical scope.
-#[derive(Debug)]
+/// TODO kill this and inline into the enum variant?
+#[derive(Clone, Debug)]
 pub struct Block {
     pub statements: Box<[Statement]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub enum Declaration {
+    Lexical(LexicalDeclaration),
+    Function(FunctionDeclaration),
+}
+
+#[derive(Clone, Debug)]
 pub struct LexicalDeclaration {
-    pub binding: Binding,
-    pub expression: Expression,
+    pub variables: Box<[Variable]>,
     pub mutable: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct Variable {
+    pub binding: Binding,
+    pub init: Option<Box<Expression>>,
+}
+
+#[derive(Clone, Debug)]
 pub struct FunctionDeclaration {
     pub name: Option<Identifier>,
     pub parameters: Box<[FunctionParameter]>,
-    pub body: Block,
+    pub body: Box<[Statement]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FunctionParameter {
-    pub binding: Binding,
+    pub variable: Variable,
     pub varargs: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct If {
     pub condition: Expression,
     pub body: Box<Statement>,
@@ -65,7 +77,7 @@ pub struct If {
     pub else_body: Option<Box<Statement>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ForLoop {
     pub initializer: Box<Statement>,
     pub condition: Expression,
@@ -73,33 +85,52 @@ pub struct ForLoop {
     pub body: Box<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Expression,
     pub body: Box<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct WhileLoop {
     pub condition: Expression,
     pub body: Box<Statement>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DoWhileLoop {
+    pub condition: Expression,
+    pub body: Box<Statement>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ImportDeclaration {
     // TODO
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub enum ExportDeclaration {
+    Reexport {
+        // TODO
+    },
+    Declaration(Declaration),
+    DefaultFunctionDeclaration(FunctionDeclaration),
+    DefaultExpression(Expression),
+}
+
+#[derive(Clone, Debug)]
 pub enum Expression {
     Parenthesized(Box<Expression>),
     /// Primitive and complex type literals
     Literal(Literal),
+    Template(TemplateLiteral),
+    Identifier(Identifier),
+    Call(FunctionCall),
     /// The static or dynamic property accessors: `.` or `[]`
     Property(PropertyAccess),
     /// Optional chaining operator: `?.`
-    OptionalProperty(PropertyAccess),
+    OptionalProperty(OptionalPropertyAccess),
     /// Lambda syntax: `(...) => {...}` or `() => value`
     ArrowFunction(ArrowFunction),
     Unary(UnaryOperation),
@@ -109,13 +140,19 @@ pub enum Expression {
     // TODO update operations (++, --)
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Identifier(String);
 
-#[derive(Debug)]
+impl Identifier {
+    pub fn to_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Label(String);
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Literal {
     Null,
     Undefined,
@@ -123,41 +160,62 @@ pub enum Literal {
     Float(f64),
     Int(i64),
     String(String),
-    Template(TemplateLiteral),
-    Array(Box<[ArrayEntry]>),
-    Object(Box<[ObjectEntry]>),
+    Array(ArrayLiteral),
+    Object(ObjectLiteral),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TemplateLiteral {
     // TODO
 }
 
-#[derive(Debug)]
-pub struct PropertyAccess {
-    expression: Box<Expression>,
-    property: Property,
+#[derive(Clone, Debug)]
+pub struct ArrayLiteral {
+    pub elements: Box<[ArrayElement]>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct ObjectLiteral {
+    pub properties: Box<[ObjectProperty]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FunctionCall {
+    pub function: Box<Expression>,
+    pub arguments: Box<[Expression]>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PropertyAccess {
+    pub expression: Box<Expression>,
+    pub property: PropertyName,
+}
+
+#[derive(Clone, Debug)]
+pub struct OptionalPropertyAccess {
+    pub expression: Box<Expression>,
+    pub property: PropertyName,
+}
+
+#[derive(Clone, Debug)]
 pub struct ArrowFunction {
     pub parameters: Box<[FunctionParameter]>,
     pub body: ArrowFunctionBody,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ArrowFunctionBody {
-    Block(Block),
+    Block(Box<[Statement]>),
     Expression(Box<Expression>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct UnaryOperation {
-    operator: UnaryOperator,
-    expression: Box<Expression>,
+    pub operator: UnaryOperator,
+    pub expression: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum UnaryOperator {
     /// `!`
     BooleanNot,
@@ -166,25 +224,25 @@ pub enum UnaryOperator {
     // TODO bitwise operations
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct BinaryOperation {
-    operator: BinaryOperator,
-    lhs: Box<Expression>,
-    rhs: Box<Expression>,
+    pub operator: BinaryOperator,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BinaryOperator {
     /// `+`
-    Plus,
+    Add,
     /// `-`
-    Minus,
+    Sub,
     /// `*`
-    Multiply,
+    Mul,
     /// `/`
-    Divide,
+    Div,
     /// `%`
-    Remainder,
+    Mod,
 
     /// `&&`
     BooleanAnd,
@@ -210,21 +268,21 @@ pub enum BinaryOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TernaryConditional {
     pub condition: Box<Expression>,
     pub true_expression: Box<Expression>,
     pub false_expression: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AssignOperation {
-    operator: AssignOperator,
-    lhs: Binding,
-    rhs: Box<Expression>,
+    pub operator: AssignOperator,
+    pub lhs: Binding,
+    pub rhs: Box<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum AssignOperator {
     /// `x = y`
     Assign,
@@ -247,18 +305,18 @@ pub enum AssignOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Debug)]
-pub enum ArrayEntry {
-    Value(Expression),
+#[derive(Clone, Debug)]
+pub enum ArrayElement {
+    Expression(Expression),
     Spread(Expression),
 }
 
-#[derive(Debug)]
-pub enum ObjectEntry {
+#[derive(Clone, Debug)]
+pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
-    Value {
-        property: Property,
-        value: Expression,
+    Property {
+        property: PropertyName,
+        expression: Expression,
     },
     /// Identifier shorthand: `{ name }`
     Identifier(Identifier),
@@ -266,21 +324,21 @@ pub enum ObjectEntry {
     Spread(Expression),
 }
 
-#[derive(Debug)]
-pub enum Property {
+#[derive(Clone, Debug)]
+pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Identifier),
     /// Computed key: `{ ["key"]: value }`
     Expression(Box<Expression>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Binding {
     Identifier(Identifier),
     Pattern(Pattern),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Pattern {
     /// An object pattern: `const { a, b, c } = object`
     Object(Box<[ObjectPatternElement]>),
@@ -288,12 +346,12 @@ pub enum Pattern {
     Array(Box<[ArrayPatternElement]>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ObjectPatternElement {
     // TODO
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ArrayPatternElement {
     // TODO
 }

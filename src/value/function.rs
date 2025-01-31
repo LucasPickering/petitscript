@@ -1,7 +1,8 @@
-use crate::{runtime::scope::Scope, value::Value, Result};
-use boa_ast::{
-    function::{FormalParameter, FormalParameterList, FunctionBody},
-    StatementListItem,
+use crate::{
+    ast::{FunctionParameter, Statement},
+    runtime::scope::Scope,
+    value::Value,
+    Result,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -15,8 +16,8 @@ pub struct Function(Arc<FunctionInner>);
 impl Function {
     pub fn new(
         name: Option<String>,
-        parameters: FormalParameterList,
-        body: FunctionBody,
+        parameters: Box<[FunctionParameter]>,
+        body: Box<[Statement]>,
         scope: Scope,
     ) -> Self {
         let inner = FunctionInner {
@@ -39,13 +40,13 @@ impl Function {
     }
 
     /// TODO
-    pub(crate) fn parameters(&self) -> &[FormalParameter] {
+    pub(crate) fn parameters(&self) -> &[FunctionParameter] {
         self.0.parameters.as_ref()
     }
 
     /// Get the body's list of executable statements
-    pub(crate) fn body(&self) -> &[StatementListItem] {
-        self.0.body.statements()
+    pub(crate) fn body(&self) -> &[Statement] {
+        &self.0.body
     }
 }
 
@@ -78,8 +79,8 @@ impl<'de> serde::Deserialize<'de> for Function {
 #[derive(Debug)]
 struct FunctionInner {
     name: Option<String>,
-    parameters: FormalParameterList,
-    body: FunctionBody,
+    parameters: Box<[FunctionParameter]>,
+    body: Box<[Statement]>,
     /// Captured variables. This is defined at function definition, and will be
     /// exposed to all calls of the function
     scope: Scope,

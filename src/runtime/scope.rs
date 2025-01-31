@@ -1,6 +1,4 @@
-use crate::{
-    runtime::state::SymbolResolver, stdlib::stdlib, value::Value, Error, Result,
-};
+use crate::{ast, stdlib::stdlib, value::Value, Error, Result};
 use indexmap::IndexMap;
 use std::{
     mem,
@@ -92,23 +90,23 @@ impl Scope {
     /// TODO
     pub fn bind(
         &mut self,
-        resolver: SymbolResolver,
-        binding: &boa_ast::declaration::Binding,
+        binding: &ast::Binding,
         value: Value,
         mutable: bool,
     ) -> Result<Vec<String>> {
         match binding {
-            boa_ast::declaration::Binding::Identifier(identifier) => {
-                let name = resolver.resolve(identifier.sym()).to_owned();
+            ast::Binding::Identifier(identifier) => {
+                let name = identifier.to_str().to_owned();
                 self.declare(name.clone(), value, mutable);
                 Ok(vec![name])
             }
-            boa_ast::declaration::Binding::Pattern(_) => todo!(),
+            ast::Binding::Pattern(_) => todo!(),
         }
     }
 }
 
 /// TODO
+/// TODO rename to not overlap with AST Binding type
 #[derive(Clone, Debug, Default)]
 struct Bindings {
     bindings: IndexMap<String, Binding>,

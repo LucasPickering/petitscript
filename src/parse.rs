@@ -1,3 +1,5 @@
+//! Parser-combinator go brrrrr
+
 use crate::{ast::Script, Result, Source};
 
 /// Parse source code into an Abstract Syntax Tree

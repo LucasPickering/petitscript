@@ -1,10 +1,9 @@
 use crate::{
+    ast::Script,
     error::Result,
-    runtime::{module::Module, scope::Scope},
+    runtime::{exec::Execute, module::Module, scope::Scope},
     value::Value,
 };
-use boa_interner::{Interner, Sym};
-use std::sync::Arc;
 
 /// TODO
 #[derive(Debug)]
@@ -23,78 +22,22 @@ pub struct RuntimeState {
     export_default: Option<Value>,
     /// TODO
     export_names: Vec<String>,
-    /// TODO
-    resolver: SymbolResolver,
 }
 
 impl RuntimeState {
-    pub fn new(resolver: SymbolResolver) -> Self {
+    pub fn new() -> Self {
         Self {
             global_scope: Scope::global(),
             stack_frames: Vec::new(),
             export_default: None,
             export_names: Vec::new(),
-            resolver,
         }
     }
 
-    /// TODO
-    pub fn scope(&self) -> &Scope {
-        if let Some(last) = self.stack_frames.last() {
-            last
-        } else {
-            &self.global_scope
-        }
-    }
-
-    /// TODO
-    pub fn scope_mut(&mut self) -> &mut Scope {
-        if let Some(last) = self.stack_frames.last_mut() {
-            last
-        } else {
-            &mut self.global_scope
-        }
-    }
-
-    /// Execute a function within a new frame on the stack
-    pub fn with_frame<T>(
-        &mut self,
-        scope: Scope,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
-        self.stack_frames.push(scope);
-        let value = f(self);
-        self.stack_frames.pop();
-        value
-    }
-
-    /// Execute a function in a new scope that's a child of the current scope.
-    /// Use this for blocks such as ifs, loops, etc.
-    pub fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        self.scope_mut().subscope();
-        let value = f(self);
-        self.scope_mut().revert();
-        value
-    }
-
-    /// TODO
-    pub fn export(&mut self, name: String) -> Result<()> {
-        // TODO error on duplicate export
-        self.export_names.push(name);
+    /// Execute a parsed script
+    pub fn exec(&mut self, script: &Script) -> Result<()> {
+        script.statements.exec(self)?;
         Ok(())
-    }
-
-    /// TODO
-    pub fn export_default(&mut self, value: Value) -> Result<()> {
-        // TODO error if something is already exported
-        self.export_default = Some(value);
-        Ok(())
-    }
-
-    /// Get an owned copy of the symbol resolver, so we can detach from the
-    /// state's lifetime
-    pub fn resolver(&self) -> SymbolResolver {
-        self.resolver.clone()
     }
 
     /// TODO
@@ -113,27 +56,60 @@ impl RuntimeState {
                 .collect::<Result<_>>()?,
         })
     }
-}
 
-/// TODO remove this once we're off of boa
-#[derive(Clone, Debug)]
-pub struct SymbolResolver {
-    interner: Arc<Interner>,
-}
-
-impl SymbolResolver {
-    pub fn new(interner: Interner) -> Self {
-        Self {
-            interner: interner.into(),
+    /// TODO
+    pub(super) fn scope(&self) -> &Scope {
+        if let Some(last) = self.stack_frames.last() {
+            last
+        } else {
+            &self.global_scope
         }
     }
 
-    /// Resolve a Boa interner symbol into the corresponding string
-    pub fn resolve(&self, symbol: Sym) -> &str {
-        // This should only fail if the ID isn't valid UTF-8, or a bug
-        // somewhere. It's not worth propagating the potential error everywhere,
-        // since we plan to get rid of this eventually when replacing boa with
-        // our own parser.
-        self.interner.resolve_expect(symbol).utf8().expect("TODO")
+    /// TODO
+    pub(super) fn scope_mut(&mut self) -> &mut Scope {
+        if let Some(last) = self.stack_frames.last_mut() {
+            last
+        } else {
+            &mut self.global_scope
+        }
+    }
+
+    /// Execute a function within a new frame on the stack
+    pub(super) fn with_frame<T>(
+        &mut self,
+        scope: Scope,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.stack_frames.push(scope);
+        let value = f(self);
+        self.stack_frames.pop();
+        value
+    }
+
+    /// Execute a function in a new scope that's a child of the current scope.
+    /// Use this for blocks such as ifs, loops, etc.
+    pub(super) fn with_subscope<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.scope_mut().subscope();
+        let value = f(self);
+        self.scope_mut().revert();
+        value
+    }
+
+    /// TODO
+    pub(super) fn export(&mut self, name: String) -> Result<()> {
+        // TODO error on duplicate export
+        self.export_names.push(name);
+        Ok(())
+    }
+
+    /// TODO
+    pub(super) fn export_default(&mut self, value: Value) -> Result<()> {
+        // TODO error if something is already exported
+        self.export_default = Some(value);
+        Ok(())
     }
 }

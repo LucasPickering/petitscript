@@ -23,8 +23,8 @@ pub enum Error {
     Io(#[from] io::Error),
 
     /// TODO
-    #[error(transparent)]
-    Parse(#[from] boa_parser::Error),
+    #[error("TODO")]
+    Parse(),
 
     /// Reference to an identifier that isn't bound
     #[error("{name} is not defined")]
@@ -35,22 +35,4 @@ pub enum Error {
         expected: ValueType,
         actual: ValueType,
     },
-
-    /// User tried to use an ES6 feature that we don't support
-    #[error("Operation not supported: {name}; {help}")]
-    Unsupported {
-        name: &'static str,
-        help: &'static str,
-    },
-}
-
-impl Error {
-    /// Helper for generating an [Unsupported](Error::Unsupported) error,
-    /// wrapped in a `Result` for Added Convenience
-    pub(crate) fn unsupported<T>(
-        name: &'static str,
-        help: &'static str,
-    ) -> Result<T> {
-        Err(Self::Unsupported { name, help })
-    }
 }

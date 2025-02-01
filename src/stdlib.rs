@@ -1,6 +1,8 @@
 //! The PetitJS standard library
 
-use crate::{runtime::module::Module, value::Object, Result, Value};
+use crate::{
+    error::RuntimeResult, runtime::module::Module, value::Object, Value,
+};
 
 /// TODO
 pub fn stdlib() -> Module {
@@ -16,7 +18,7 @@ fn console() -> Object {
 }
 
 /// Log values to stdout
-fn console_log(args: &[Value]) -> Result<Value> {
+fn console_log(args: &[Value]) -> RuntimeResult<Value> {
     for (i, value) in args.iter().enumerate() {
         if i > 0 {
             print!(" ");

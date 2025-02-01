@@ -1,4 +1,6 @@
-use crate::{ast, stdlib::stdlib, value::Value, Error, Result};
+use crate::{
+    ast, error::RuntimeResult, stdlib::stdlib, value::Value, RuntimeError,
+};
 use indexmap::IndexMap;
 use std::{
     mem,
@@ -54,14 +56,14 @@ impl Scope {
     }
 
     /// TODO
-    pub fn get(&self, name: &str) -> Result<Value> {
+    pub fn get(&self, name: &str) -> RuntimeResult<Value> {
         match self.bindings.get(name) {
             Some(value) => Ok(value),
             None => {
                 if let Some(parent) = self.parent.as_ref() {
                     parent.get(name)
                 } else {
-                    Err(Error::Reference {
+                    Err(RuntimeError::Reference {
                         name: name.to_owned(),
                     })
                 }
@@ -70,14 +72,14 @@ impl Scope {
     }
 
     /// TODO
-    pub fn set(&self, name: &str, value: Value) -> Result<()> {
+    pub fn set(&self, name: &str, value: Value) -> RuntimeResult<()> {
         match self.bindings.set(name, value) {
             SetOutcome::NotDefined(value) => {
                 if let Some(parent) = self.parent.as_ref() {
                     parent.set(name, value)
                 } else {
                     // Var isn't defined anywhere
-                    Err(Error::Reference {
+                    Err(RuntimeError::Reference {
                         name: name.to_owned(),
                     })
                 }
@@ -93,7 +95,7 @@ impl Scope {
         binding: &ast::Binding,
         value: Value,
         mutable: bool,
-    ) -> Result<Vec<String>> {
+    ) -> RuntimeResult<Vec<String>> {
         match binding {
             ast::Binding::Identifier(identifier) => {
                 let name = identifier.to_str().to_owned();
@@ -136,7 +138,7 @@ impl Bindings {
                 SetOutcome::Ok
             }
             Some(Binding::Immutable(_)) => {
-                SetOutcome::Err(Error::ImmutableAssign {
+                SetOutcome::Err(RuntimeError::ImmutableAssign {
                     name: name.to_owned(),
                 })
             }
@@ -169,5 +171,5 @@ enum SetOutcome {
     /// Value was set
     Ok,
     /// Fatal error setting the value
-    Err(Error),
+    Err(RuntimeError),
 }

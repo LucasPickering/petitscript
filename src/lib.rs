@@ -8,13 +8,16 @@ mod runtime;
 mod stdlib;
 mod value;
 
-use crate::runtime::state::RuntimeState;
 pub use crate::{
-    error::{Error, Result},
+    error::RuntimeError,
     runtime::module::Module,
     value::{Array, Function, JsString, Number, Object, Value},
 };
-use std::{borrow::Cow, ffi::OsStr, fs, path::Path};
+use crate::{
+    error::{Error, LoadError},
+    runtime::state::RuntimeState,
+};
+use std::{borrow::Cow, fs, path::Path};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
@@ -27,11 +30,12 @@ impl Engine {
     }
 
     /// TODO
-    pub fn load(&self, source: impl Source) -> Result<Module> {
+    pub fn load(&self, source: impl Source) -> Result<Module, Error> {
         let script = parse::parse(source)?;
         let mut state = RuntimeState::new();
         state.exec(&script)?;
-        state.into_module()
+        let module = state.into_module()?;
+        Ok(module)
     }
 }
 
@@ -41,7 +45,7 @@ pub trait Source {
     fn name(&self) -> Option<&str>;
 
     /// TODO
-    fn text(&self) -> Result<Cow<'_, str>>;
+    fn text(&self) -> Result<Cow<'_, str>, LoadError>;
 }
 
 impl Source for String {
@@ -49,17 +53,17 @@ impl Source for String {
         None
     }
 
-    fn text(&self) -> Result<Cow<'_, str>> {
+    fn text(&self) -> Result<Cow<'_, str>, LoadError> {
         Ok(self.as_str().into())
     }
 }
 
 impl Source for &Path {
     fn name(&self) -> Option<&str> {
-        self.file_name().and_then(OsStr::to_str)
+        self.to_str()
     }
 
-    fn text(&self) -> Result<Cow<'_, str>> {
+    fn text(&self) -> Result<Cow<'_, str>, LoadError> {
         Ok(fs::read_to_string(self)?.into())
     }
 }

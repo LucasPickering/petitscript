@@ -5,16 +5,16 @@ use crate::{
         Block, Declaration, ExportDeclaration, FunctionDeclaration, Identifier,
         ImportDeclaration, Label, LexicalDeclaration, Statement,
     },
+    error::RuntimeResult,
     runtime::{eval::Evaluate, state::RuntimeState},
     value::{Function, Value},
-    Result,
 };
 
 /// TODO
 pub trait Execute {
     type Output;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output>;
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output>;
 }
 
 impl<T, O> Execute for [T]
@@ -23,7 +23,7 @@ where
 {
     type Output = Option<O>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Option<O>> {
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Option<O>> {
         for statement in self {
             let output = statement.exec(state)?;
             if let Some(output) = output {
@@ -38,7 +38,10 @@ impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
     type Output = Option<Terminate>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Option<Terminate>> {
+    fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Option<Terminate>> {
         match self {
             Self::Block(block) => {
                 // A block gets a new lexical scope
@@ -112,7 +115,10 @@ impl Execute for Statement {
 impl Execute for Block {
     type Output = Option<Terminate>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Option<Terminate>> {
+    fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Option<Terminate>> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -125,7 +131,7 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    fn exec(&self, _: &mut RuntimeState) -> Result<()> {
+    fn exec(&self, _: &mut RuntimeState) -> RuntimeResult<()> {
         todo!()
     }
 }
@@ -133,7 +139,7 @@ impl Execute for ImportDeclaration {
 impl Execute for ExportDeclaration {
     type Output = ();
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<()> {
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<()> {
         match self {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
@@ -161,7 +167,7 @@ impl Execute for ExportDeclaration {
 impl Execute for Declaration {
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output> {
         match self {
             Self::Lexical(lexical_declaration) => {
                 lexical_declaration.exec(state)
@@ -178,7 +184,7 @@ impl Execute for LexicalDeclaration {
     /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Vec<String>> {
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Vec<String>> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -204,7 +210,7 @@ impl Execute for FunctionDeclaration {
     /// Emit declared name
     type Output = Option<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> Result<Self::Output> {
+    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output> {
         let name = self.name.as_ref().map(Identifier::to_str).map(String::from);
         let scope = state.scope_mut();
         let function = Function::new(

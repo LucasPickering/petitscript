@@ -1,8 +1,8 @@
 use crate::{
     ast::{FunctionParameter, Statement},
+    error::RuntimeResult,
     runtime::scope::Scope,
     value::Value,
-    Result,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -95,7 +95,7 @@ pub struct NativeFunction {
 
 impl NativeFunction {
     /// Call this function
-    pub fn call(&self, args: &[Value]) -> Result<Value> {
+    pub fn call(&self, args: &[Value]) -> RuntimeResult<Value> {
         self.function.call(args)
     }
 }
@@ -124,14 +124,14 @@ impl<F: NativeFunctionTrait> From<F> for NativeFunction {
 
 /// TODO doc and rename
 pub trait NativeFunctionTrait: 'static + Send + Sync {
-    fn call(&self, args: &[Value]) -> Result<Value>;
+    fn call(&self, args: &[Value]) -> RuntimeResult<Value>;
 }
 
 impl<F> NativeFunctionTrait for F
 where
-    F: 'static + Fn(&[Value]) -> Result<Value> + Send + Sync,
+    F: 'static + Fn(&[Value]) -> RuntimeResult<Value> + Send + Sync,
 {
-    fn call(&self, args: &[Value]) -> Result<Value> {
+    fn call(&self, args: &[Value]) -> RuntimeResult<Value> {
         (self)(args)
     }
 }

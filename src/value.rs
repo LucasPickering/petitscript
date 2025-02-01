@@ -10,7 +10,7 @@ pub use function::{Function, NativeFunction, NativeFunctionTrait};
 pub use number::Number;
 pub use object::Object;
 
-use crate::{Error, Result};
+use crate::{error::RuntimeResult, RuntimeError};
 use std::{
     fmt::{self, Display},
     ops::{Add, Deref, Div, Mul, Rem, Sub},
@@ -76,11 +76,11 @@ impl Value {
 
     /// If this value is an array, get the inner array. Otherwise return a type
     /// error.
-    pub fn try_into_array(self) -> Result<Array> {
+    pub fn try_into_array(self) -> RuntimeResult<Array> {
         if let Self::Array(array) = self {
             Ok(array)
         } else {
-            Err(Error::Type {
+            Err(RuntimeError::Type {
                 expected: ValueType::Array,
                 actual: self.type_(),
             })
@@ -89,11 +89,11 @@ impl Value {
 
     /// If this value is an object, get the inner object. Otherwise return a
     /// type error.
-    pub fn try_into_object(self) -> Result<Object> {
+    pub fn try_into_object(self) -> RuntimeResult<Object> {
         if let Self::Object(object) = self {
             Ok(object)
         } else {
-            Err(Error::Type {
+            Err(RuntimeError::Type {
                 expected: ValueType::Object,
                 actual: self.type_(),
             })
@@ -102,11 +102,11 @@ impl Value {
 
     /// If this value is a function, get the inner function. Otherwise return a
     /// type error.
-    pub fn try_into_function(self) -> Result<Function> {
+    pub fn try_into_function(self) -> RuntimeResult<Function> {
         if let Self::Function(function) = self {
             Ok(function)
         } else {
-            Err(Error::Type {
+            Err(RuntimeError::Type {
                 expected: ValueType::Function,
                 actual: self.type_(),
             })
@@ -128,7 +128,7 @@ impl Value {
     }
 
     /// TODO
-    pub fn get(&self, key: &Self) -> Result<Value> {
+    pub fn get(&self, key: &Self) -> RuntimeResult<Value> {
         match (self, key) {
             (Self::Array(_), Self::Number(_)) => todo!(),
             // TODO support number keys here?
@@ -158,7 +158,9 @@ impl Value {
 
     /// TODO better name?
     #[cfg(feature = "serde")]
-    pub fn deserialize<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
+    pub fn deserialize<T: serde::de::DeserializeOwned>(
+        &self,
+    ) -> RuntimeResult<T> {
         todo!()
     }
 }
@@ -274,7 +276,7 @@ impl<F: NativeFunctionTrait> From<F> for Value {
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Value {
-    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -284,7 +286,7 @@ impl serde::Serialize for Value {
 
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Value {
-    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {

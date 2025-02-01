@@ -8,24 +8,25 @@ use crate::{
         OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
         TemplateLiteral, UnaryOperation, UnaryOperator,
     },
+    error::RuntimeResult,
     runtime::{
         exec::{Execute, Terminate},
         state::RuntimeState,
     },
     value::{Array, Function, Number, Object, Value, ValueType},
-    Error, Result,
+    RuntimeError,
 };
 use std::iter;
 
 /// TODO
 pub trait Evaluate {
     /// TODO
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value>;
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         match self {
             Expression::Parenthesized(expression) => expression.eval(state),
             Expression::Literal(literal) => literal.eval(state),
@@ -66,7 +67,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -81,29 +82,34 @@ impl Evaluate for Literal {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
-        let array = self.elements.iter().try_fold::<_, _, Result<Array>>(
-            Array::default(),
-            |acc, element| {
-                match element {
-                    // These are optimized to avoid allocations where possible
-                    ArrayElement::Expression(expression) => {
-                        let value = expression.eval(state)?;
-                        Ok(acc.insert(value))
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+        let array = self
+            .elements
+            .iter()
+            .try_fold::<_, _, RuntimeResult<Array>>(
+                Array::default(),
+                |acc, element| {
+                    match element {
+                        // These are optimized to avoid allocations where
+                        // possible
+                        ArrayElement::Expression(expression) => {
+                            let value = expression.eval(state)?;
+                            Ok(acc.insert(value))
+                        }
+                        ArrayElement::Spread(expression) => {
+                            let array =
+                                expression.eval(state)?.try_into_array()?;
+                            Ok(acc.insert_all(array))
+                        }
                     }
-                    ArrayElement::Spread(expression) => {
-                        let array = expression.eval(state)?.try_into_array()?;
-                        Ok(acc.insert_all(array))
-                    }
-                }
-            },
-        )?;
+                },
+            )?;
         Ok(array.into())
     }
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let object = self.properties.iter().try_fold(
             Object::default(),
             |acc, property| match property {
@@ -129,7 +135,7 @@ impl Evaluate for ObjectLiteral {
                     // Shorthand notation: { field }
                     let name = identifier.to_str().to_owned();
                     let value = state.scope().get(&name)?;
-                    Ok::<_, Error>(acc.insert(name, value))
+                    Ok::<_, RuntimeError>(acc.insert(name, value))
                 }
                 ObjectProperty::Spread(expression) => {
                     let object = expression.eval(state)?.try_into_object()?;
@@ -142,19 +148,19 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, _: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, _: &mut RuntimeState) -> RuntimeResult<Value> {
         todo!()
     }
 }
 
 impl Evaluate for FunctionCall {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let function = self.function.eval(state)?;
         let arguments = self
             .arguments
             .iter()
             .map(|arg| arg.eval(state))
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<RuntimeResult<Vec<_>>>()?;
 
         match function {
             Value::Function(function) => function.call(&arguments, state),
@@ -165,7 +171,7 @@ impl Evaluate for FunctionCall {
             | Value::Number(_)
             | Value::String(_)
             | Value::Array(_)
-            | Value::Object(_) => Err(Error::Type {
+            | Value::Object(_) => Err(RuntimeError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
             }),
@@ -174,7 +180,7 @@ impl Evaluate for FunctionCall {
 }
 
 impl Evaluate for PropertyAccess {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let value = self.expression.eval(state)?;
         let key: Value = match &self.property {
             PropertyName::Literal(identifier) => identifier.to_str().into(),
@@ -185,7 +191,7 @@ impl Evaluate for PropertyAccess {
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let target = self.expression.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
@@ -201,7 +207,7 @@ impl Evaluate for OptionalPropertyAccess {
 }
 
 impl Evaluate for AssignOperation {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let name = match &self.lhs {
             Binding::Identifier(identifier) => identifier.to_str(),
             Binding::Pattern(_) => todo!(),
@@ -226,7 +232,7 @@ impl Evaluate for AssignOperation {
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let _ = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => todo!(),
@@ -236,7 +242,7 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(&self, state: &mut RuntimeState) -> Result<Value> {
+    fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let lhs = self.lhs.eval(state)?;
         let rhs = self.rhs.eval(state)?;
         match self.operator {
@@ -261,7 +267,11 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    fn call(&self, args: &[Value], state: &mut RuntimeState) -> Result<Value> {
+    fn call(
+        &self,
+        args: &[Value],
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Value> {
         // Start with the function's captured scope
         let mut scope = self.scope().clone();
 

@@ -1,6 +1,6 @@
 use crate::{
     ast::Script,
-    error::Result,
+    error::RuntimeResult,
     runtime::{exec::Execute, module::Module, scope::Scope},
     value::Value,
 };
@@ -35,13 +35,13 @@ impl RuntimeState {
     }
 
     /// Execute a parsed script
-    pub fn exec(&mut self, script: &Script) -> Result<()> {
+    pub fn exec(&mut self, script: &Script) -> RuntimeResult<()> {
         script.statements.exec(self)?;
         Ok(())
     }
 
     /// TODO
-    pub fn into_module(mut self) -> Result<Module> {
+    pub fn into_module(mut self) -> RuntimeResult<Module> {
         // Only values in the global scope can be exported
         let scope = &self.global_scope;
         Ok(Module {
@@ -53,7 +53,7 @@ impl RuntimeState {
                     let value = scope.get(&name)?;
                     Ok((name, value))
                 })
-                .collect::<Result<_>>()?,
+                .collect::<RuntimeResult<_>>()?,
         })
     }
 
@@ -100,14 +100,14 @@ impl RuntimeState {
     }
 
     /// TODO
-    pub(super) fn export(&mut self, name: String) -> Result<()> {
+    pub(super) fn export(&mut self, name: String) -> RuntimeResult<()> {
         // TODO error on duplicate export
         self.export_names.push(name);
         Ok(())
     }
 
     /// TODO
-    pub(super) fn export_default(&mut self, value: Value) -> Result<()> {
+    pub(super) fn export_default(&mut self, value: Value) -> RuntimeResult<()> {
         // TODO error if something is already exported
         self.export_default = Some(value);
         Ok(())

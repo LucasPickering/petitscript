@@ -1,7 +1,7 @@
 use crate::{
-    ast::Script,
+    ast::Module,
     error::RuntimeResult,
-    runtime::{exec::Execute, module::Module, scope::Scope},
+    runtime::{exec::Execute, exports::Exports, scope::Scope},
     value::Value,
 };
 
@@ -35,16 +35,16 @@ impl RuntimeState {
     }
 
     /// Execute a parsed script
-    pub fn exec(&mut self, script: &Script) -> RuntimeResult<()> {
+    pub fn exec(&mut self, script: &Module) -> RuntimeResult<()> {
         script.statements.exec(self)?;
         Ok(())
     }
 
     /// TODO
-    pub fn into_module(mut self) -> RuntimeResult<Module> {
+    pub fn into_exports(mut self) -> RuntimeResult<Exports> {
         // Only values in the global scope can be exported
         let scope = &self.global_scope;
-        Ok(Module {
+        Ok(Exports {
             default: self.export_default.take(),
             named: self
                 .export_names

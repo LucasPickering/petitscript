@@ -1,54 +1,57 @@
 use crate::value::ValueType;
-use chumsky::error::Rich;
+use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
     io,
 };
 use thiserror::Error;
 
+pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
+
 /// TODO
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    Load(#[from] LoadError),
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Parse(#[from] ParseError),
+    #[error(transparent)]
+    Transform(#[from] TransformError),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 }
 
-/// An error that occurred while loading/parsing source code
 #[derive(Debug, Error)]
-pub enum LoadError {
-    /// TODO
-    #[error(transparent)]
-    Io(#[from] io::Error),
-
-    /// TODO
-    Parse {
-        source_name: Option<String>,
-        errors: Vec<Rich<'static, char>>,
-    },
+pub struct ParseError {
+    pub source_name: Option<String>,
+    pub errors: Vec<ParserError>,
 }
 
-impl Display for LoadError {
+impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(_) => todo!(),
-            Self::Parse {
-                source_name,
-                errors,
-            } => {
-                let name = source_name.as_deref().unwrap_or("source code");
-                writeln!(f, "Error parsing {name}:")?;
-                for error in errors {
-                    writeln!(f, "  {error}")?;
-                }
-                Ok(())
-            }
+        let name = self.source_name.as_deref().unwrap_or("source code");
+        writeln!(f, "Error parsing {name}:")?;
+        for error in &self.errors {
+            writeln!(f, "  {error:?}")?;
         }
+        Ok(())
     }
 }
 
-pub(crate) type RuntimeResult<T> = std::result::Result<T, RuntimeError>;
+/// TODO
+#[derive(Debug, Error)]
+pub enum TransformError {
+    /// Source code contains a syntax construct that isn't supported in our
+    /// semantics
+    #[error("Unsupported: {name}; {help}")]
+    Unsupported {
+        name: &'static str,
+        help: &'static str,
+    },
+    /// TODO
+    #[error("TODO")]
+    Missing,
+}
 
 /// An error that occurred while executing a script or module
 #[derive(Debug, Error)]

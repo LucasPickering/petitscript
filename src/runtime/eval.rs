@@ -210,7 +210,8 @@ impl Evaluate for AssignOperation {
     fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
         let name = match &self.lhs {
             Binding::Identifier(identifier) => identifier.to_str(),
-            Binding::Pattern(_) => todo!(),
+            Binding::Object(_) => todo!(),
+            Binding::Array(_) => todo!(),
         };
         let value = self.rhs.eval(state)?;
         match self.operator {
@@ -224,7 +225,7 @@ impl Evaluate for AssignOperation {
             AssignOperator::Mul => todo!(),
             AssignOperator::Div => todo!(),
             AssignOperator::Mod => todo!(),
-            AssignOperator::Coalesce => todo!(),
+            AssignOperator::NullishCoalesce => todo!(),
             AssignOperator::BooleanAnd => todo!(),
             AssignOperator::BooleanOr => todo!(),
         }

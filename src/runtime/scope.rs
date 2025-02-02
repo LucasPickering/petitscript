@@ -102,7 +102,8 @@ impl Scope {
                 self.declare(name.clone(), value, mutable);
                 Ok(vec![name])
             }
-            ast::Binding::Pattern(_) => todo!(),
+            ast::Binding::Object(_) => todo!(),
+            ast::Binding::Array(_) => todo!(),
         }
     }
 }

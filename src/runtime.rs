@@ -1,6 +1,6 @@
 mod eval;
 mod exec;
-pub mod module;
+pub mod exports;
 pub mod scope;
 pub mod state;
 

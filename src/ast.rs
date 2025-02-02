@@ -5,12 +5,13 @@
 
 /// TODO
 #[derive(Clone, Debug)]
-pub struct Script {
+pub struct Module {
     pub statements: Box<[Statement]>,
 }
 
 #[derive(Clone, Debug)]
 pub enum Statement {
+    Empty,
     Block(Block),
     Expression(Expression),
     Declaration(Declaration),
@@ -60,6 +61,9 @@ pub struct Variable {
 pub struct FunctionDeclaration {
     pub name: Option<Identifier>,
     pub parameters: Box<[FunctionParameter]>,
+    /// We don't use [Block] here because we don't need this to create a new
+    /// scope when entering. Function calls have special logic to create a new
+    /// scope already.
     pub body: Box<[Statement]>,
 }
 
@@ -175,8 +179,27 @@ pub struct ArrayLiteral {
 }
 
 #[derive(Clone, Debug)]
+pub enum ArrayElement {
+    Expression(Expression),
+    Spread(Expression),
+}
+
+#[derive(Clone, Debug)]
 pub struct ObjectLiteral {
     pub properties: Box<[ObjectProperty]>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ObjectProperty {
+    /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
+    Property {
+        property: PropertyName,
+        expression: Expression,
+    },
+    /// Identifier shorthand: `{ name }`
+    Identifier(Identifier),
+    /// Spread: `{ ...other }`
+    Spread(Expression),
 }
 
 #[derive(Clone, Debug)]
@@ -301,27 +324,8 @@ pub enum AssignOperator {
     /// `x ||= y`
     BooleanOr,
     /// `x ??= y`
-    Coalesce,
+    NullishCoalesce,
     // TODO bitwise operations, exponent
-}
-
-#[derive(Clone, Debug)]
-pub enum ArrayElement {
-    Expression(Expression),
-    Spread(Expression),
-}
-
-#[derive(Clone, Debug)]
-pub enum ObjectProperty {
-    /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
-    Property {
-        property: PropertyName,
-        expression: Expression,
-    },
-    /// Identifier shorthand: `{ name }`
-    Identifier(Identifier),
-    /// Spread: `{ ...other }`
-    Spread(Expression),
 }
 
 #[derive(Clone, Debug)]
@@ -334,12 +338,8 @@ pub enum PropertyName {
 
 #[derive(Clone, Debug)]
 pub enum Binding {
+    /// `const x = 3`
     Identifier(Identifier),
-    Pattern(Pattern),
-}
-
-#[derive(Clone, Debug)]
-pub enum Pattern {
     /// An object pattern: `const { a, b, c } = object`
     Object(Box<[ObjectPatternElement]>),
     /// An array pattern: `const [a, b, c] = array`
@@ -348,7 +348,22 @@ pub enum Pattern {
 
 #[derive(Clone, Debug)]
 pub enum ObjectPatternElement {
-    // TODO
+    /// `const { x } = object` or `const { x = 3 } = object`
+    Identifier {
+        identifier: Identifier,
+        init: Option<Expression>,
+    },
+    /// `const { x: x2 } = object` or `const { x: x2 = 3 } = object`
+    Mapped {
+        key: PropertyName,
+        value: Binding,
+        init: Option<Expression>,
+    },
+    /// `const { ...x } = object` or `const { ...x = {} } = object`
+    Rest {
+        binding: Binding,
+        init: Option<Expression>,
+    },
 }
 
 #[derive(Clone, Debug)]

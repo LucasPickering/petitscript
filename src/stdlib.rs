@@ -1,12 +1,12 @@
 //! The PetitJS standard library
 
 use crate::{
-    error::RuntimeResult, runtime::module::Module, value::Object, Value,
+    error::RuntimeResult, runtime::exports::Exports, value::Object, Value,
 };
 
 /// TODO
-pub fn stdlib() -> Module {
-    Module {
+pub fn stdlib() -> Exports {
+    Exports {
         default: None,
         named: [("console".into(), console().into())].into_iter().collect(),
     }

@@ -43,6 +43,7 @@ impl Execute for Statement {
         state: &mut RuntimeState,
     ) -> RuntimeResult<Option<Terminate>> {
         match self {
+            Self::Empty => Ok(None),
             Self::Block(block) => {
                 // A block gets a new lexical scope
                 state.with_subscope(|state| block.statements.exec(state))

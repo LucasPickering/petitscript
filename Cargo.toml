@@ -14,8 +14,8 @@ name = "petit_js"
 path = "src/main.rs"
 
 [dependencies]
-chumsky = {version = "1.0.0-alpha.8", default-features = false, features = ["std"]}
 indexmap = {version = "2.7.0", features = ["serde"]}
+rslint_parser = "0.3.1"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
 thiserror = "2.0.10"
 

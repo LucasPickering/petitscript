@@ -8,14 +8,14 @@ use std::{
 
 /// TODO
 #[derive(Debug, Default)]
-pub struct Module {
+pub struct Exports {
     /// Default exported value
     pub default: Option<Value>,
     /// Named exported values
     pub named: HashMap<String, Value>,
 }
 
-impl Display for Module {
+impl Display for Exports {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(default) = &self.default {
             writeln!(f, "(default): {default}")?;

@@ -12,6 +12,7 @@ pub use object::Object;
 
 use crate::{error::RuntimeResult, RuntimeError};
 use std::{
+    collections::HashMap,
     fmt::{self, Display},
     ops::{Add, Deref, Div, Mul, Rem, Sub},
     sync::Arc,
@@ -343,5 +344,26 @@ impl Display for JsString {
 impl From<&str> for JsString {
     fn from(value: &str) -> Self {
         Self(value.into())
+    }
+}
+
+/// Values exported from a module. This is the output of loading a module.
+#[derive(Debug, Default)]
+pub struct Exports {
+    /// Default exported value
+    pub default: Option<Value>,
+    /// Named exported values
+    pub named: HashMap<String, Value>,
+}
+
+impl Display for Exports {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(default) = &self.default {
+            writeln!(f, "(default): {default}")?;
+        }
+        for (name, value) in &self.named {
+            writeln!(f, "{name}: {value}")?;
+        }
+        Ok(())
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
-    runtime::scope::Scope,
+    execute::scope::Scope,
     value::Value,
 };
 use std::{

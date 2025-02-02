@@ -6,7 +6,7 @@ use crate::{
         ImportDeclaration, Label, LexicalDeclaration, Statement,
     },
     error::RuntimeResult,
-    runtime::{eval::Evaluate, state::RuntimeState},
+    execute::{eval::Evaluate, RuntimeState},
     value::{Function, Value},
 };
 

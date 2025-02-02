@@ -1,4 +1,5 @@
-//! Parser-combinator go brrrrr
+//! Parse some source code via the rslint parser, than convert from their lazy
+//! AST to our own types
 
 use crate::{
     ast::{

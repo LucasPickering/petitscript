@@ -1,7 +1,9 @@
 //! The PetitJS standard library
 
 use crate::{
-    error::RuntimeResult, runtime::exports::Exports, value::Object, Value,
+    error::RuntimeResult,
+    value::{Exports, Object},
+    Value,
 };
 
 /// TODO

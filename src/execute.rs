@@ -1,8 +1,14 @@
+//! Code execution and evaluation
+
+mod eval;
+mod exec;
+pub mod scope;
+
 use crate::{
     ast::Module,
     error::RuntimeResult,
-    runtime::{exec::Execute, exports::Exports, scope::Scope},
-    value::Value,
+    execute::{exec::Execute, scope::Scope},
+    value::{Exports, Value},
 };
 
 /// TODO
@@ -58,7 +64,7 @@ impl RuntimeState {
     }
 
     /// TODO
-    pub(super) fn scope(&self) -> &Scope {
+    fn scope(&self) -> &Scope {
         if let Some(last) = self.stack_frames.last() {
             last
         } else {
@@ -67,7 +73,7 @@ impl RuntimeState {
     }
 
     /// TODO
-    pub(super) fn scope_mut(&mut self) -> &mut Scope {
+    fn scope_mut(&mut self) -> &mut Scope {
         if let Some(last) = self.stack_frames.last_mut() {
             last
         } else {
@@ -76,7 +82,7 @@ impl RuntimeState {
     }
 
     /// Execute a function within a new frame on the stack
-    pub(super) fn with_frame<T>(
+    fn with_frame<T>(
         &mut self,
         scope: Scope,
         f: impl FnOnce(&mut Self) -> T,
@@ -89,10 +95,7 @@ impl RuntimeState {
 
     /// Execute a function in a new scope that's a child of the current scope.
     /// Use this for blocks such as ifs, loops, etc.
-    pub(super) fn with_subscope<T>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
+    fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         self.scope_mut().subscope();
         let value = f(self);
         self.scope_mut().revert();
@@ -100,14 +103,14 @@ impl RuntimeState {
     }
 
     /// TODO
-    pub(super) fn export(&mut self, name: String) -> RuntimeResult<()> {
+    fn export(&mut self, name: String) -> RuntimeResult<()> {
         // TODO error on duplicate export
         self.export_names.push(name);
         Ok(())
     }
 
     /// TODO
-    pub(super) fn export_default(&mut self, value: Value) -> RuntimeResult<()> {
+    fn export_default(&mut self, value: Value) -> RuntimeResult<()> {
         // TODO error if something is already exported
         self.export_default = Some(value);
         Ok(())

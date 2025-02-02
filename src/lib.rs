@@ -3,17 +3,17 @@
 
 mod ast;
 mod error;
+mod execute;
 mod parse;
-mod runtime;
 mod stdlib;
 mod value;
 
-use crate::{error::Error, runtime::state::RuntimeState};
 pub use crate::{
     error::RuntimeError,
-    runtime::exports::Exports,
-    value::{Array, Function, JsString, Number, Object, Value},
+    value::{Array, Exports, Function, JsString, Number, Object, Value},
 };
+
+use crate::{error::Error, execute::RuntimeState, value::NativeFunctionTrait};
 use std::{borrow::Cow, fs, path::Path};
 
 /// TODO
@@ -24,6 +24,12 @@ impl Engine {
     /// TODO
     pub fn new() -> Self {
         Self {}
+    }
+
+    /// Register a function to be available in the global namespace for all
+    /// code execution in this runtime
+    pub fn register_fn(&mut self, name: String, f: impl NativeFunctionTrait) {
+        todo!()
     }
 
     /// TODO

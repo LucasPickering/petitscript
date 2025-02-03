@@ -2,6 +2,7 @@ use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
     scope::Scope,
+    util::BoxFuture,
     value::Value,
     FromJs, IntoJs, RuntimeError,
 };
@@ -128,10 +129,7 @@ pub trait IntoNativeFunction<In, Out, Err> {
 pub struct AsyncNativeFunction {
     // TODO track name
     function: Arc<
-        dyn Fn(
-                Vec<Value>,
-            )
-                -> Pin<Box<dyn Future<Output = RuntimeResult<Value>>>>
+        dyn Fn(Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
             + Send
             + Sync,
     >,

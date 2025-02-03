@@ -7,9 +7,9 @@ use crate::{
     },
     error::RuntimeResult,
     execute::{eval::Evaluate, ExecutionState},
+    util::FutureExt as _,
     value::{Function, Value},
 };
-use futures::FutureExt;
 
 /// TODO
 pub trait Execute {
@@ -55,7 +55,7 @@ impl Execute for Statement {
                 // A block gets a new lexical scope
                 state
                     .with_subscope(async |state| {
-                        block.statements.exec(state).boxed_local().await
+                        block.statements.exec(state).boxed().await
                     })
                     .await
             }
@@ -72,16 +72,16 @@ impl Execute for Statement {
 
             Self::If(if_statement) => {
                 if if_statement.condition.eval(state).await?.to_bool() {
-                    if_statement.body.exec(state).boxed_local().await
+                    if_statement.body.exec(state).boxed().await
                 } else if let Some(statement) = &if_statement.else_body {
-                    statement.exec(state).boxed_local().await
+                    statement.exec(state).boxed().await
                 } else {
                     Ok(None)
                 }
             }
             Self::DoWhileLoop(do_while_loop) => {
                 loop {
-                    do_while_loop.body.exec(state).boxed_local().await?;
+                    do_while_loop.body.exec(state).boxed().await?;
                     if !do_while_loop.condition.eval(state).await?.to_bool() {
                         break;
                     }
@@ -90,7 +90,7 @@ impl Execute for Statement {
             }
             Self::WhileLoop(while_loop) => {
                 while while_loop.condition.eval(state).await?.to_bool() {
-                    while_loop.body.exec(state).boxed_local().await?;
+                    while_loop.body.exec(state).boxed().await?;
                 }
                 Ok(None)
             }

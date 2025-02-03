@@ -278,7 +278,7 @@ impl Transform for ext::Pattern {
             Self::SinglePattern(single_pattern) => {
                 single_pattern.transform().map(Binding::Identifier)
             }
-            Self::ArrayPattern(array_pattern) => todo!(),
+            Self::ArrayPattern(_) => todo!(),
             Self::ObjectPattern(object_pattern) => {
                 object_pattern.elements().transform().map(Binding::Object)
             }
@@ -312,7 +312,7 @@ impl Transform for ext::ObjectPatternProp {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
-            Self::AssignPattern(assign_pattern) => todo!(),
+            Self::AssignPattern(_) => todo!(),
             Self::KeyValuePattern(key_value_pattern) => {
                 let key = key_value_pattern.key().present()?.transform()?;
                 let value = key_value_pattern.value().present()?.transform()?;
@@ -477,19 +477,19 @@ impl Transform for ext::Expr {
             Self::CallExpr(call_expr) => {
                 call_expr.transform().map(Expression::Call)
             }
-            Self::UnaryExpr(unary_expr) => todo!(),
+            Self::UnaryExpr(_) => todo!(),
             Self::BinExpr(bin_expr) => {
                 bin_expr.transform().map(Expression::Binary)
             }
-            Self::CondExpr(cond_expr) => todo!(),
+            Self::CondExpr(_) => todo!(),
             Self::AssignExpr(assign_expr) => {
                 assign_expr.transform().map(Expression::Assign)
             }
-            Self::SequenceExpr(sequence_expr) => todo!(),
+            Self::SequenceExpr(_) => todo!(),
             Self::ArrowExpr(arrow_expr) => {
                 arrow_expr.transform().map(Expression::ArrowFunction)
             }
-            Self::FnExpr(fn_expr) => todo!("wtf is this?"),
+            Self::FnExpr(_) => todo!("wtf is this?"),
 
             // Unsupported
             Self::ThisExpr(_) => {

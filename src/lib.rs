@@ -7,12 +7,13 @@ mod execute;
 mod parse;
 mod scope;
 mod stdlib;
+mod util;
 mod value;
 
 #[cfg(feature = "serde")]
 pub use crate::value::cereal::SerdeJs;
 pub use crate::{
-    error::{RuntimeError, RuntimeResult},
+    error::{Error, RuntimeError, RuntimeResult},
     execute::Process,
     value::{
         Array, AsyncNativeFunction, Exports, FromJs, Function,
@@ -21,7 +22,7 @@ pub use crate::{
     },
 };
 
-use crate::{error::Error, scope::Scope, stdlib::stdlib};
+use crate::{scope::Scope, stdlib::stdlib};
 use std::{borrow::Cow, fs, path::Path};
 
 /// The main entrypoint for executing and evaluating PetitJS programs. An engine
@@ -78,7 +79,7 @@ impl Engine {
 
     /// Parse some source code into a loaded program. The returned [Process] can
     /// be used to execute the program.
-    pub async fn load(&self, source: impl Source) -> Result<Process, Error> {
+    pub fn load(&self, source: impl Source) -> Result<Process, Error> {
         let program = parse::parse(source)?;
         Ok(Process::new(self.globals.clone(), program))
     }

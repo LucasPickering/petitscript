@@ -8,7 +8,10 @@ mod number;
 mod object;
 
 pub use array::Array;
-pub use function::{Function, IntoNativeFunction, NativeFunction};
+pub use function::{
+    AsyncNativeFunction, Function, IntoAsyncNativeFunction, IntoNativeFunction,
+    NativeFunction,
+};
 pub use number::Number;
 pub use object::Object;
 
@@ -33,6 +36,7 @@ pub enum Value {
     Object(Object),
     Function(Function),
     Native(NativeFunction),
+    AsyncNative(AsyncNativeFunction),
 }
 
 impl Value {
@@ -47,7 +51,8 @@ impl Value {
             Self::Array(_)
             | Self::Object(_)
             | Self::Function(_)
-            | Self::Native(_) => true,
+            | Self::Native(_)
+            | Self::AsyncNative(_) => true,
         }
     }
 
@@ -73,7 +78,8 @@ impl Value {
             | Self::Array(_)
             | Self::Object(_)
             | Self::Function(_)
-            | Self::Native(_) => None,
+            | Self::Native(_)
+            | Self::AsyncNative(_) => None,
         }
     }
 
@@ -126,7 +132,9 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
-            Self::Function(_) | Self::Native(_) => ValueType::Function,
+            Self::Function(_) | Self::Native(_) | Self::AsyncNative(_) => {
+                ValueType::Function
+            }
         }
     }
 
@@ -181,6 +189,7 @@ impl Display for Value {
             Self::Object(object) => write!(f, "{object}"),
             Self::Function(function) => write!(f, "{function}"),
             Self::Native(function) => write!(f, "{function}"),
+            Self::AsyncNative(function) => write!(f, "{function}"),
         }
     }
 }
@@ -280,6 +289,12 @@ impl From<Function> for Value {
 impl From<NativeFunction> for Value {
     fn from(function: NativeFunction) -> Self {
         Self::Native(function)
+    }
+}
+
+impl From<AsyncNativeFunction> for Value {
+    fn from(function: AsyncNativeFunction) -> Self {
+        Self::AsyncNative(function)
     }
 }
 

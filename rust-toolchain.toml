@@ -1,4 +1,5 @@
 [toolchain]
 # Keep in sync w/ MSRV
-channel = "1.82.0"
+# TODO make stable
+channel = "beta"
 components = ["cargo", "clippy", "rustfmt"]

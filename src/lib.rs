@@ -13,7 +13,8 @@ pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{RuntimeError, RuntimeResult},
     value::{
-        Array, Exports, FromJs, Function, IntoJs, IntoNativeFunction, JsString,
+        Array, AsyncNativeFunction, Exports, FromJs, Function,
+        IntoAsyncNativeFunction, IntoJs, IntoNativeFunction, JsString,
         NativeFunction, Number, Object, Value,
     },
 };
@@ -64,10 +65,20 @@ impl Engine {
     }
 
     /// TODO
-    pub fn load(&self, source: impl Source) -> Result<Exports, Error> {
+    pub fn register_async_fn<In, Out, Err>(
+        &mut self,
+        name: impl ToString,
+        function: impl IntoAsyncNativeFunction<In, Out, Err>,
+    ) {
+        self.globals
+            .insert(name.to_string(), function.into_native_fn().into());
+    }
+
+    /// TODO
+    pub async fn load(&self, source: impl Source) -> Result<Exports, Error> {
         let script = parse::parse(source)?;
         let mut state = RuntimeState::new();
-        state.exec(&script)?;
+        state.exec(&script).await?;
         let module = state.into_exports()?;
         Ok(module)
     }

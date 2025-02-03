@@ -9,12 +9,16 @@ use crate::{
     execute::{eval::Evaluate, RuntimeState},
     value::{Function, Value},
 };
+use futures::FutureExt;
 
 /// TODO
 pub trait Execute {
     type Output;
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output>;
+    async fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Self::Output>;
 }
 
 impl<T, O> Execute for [T]
@@ -23,9 +27,9 @@ where
 {
     type Output = Option<O>;
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Option<O>> {
+    async fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Option<O>> {
         for statement in self {
-            let output = statement.exec(state)?;
+            let output = statement.exec(state).await?;
             if let Some(output) = output {
                 return Ok(Some(output));
             }
@@ -38,7 +42,7 @@ impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
     type Output = Option<Terminate>;
 
-    fn exec(
+    async fn exec(
         &self,
         state: &mut RuntimeState,
     ) -> RuntimeResult<Option<Terminate>> {
@@ -46,41 +50,44 @@ impl Execute for Statement {
             Self::Empty => Ok(None),
             Self::Block(block) => {
                 // A block gets a new lexical scope
-                state.with_subscope(|state| block.statements.exec(state))
+                state
+                    .with_subscope(async |state| {
+                        block.statements.exec(state).boxed_local().await
+                    })
+                    .await
             }
             Self::Expression(expression) => {
                 // Expression may have side effects, so evaluate it and throw
                 // away the outcome
-                expression.eval(state)?;
+                expression.eval(state).await?;
                 Ok(None)
             }
             Self::Declaration(declaration) => {
-                declaration.exec(state)?;
+                declaration.exec(state).await?;
                 Ok(None)
             }
 
             Self::If(if_statement) => {
-                if if_statement.condition.eval(state)?.to_bool() {
-                    if_statement.body.exec(state)
+                if if_statement.condition.eval(state).await?.to_bool() {
+                    if_statement.body.exec(state).boxed_local().await
                 } else if let Some(statement) = &if_statement.else_body {
-                    statement.exec(state)
+                    statement.exec(state).boxed_local().await
                 } else {
                     Ok(None)
                 }
             }
             Self::DoWhileLoop(do_while_loop) => {
                 loop {
-                    do_while_loop.body.exec(state)?;
-                    if !do_while_loop.condition.eval(state)?.to_bool() {
+                    do_while_loop.body.exec(state).boxed_local().await?;
+                    if !do_while_loop.condition.eval(state).await?.to_bool() {
                         break;
                     }
                 }
                 Ok(None)
             }
             Self::WhileLoop(while_loop) => {
-                dbg!(while_loop);
-                while while_loop.condition.eval(state)?.to_bool() {
-                    while_loop.body.exec(state)?;
+                while while_loop.condition.eval(state).await?.to_bool() {
+                    while_loop.body.exec(state).boxed_local().await?;
                 }
                 Ok(None)
             }
@@ -94,19 +101,20 @@ impl Execute for Statement {
                 label: label.clone(),
             })),
             Self::Return(expression) => {
-                let return_value = expression
-                    .as_ref()
-                    .map(|expression| expression.eval(state))
-                    .transpose()?;
+                let return_value = if let Some(expression) = expression {
+                    Some(expression.eval(state).await?)
+                } else {
+                    None
+                };
                 Ok(Some(Terminate::Return { return_value }))
             }
 
             Self::Import(import) => {
-                import.exec(state)?;
+                import.exec(state).await?;
                 Ok(None)
             }
             Self::Export(export) => {
-                export.exec(state)?;
+                export.exec(state).await?;
                 Ok(None)
             }
         }
@@ -116,12 +124,12 @@ impl Execute for Statement {
 impl Execute for Block {
     type Output = Option<Terminate>;
 
-    fn exec(
+    async fn exec(
         &self,
         state: &mut RuntimeState,
     ) -> RuntimeResult<Option<Terminate>> {
         for statement in &self.statements {
-            if let Some(terminate) = statement.exec(state)? {
+            if let Some(terminate) = statement.exec(state).await? {
                 return Ok(Some(terminate));
             }
         }
@@ -132,7 +140,7 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    fn exec(&self, _: &mut RuntimeState) -> RuntimeResult<()> {
+    async fn exec(&self, _: &mut RuntimeState) -> RuntimeResult<()> {
         todo!()
     }
 }
@@ -140,11 +148,11 @@ impl Execute for ImportDeclaration {
 impl Execute for ExportDeclaration {
     type Output = ();
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<()> {
+    async fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<()> {
         match self {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
-                for name in declaration.exec(state)? {
+                for name in declaration.exec(state).await? {
                     state.export(name)?;
                 }
                 Ok(())
@@ -152,13 +160,14 @@ impl Execute for ExportDeclaration {
             ExportDeclaration::DefaultFunctionDeclaration(
                 function_declaration,
             ) => {
-                let name = function_declaration.exec(state)?.expect("TODO");
+                let name =
+                    function_declaration.exec(state).await?.expect("TODO");
                 // Fetch the function we just declared. Should never fail
                 let value = state.scope().get(&name)?;
                 state.export_default(value)
             }
             ExportDeclaration::DefaultExpression(expression) => {
-                let value = expression.eval(state)?;
+                let value = expression.eval(state).await?;
                 state.export_default(value)
             }
         }
@@ -168,13 +177,17 @@ impl Execute for ExportDeclaration {
 impl Execute for Declaration {
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output> {
+    async fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Self::Output> {
         match self {
             Self::Lexical(lexical_declaration) => {
-                lexical_declaration.exec(state)
+                lexical_declaration.exec(state).await
             }
             Self::Function(function_declaration) => {
-                let name = function_declaration.exec(state)?.expect("TODO");
+                let name =
+                    function_declaration.exec(state).await?.expect("TODO");
                 Ok(vec![name])
             }
         }
@@ -185,16 +198,18 @@ impl Execute for LexicalDeclaration {
     /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Vec<String>> {
+    async fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Vec<String>> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
-            let value = variable
-                .init
-                .as_ref()
-                .map(|expr| expr.eval(state))
-                .transpose()?
-                .unwrap_or_default();
+            let value = if let Some(init) = &variable.init {
+                init.eval(state).await?
+            } else {
+                Value::Undefined
+            };
             let names = state.scope_mut().bind(
                 &variable.binding,
                 value,
@@ -211,7 +226,10 @@ impl Execute for FunctionDeclaration {
     /// Emit declared name
     type Output = Option<String>;
 
-    fn exec(&self, state: &mut RuntimeState) -> RuntimeResult<Self::Output> {
+    async fn exec(
+        &self,
+        state: &mut RuntimeState,
+    ) -> RuntimeResult<Self::Output> {
         let name = self.name.as_ref().map(Identifier::to_str).map(String::from);
         let scope = state.scope_mut();
         let function = Function::new(

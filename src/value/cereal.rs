@@ -24,10 +24,14 @@ impl<'de> serde::Deserialize<'de> for Value {
 /// Helper for converting a value to/from JS using its
 /// [Serialize](serde::Serialize) and/or [Deserialize](serde::Deserialize)
 /// implementations.
+pub struct SerdeJs<T>(pub T);
 
-pub struct SerdeJs<T>(T);
-
-impl<T> SerdeJs<T> {}
+impl<T> SerdeJs<T> {
+    /// Move the inner value out of this wrapper
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
 
 impl<T> Deref for SerdeJs<T> {
     type Target = T;

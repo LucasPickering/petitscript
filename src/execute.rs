@@ -40,9 +40,10 @@ impl RuntimeState {
         }
     }
 
-    /// Execute a parsed script
-    pub fn exec(&mut self, script: &Module) -> RuntimeResult<()> {
-        script.statements.exec(self)?;
+    /// Execute a parsed module
+    /// TODO combine with into_exports?
+    pub async fn exec(&mut self, script: &Module) -> RuntimeResult<()> {
+        script.statements.exec(self).await?;
         Ok(())
     }
 
@@ -82,22 +83,25 @@ impl RuntimeState {
     }
 
     /// Execute a function within a new frame on the stack
-    fn with_frame<T>(
+    async fn with_frame<T>(
         &mut self,
         scope: Scope,
-        f: impl FnOnce(&mut Self) -> T,
+        f: impl AsyncFnOnce(&mut Self) -> T,
     ) -> T {
         self.stack_frames.push(scope);
-        let value = f(self);
+        let value = f(self).await;
         self.stack_frames.pop();
         value
     }
 
     /// Execute a function in a new scope that's a child of the current scope.
     /// Use this for blocks such as ifs, loops, etc.
-    fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
+    async fn with_subscope<T>(
+        &mut self,
+        f: impl AsyncFnOnce(&mut Self) -> T,
+    ) -> T {
         self.scope_mut().subscope();
-        let value = f(self);
+        let value = f(self).await;
         self.scope_mut().revert();
         value
     }

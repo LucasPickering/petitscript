@@ -1,17 +1,16 @@
 //! The PetitJS standard library
 
 use crate::{
-    error::RuntimeResult,
-    value::{Exports, Object},
-    IntoNativeFunction, Value,
+    error::RuntimeResult, scope::Scope, value::Object, IntoNativeFunction,
+    Value,
 };
 
-/// TODO
-pub fn stdlib() -> Exports {
-    Exports {
-        default: None,
-        named: [("console".into(), console().into())].into_iter().collect(),
-    }
+/// Create a scope containing the entire standard library. This needs to be
+/// recreated for every execution
+pub fn stdlib() -> Scope {
+    let mut scope = Scope::new();
+    scope.declare("console", console().into(), false);
+    scope
 }
 
 /// `console` module

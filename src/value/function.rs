@@ -1,7 +1,7 @@
 use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
-    execute::scope::Scope,
+    scope::Scope,
     value::Value,
     FromJs, IntoJs, RuntimeError,
 };

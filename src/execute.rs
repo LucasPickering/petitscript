@@ -2,23 +2,86 @@
 
 mod eval;
 mod exec;
-pub mod scope;
 
 use crate::{
-    ast::Module,
+    ast::Program,
     error::RuntimeResult,
-    execute::{exec::Execute, scope::Scope},
+    execute::exec::Execute,
+    scope::Scope,
     value::{Exports, Value},
+    Function,
 };
 
 /// TODO
+/// TODO rename
 #[derive(Debug)]
-pub struct RuntimeState {
-    /// The topmost scope in a script/module. Global scope is unique in a few
+pub struct Process {
+    /// The program we'll be executing
+    program: Program,
+    state: ExecutionState,
+}
+
+impl Process {
+    /// TODO
+    pub(crate) fn new(globals: Scope, program: Program) -> Self {
+        Self {
+            program,
+            state: ExecutionState {
+                root_scope: globals.child(),
+                stack_frames: Vec::new(),
+                export_default: None,
+                export_names: Vec::new(),
+            },
+        }
+    }
+
+    /// Execute the loaded program
+    pub async fn execute(&mut self) -> RuntimeResult<()> {
+        self.program.statements.exec(&mut self.state).await?;
+        Ok(())
+    }
+
+    /// Call a function that originated from this process
+    pub async fn call(
+        &mut self,
+        function: &Function,
+        arguments: &[Value],
+    ) -> RuntimeResult<Value> {
+        function.call(arguments, &mut self.state).await
+    }
+
+    /// Get the values exported by the root module of this <TODO name here>
+    pub fn exports(&self) -> Exports {
+        // Only values in the root scope can be exported
+        let scope = &self.state.root_scope;
+        Exports {
+            default: self.state.export_default.clone(),
+            named: self
+                .state
+                .export_names
+                .iter()
+                .map(|name| {
+                    let value = scope.get(name)?;
+                    Ok((name.clone(), value))
+                })
+                .collect::<RuntimeResult<_>>()
+                .expect("TODO"),
+        }
+    }
+}
+
+/// TODO
+#[derive(Debug)]
+struct ExecutionState {
+    /// The topmost scope in a script/module. Root scope is unique in a few
     /// ways:
     /// - If the scope stack is empty, this will still be available
-    /// - Only global names can be exported
-    global_scope: Scope,
+    /// - Only root names can be exported
+    ///
+    /// This is *not* the same as the global scope. Global scope comes from
+    /// outside this script (stdlib and user-provided values), and cannot be
+    /// mutated.
+    root_scope: Scope,
     /// The function call stack. In our machine, a stack frame is simply a
     /// scope of names. This should not be confused with the hierarchical
     /// parent/child structure of frames. Pushing a new frame is *not* the same
@@ -30,46 +93,13 @@ pub struct RuntimeState {
     export_names: Vec<String>,
 }
 
-impl RuntimeState {
-    pub fn new() -> Self {
-        Self {
-            global_scope: Scope::global(),
-            stack_frames: Vec::new(),
-            export_default: None,
-            export_names: Vec::new(),
-        }
-    }
-
-    /// Execute a parsed module
-    /// TODO combine with into_exports?
-    pub async fn exec(&mut self, script: &Module) -> RuntimeResult<()> {
-        script.statements.exec(self).await?;
-        Ok(())
-    }
-
-    /// TODO
-    pub fn into_exports(mut self) -> RuntimeResult<Exports> {
-        // Only values in the global scope can be exported
-        let scope = &self.global_scope;
-        Ok(Exports {
-            default: self.export_default.take(),
-            named: self
-                .export_names
-                .drain(..)
-                .map(|name| {
-                    let value = scope.get(&name)?;
-                    Ok((name, value))
-                })
-                .collect::<RuntimeResult<_>>()?,
-        })
-    }
-
+impl ExecutionState {
     /// TODO
     fn scope(&self) -> &Scope {
         if let Some(last) = self.stack_frames.last() {
             last
         } else {
-            &self.global_scope
+            &self.root_scope
         }
     }
 
@@ -78,7 +108,7 @@ impl RuntimeState {
         if let Some(last) = self.stack_frames.last_mut() {
             last
         } else {
-            &mut self.global_scope
+            &mut self.root_scope
         }
     }
 

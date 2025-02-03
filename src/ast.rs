@@ -3,9 +3,9 @@
 
 // TODO comments on everything
 
-/// TODO
+/// Root AST node. This is a parsed program, ready to be executed
 #[derive(Clone, Debug)]
-pub struct Module {
+pub struct Program {
     pub statements: Box<[Statement]>,
 }
 

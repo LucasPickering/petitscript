@@ -11,7 +11,7 @@ use crate::{
     error::RuntimeResult,
     execute::{
         exec::{Execute, Terminate},
-        RuntimeState,
+        ExecutionState,
     },
     value::{Array, Function, Number, Object, Value, ValueType},
     RuntimeError,
@@ -22,12 +22,12 @@ use std::iter;
 /// TODO
 pub trait Evaluate {
     /// TODO
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value>;
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         match self {
             Expression::Parenthesized(expression) => {
                 expression.eval(state).boxed_local().await
@@ -76,7 +76,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -91,7 +91,7 @@ impl Evaluate for Literal {
 }
 
 impl Evaluate for ArrayLiteral {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let mut array = Array::default();
         for element in &self.elements {
             match element {
@@ -116,7 +116,7 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let mut object = Object::default();
         for property in &self.properties {
             match property {
@@ -164,13 +164,13 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    async fn eval(&self, _: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, _: &mut ExecutionState) -> RuntimeResult<Value> {
         todo!()
     }
 }
 
 impl Evaluate for FunctionCall {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let function = self.function.eval(state).boxed_local().await?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
         for argument in &self.arguments {
@@ -197,7 +197,7 @@ impl Evaluate for FunctionCall {
 }
 
 impl Evaluate for PropertyAccess {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let value = self.expression.eval(state).boxed_local().await?;
         let key: Value = match &self.property {
             PropertyName::Literal(identifier) => identifier.to_str().into(),
@@ -210,7 +210,7 @@ impl Evaluate for PropertyAccess {
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let target = self.expression.eval(state).boxed_local().await?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
@@ -227,7 +227,7 @@ impl Evaluate for OptionalPropertyAccess {
 }
 
 impl Evaluate for AssignOperation {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let name = match &self.lhs {
             Binding::Identifier(identifier) => identifier.to_str(),
             Binding::Object(_) => todo!(),
@@ -253,7 +253,7 @@ impl Evaluate for AssignOperation {
 }
 
 impl Evaluate for UnaryOperation {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let _ = self.expression.eval(state).boxed_local().await?;
         match self.operator {
             UnaryOperator::BooleanNot => todo!(),
@@ -263,7 +263,7 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    async fn eval(&self, state: &mut RuntimeState) -> RuntimeResult<Value> {
+    async fn eval(&self, state: &mut ExecutionState) -> RuntimeResult<Value> {
         let lhs = self.lhs.eval(state).boxed_local().await?;
         let rhs = self.rhs.eval(state).boxed_local().await?;
         match self.operator {
@@ -288,10 +288,10 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    async fn call(
+    pub async fn call(
         &self,
-        args: &[Value],
-        state: &mut RuntimeState,
+        arguments: &[Value],
+        state: &mut ExecutionState,
     ) -> RuntimeResult<Value> {
         // Start with the function's captured scope
         let mut scope = self.scope().clone();
@@ -299,8 +299,11 @@ impl Function {
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out
         // with undefineds (or use the init expression defined in the func)
-        let args_iter =
-            args.iter().cloned().map(Some).chain(iter::repeat(None));
+        let args_iter = arguments
+            .iter()
+            .cloned()
+            .map(Some)
+            .chain(iter::repeat(None));
         for (parameter, value) in self.parameters().iter().zip(args_iter) {
             let value = if let Some(value) = value {
                 value

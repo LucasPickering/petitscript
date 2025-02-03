@@ -8,9 +8,9 @@ use crate::{
         Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
         Expression, ForLoop, FunctionCall, FunctionDeclaration,
         FunctionParameter, Identifier, If, ImportDeclaration,
-        LexicalDeclaration, Literal, Module, ObjectLiteral,
-        ObjectPatternElement, ObjectProperty, PropertyAccess, PropertyName,
-        Statement, TemplateLiteral, Variable, WhileLoop,
+        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
+        ObjectProperty, Program, PropertyAccess, PropertyName, Statement,
+        TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -21,7 +21,7 @@ use rslint_parser::{
 };
 
 /// Parse source code into an Abstract Syntax Tree
-pub fn parse(source: impl Source) -> Result<Module, Error> {
+pub fn parse(source: impl Source) -> Result<Program, Error> {
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()
@@ -58,11 +58,11 @@ impl<T: Transform> Transform for Option<T> {
 }
 
 impl Transform for ext::Module {
-    type Output = Module;
+    type Output = Program;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let statements = self.items().transform()?;
-        Ok(Module { statements })
+        Ok(Program { statements })
     }
 }
 

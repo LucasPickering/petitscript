@@ -24,6 +24,7 @@ pub enum Error {
 #[cfg(test)]
 static_assertions::assert_impl_all!(Error: Send, Sync);
 
+/// TODO
 #[derive(Debug, Error)]
 pub struct ParseError {
     pub source_name: Option<String>,

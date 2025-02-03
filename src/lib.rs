@@ -5,6 +5,7 @@ mod ast;
 mod error;
 mod execute;
 mod parse;
+mod scope;
 mod stdlib;
 mod value;
 
@@ -12,6 +13,7 @@ mod value;
 pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{RuntimeError, RuntimeResult},
+    execute::Process,
     value::{
         Array, AsyncNativeFunction, Exports, FromJs, Function,
         IntoAsyncNativeFunction, IntoJs, IntoNativeFunction, JsString,
@@ -19,23 +21,23 @@ pub use crate::{
     },
 };
 
-use crate::{error::Error, execute::RuntimeState};
-use std::{borrow::Cow, collections::HashMap, fs, path::Path};
+use crate::{error::Error, scope::Scope, stdlib::stdlib};
+use std::{borrow::Cow, fs, path::Path};
 
-/// TODO
+/// The main entrypoint for executing and evaluating PetitJS programs. An engine
+/// defines how code should be executed. TODO more
 #[derive(Clone, Debug, Default)]
 pub struct Engine {
     /// User-defined global values. These will be made available to all code
     /// execution
-    globals: HashMap<String, Value>,
+    globals: Scope,
 }
 
 impl Engine {
     /// TODO
     pub fn new() -> Self {
-        Self {
-            globals: HashMap::new(),
-        }
+        // Always start with the standard library
+        Self { globals: stdlib() }
     }
 
     /// Register a value in the global namespace. This will be made available
@@ -50,7 +52,7 @@ impl Engine {
         value: impl IntoJs,
     ) -> RuntimeResult<()> {
         let value = value.into_js()?;
-        self.globals.insert(name.to_string(), value);
+        self.globals.declare(name, value, false);
         Ok(())
     }
 
@@ -61,7 +63,7 @@ impl Engine {
         function: impl IntoNativeFunction<In, Out, Err>,
     ) {
         self.globals
-            .insert(name.to_string(), function.into_native_fn().into());
+            .declare(name, function.into_native_fn().into(), false);
     }
 
     /// TODO
@@ -71,16 +73,14 @@ impl Engine {
         function: impl IntoAsyncNativeFunction<In, Out, Err>,
     ) {
         self.globals
-            .insert(name.to_string(), function.into_native_fn().into());
+            .declare(name, function.into_native_fn().into(), false);
     }
 
-    /// TODO
-    pub async fn load(&self, source: impl Source) -> Result<Exports, Error> {
-        let script = parse::parse(source)?;
-        let mut state = RuntimeState::new();
-        state.exec(&script).await?;
-        let module = state.into_exports()?;
-        Ok(module)
+    /// Parse some source code into a loaded program. The returned [Process] can
+    /// be used to execute the program.
+    pub async fn load(&self, source: impl Source) -> Result<Process, Error> {
+        let program = parse::parse(source)?;
+        Ok(Process::new(self.globals.clone(), program))
     }
 }
 

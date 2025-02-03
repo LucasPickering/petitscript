@@ -1,6 +1,4 @@
-use crate::{
-    ast, error::RuntimeResult, stdlib::stdlib, value::Value, RuntimeError,
-};
+use crate::{ast, error::RuntimeResult, value::Value, RuntimeError};
 use indexmap::IndexMap;
 use std::{
     mem,
@@ -22,14 +20,14 @@ impl Scope {
         Self::default()
     }
 
-    /// Create a global scope, which will include the standard library
-    pub fn global() -> Self {
-        let lib = stdlib();
-        let mut scope = Self::new();
-        for (name, value) in lib.named {
-            scope.declare(name, value, false);
+    /// Create a new scope that's a child of this one. The child will have
+    /// access to all of the parent's existing bindings, but any new
+    /// declarations will occur in the child
+    pub fn child(self) -> Self {
+        Self {
+            parent: Some(Box::new(self)),
+            bindings: Bindings::default(),
         }
-        scope
     }
 
     /// TODO
@@ -51,8 +49,13 @@ impl Scope {
     }
 
     /// TODO
-    pub fn declare(&mut self, name: String, value: Value, mutable: bool) {
-        self.bindings.declare(name, value, mutable);
+    pub fn declare(
+        &mut self,
+        name: impl ToString,
+        value: Value,
+        mutable: bool,
+    ) {
+        self.bindings.declare(name.to_string(), value, mutable);
     }
 
     /// TODO

@@ -2,7 +2,8 @@ use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
     execute::scope::Scope,
-    value::Value,
+    value::{FromJsArguments, Value},
+    IntoJs, RuntimeError,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -90,13 +91,35 @@ struct FunctionInner {
 #[derive(Clone)]
 pub struct NativeFunction {
     // TODO track name
-    function: Arc<dyn NativeFunctionTrait>,
+    function: Arc<dyn Fn(Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
+}
+
+impl NativeFunction {
+    /// TODO
+    pub fn new<F, In, Out, Err>(function: F) -> Self
+    where
+        F: 'static + Fn(In) -> Result<Out, Err> + Send + Sync,
+        In: FromJsArguments,
+        Out: IntoJs,
+        Err: Into<RuntimeError>,
+    {
+        // Wrap the function to convert the args into the user's preferred type,
+        // and convert the return value back to JS
+        let function = move |arguments: Vec<Value>| {
+            let args = In::from_js_arguments(arguments)?;
+            let output = (function)(args).map_err(Err::into)?;
+            output.into_js()
+        };
+        Self {
+            function: Arc::new(function),
+        }
+    }
 }
 
 impl NativeFunction {
     /// Call this function
-    pub fn call(&self, args: &[Value]) -> RuntimeResult<Value> {
-        self.function.call(args)
+    pub fn call(&self, args: Vec<Value>) -> RuntimeResult<Value> {
+        (self.function)(args)
     }
 }
 
@@ -111,27 +134,5 @@ impl Debug for NativeFunction {
         f.debug_struct("NativeFunction")
             .field("function", &"...")
             .finish()
-    }
-}
-
-impl<F: NativeFunctionTrait> From<F> for NativeFunction {
-    fn from(function: F) -> Self {
-        Self {
-            function: Arc::new(function),
-        }
-    }
-}
-
-/// TODO doc and rename
-pub trait NativeFunctionTrait: 'static + Send + Sync {
-    fn call(&self, args: &[Value]) -> RuntimeResult<Value>;
-}
-
-impl<F> NativeFunctionTrait for F
-where
-    F: 'static + Fn(&[Value]) -> RuntimeResult<Value> + Send + Sync,
-{
-    fn call(&self, args: &[Value]) -> RuntimeResult<Value> {
-        (self)(args)
     }
 }

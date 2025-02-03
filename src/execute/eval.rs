@@ -164,7 +164,7 @@ impl Evaluate for FunctionCall {
 
         match function {
             Value::Function(function) => function.call(&arguments, state),
-            Value::Native(function) => function.call(&arguments),
+            Value::Native(function) => function.call(arguments),
             Value::Undefined
             | Value::Null
             | Value::Boolean(_)

@@ -9,27 +9,45 @@ mod stdlib;
 mod value;
 
 pub use crate::{
-    error::RuntimeError,
-    value::{Array, Exports, Function, JsString, Number, Object, Value},
+    error::{RuntimeError, RuntimeResult},
+    value::{
+        Array, Exports, FromJs, FromJsArguments, Function, IntoJs, JsString,
+        NativeFunction, Number, Object, Value,
+    },
 };
 
-use crate::{error::Error, execute::RuntimeState, value::NativeFunctionTrait};
-use std::{borrow::Cow, fs, path::Path};
+use crate::{error::Error, execute::RuntimeState};
+use std::{borrow::Cow, collections::HashMap, fs, path::Path};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
-pub struct Engine {}
+pub struct Engine {
+    /// User-defined global values. These will be made available to all code
+    /// execution
+    globals: HashMap<String, Value>,
+}
 
 impl Engine {
     /// TODO
     pub fn new() -> Self {
-        Self {}
+        Self {
+            globals: HashMap::new(),
+        }
     }
 
-    /// Register a function to be available in the global namespace for all
-    /// code execution in this runtime
-    pub fn register_fn(&mut self, name: String, f: impl NativeFunctionTrait) {
-        todo!()
+    /// Register a value in the global namespace. This will be made available
+    /// to all code executed in this engine. This can be used to register
+    /// anything that implements [IntoJs], including primitive values, objects,
+    /// and functions. Objects can be used to namespace functions for
+    /// organization.
+    pub fn set_global(
+        &mut self,
+        name: impl ToString,
+        value: impl IntoJs,
+    ) -> RuntimeResult<()> {
+        let value = value.into_js()?;
+        self.globals.insert(name.to_string(), value);
+        Ok(())
     }
 
     /// TODO

@@ -175,6 +175,7 @@ dependencies = [
  "indexmap",
  "rslint_parser",
  "serde",
+ "static_assertions",
  "thiserror",
 ]
 

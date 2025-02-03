@@ -6,7 +6,7 @@ mod number;
 mod object;
 
 pub use array::Array;
-pub use function::{Function, NativeFunction, NativeFunctionTrait};
+pub use function::{Function, NativeFunction};
 pub use number::Number;
 pub use object::Object;
 
@@ -251,6 +251,12 @@ impl From<&str> for Value {
     }
 }
 
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Self::String(value.into())
+    }
+}
+
 impl From<Array> for Value {
     fn from(array: Array) -> Self {
         Self::Array(array)
@@ -269,9 +275,9 @@ impl From<Function> for Value {
     }
 }
 
-impl<F: NativeFunctionTrait> From<F> for Value {
-    fn from(function: F) -> Self {
-        Self::Native(function.into())
+impl From<NativeFunction> for Value {
+    fn from(function: NativeFunction) -> Self {
+        Self::Native(function)
     }
 }
 
@@ -347,6 +353,12 @@ impl From<&str> for JsString {
     }
 }
 
+impl From<String> for JsString {
+    fn from(value: String) -> Self {
+        Self(value.into())
+    }
+}
+
 /// Values exported from a module. This is the output of loading a module.
 #[derive(Debug, Default)]
 pub struct Exports {
@@ -365,5 +377,38 @@ impl Display for Exports {
             writeln!(f, "{name}: {value}")?;
         }
         Ok(())
+    }
+}
+
+/// Trait for converting values into [Value]
+pub trait IntoJs {
+    fn into_js(self) -> RuntimeResult<Value>;
+}
+
+impl<T: Into<Value>> IntoJs for T {
+    fn into_js(self) -> RuntimeResult<Value> {
+        Ok(self.into())
+    }
+}
+
+/// Trait for converting values from [Value]
+pub trait FromJs: Sized {
+    fn from_js(value: Value) -> RuntimeResult<Self>;
+}
+
+impl<T: From<Value>> FromJs for T {
+    fn from_js(value: Value) -> RuntimeResult<Self> {
+        Ok(value.into())
+    }
+}
+
+/// TODO
+pub trait FromJsArguments: Sized {
+    fn from_js_arguments(values: Vec<Value>) -> RuntimeResult<Self>;
+}
+
+impl FromJsArguments for Vec<Value> {
+    fn from_js_arguments(values: Vec<Value>) -> RuntimeResult<Self> {
+        Ok(values)
     }
 }

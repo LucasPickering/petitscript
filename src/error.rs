@@ -6,7 +6,7 @@ use std::{
 };
 use thiserror::Error;
 
-pub(crate) type RuntimeResult<T> = Result<T, RuntimeError>;
+pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
 /// TODO
 #[derive(Debug, Error)]
@@ -20,6 +20,9 @@ pub enum Error {
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 }
+
+#[cfg(test)]
+static_assertions::assert_impl_all!(Error: Send, Sync);
 
 #[derive(Debug, Error)]
 pub struct ParseError {
@@ -60,6 +63,10 @@ pub enum RuntimeError {
     #[error("Name {name} is already exported")]
     AlreadyExported { name: String },
 
+    /// Custom error type, for errors originating in user code
+    #[error(transparent)]
+    Custom(Box<dyn std::error::Error + Send + Sync>),
+
     /// Attempted to return while not in a function
     #[error("Cannot return while not in function")]
     IllegalReturn,
@@ -77,4 +84,13 @@ pub enum RuntimeError {
         expected: ValueType,
         actual: ValueType,
     },
+}
+
+impl RuntimeError {
+    /// Wrap a custom error type
+    pub fn custom(
+        error: impl 'static + std::error::Error + Send + Sync,
+    ) -> Self {
+        Self::Custom(error.into())
+    }
 }

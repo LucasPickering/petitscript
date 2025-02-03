@@ -27,3 +27,6 @@ serde = ["dep:serde"]
 pre-release-replacements = [
   {file = "CHANGELOG.md", search = "## \\[Unreleased\\] - ReleaseDate", replace = "## [Unreleased] - ReleaseDate\n\n## [] - "},
 ]
+
+[dev-dependencies]
+static_assertions = "1.1.0"

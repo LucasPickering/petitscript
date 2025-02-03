@@ -3,7 +3,7 @@
 use crate::{
     error::RuntimeResult,
     value::{Exports, Object},
-    NativeFunction, Value,
+    IntoNativeFunction, Value,
 };
 
 /// TODO
@@ -16,17 +16,19 @@ pub fn stdlib() -> Exports {
 
 /// `console` module
 fn console() -> Object {
-    Object::default().insert("log", NativeFunction::new(console_log).into())
+    Object::default().insert("log", console_log.into_native_fn().into())
 }
 
 /// Log values to stdout
-fn console_log(args: Vec<Value>) -> RuntimeResult<Value> {
-    for (i, value) in args.iter().enumerate() {
+/// TODO support varargs
+fn console_log(value: Value) -> RuntimeResult<Value> {
+    println!("{value}");
+    /* for (i, value) in args.iter().enumerate() {
         if i > 0 {
             print!(" ");
         }
         print!("{value}");
     }
-    println!();
+    println!(); */
     Ok(Value::Undefined)
 }

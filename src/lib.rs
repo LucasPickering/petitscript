@@ -8,10 +8,12 @@ mod parse;
 mod stdlib;
 mod value;
 
+#[cfg(feature = "serde")]
+pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{RuntimeError, RuntimeResult},
     value::{
-        Array, Exports, FromJs, FromJsArguments, Function, IntoJs, JsString,
+        Array, Exports, FromJs, Function, IntoJs, IntoNativeFunction, JsString,
         NativeFunction, Number, Object, Value,
     },
 };
@@ -40,7 +42,8 @@ impl Engine {
     /// anything that implements [IntoJs], including primitive values, objects,
     /// and functions. Objects can be used to namespace functions for
     /// organization.
-    pub fn set_global(
+    /// TODO update comment
+    pub fn register_global(
         &mut self,
         name: impl ToString,
         value: impl IntoJs,
@@ -48,6 +51,16 @@ impl Engine {
         let value = value.into_js()?;
         self.globals.insert(name.to_string(), value);
         Ok(())
+    }
+
+    /// TODO
+    pub fn register_fn<In, Out, Err>(
+        &mut self,
+        name: impl ToString,
+        function: impl IntoNativeFunction<In, Out, Err>,
+    ) {
+        self.globals
+            .insert(name.to_string(), function.into_native_fn().into());
     }
 
     /// TODO

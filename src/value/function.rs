@@ -2,8 +2,8 @@ use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
     execute::scope::Scope,
-    value::{FromJsArguments, Value},
-    IntoJs, RuntimeError,
+    value::Value,
+    FromJs, IntoJs, RuntimeError,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -95,30 +95,8 @@ pub struct NativeFunction {
 }
 
 impl NativeFunction {
-    /// TODO
-    pub fn new<F, In, Out, Err>(function: F) -> Self
-    where
-        F: 'static + Fn(In) -> Result<Out, Err> + Send + Sync,
-        In: FromJsArguments,
-        Out: IntoJs,
-        Err: Into<RuntimeError>,
-    {
-        // Wrap the function to convert the args into the user's preferred type,
-        // and convert the return value back to JS
-        let function = move |arguments: Vec<Value>| {
-            let args = In::from_js_arguments(arguments)?;
-            let output = (function)(args).map_err(Err::into)?;
-            output.into_js()
-        };
-        Self {
-            function: Arc::new(function),
-        }
-    }
-}
-
-impl NativeFunction {
     /// Call this function
-    pub fn call(&self, args: Vec<Value>) -> RuntimeResult<Value> {
+    pub(crate) fn call(&self, args: Vec<Value>) -> RuntimeResult<Value> {
         (self.function)(args)
     }
 }
@@ -135,4 +113,85 @@ impl Debug for NativeFunction {
             .field("function", &"...")
             .finish()
     }
+}
+
+/// TODO
+pub trait IntoNativeFunction<In, Out, Err> {
+    /// TODO
+    fn into_native_fn(self) -> NativeFunction;
+}
+
+/// A recursive macro to pull a static number of arguments out of the arg array,
+/// convert each one according to its FromJs impl, then pass them all to a
+/// function
+macro_rules! convert_args {
+    // Entrypoint - pass a function you want called, the array of arguments to
+    // convert, and a list of the static types of each argument
+    ($f:expr, $args:expr, $($arg_types:ident)*) => {
+        convert_args!(@step $f, $args, 0usize, [], [$($arg_types,)*])
+    };
+    // Recursive step - Pop the next arg type off the front of a list, then
+    // generate an expression to pull the corresponding arg out of the array
+    // and convert it
+    (@step
+        $f:expr, // Function to call
+        $args:expr, // Untyped arg array
+        $index:expr, // Index of the *next* arg to convert
+        [$($acc:expr,)*], // Args that have been converted so far
+        // Types of args that have yet to be converted
+        [$first:ident, $($rest:ident,)*]
+    ) => {
+        convert_args!(@step $f, $args, $index + 1, [$($acc,)* get_arg($args, $index)?,], [$($rest,)*])
+    };
+    // Base case - all args have been converted. Call the function with all our
+    // arg expressions
+    (@step $f:expr, $args:expr, $_index:expr, [$($acc:expr,)*], []) => {
+        $f($($acc,)*)
+    };
+}
+
+/// Generate an implementation of IntoNativeFunction for a fixed number of
+/// arguments
+macro_rules! impl_into_native_function {
+    ($($arg_types:ident),*) => {
+        impl<F, $($arg_types,)* Out, Err> IntoNativeFunction<($($arg_types,)*), Out, Err> for F
+        where
+            F: 'static + Fn($($arg_types,)*) -> Result<Out, Err> + Send + Sync,
+            $($arg_types: FromJs,)*
+            Out: IntoJs,
+            Err: Into<RuntimeError>,
+        {
+            fn into_native_fn(self) -> NativeFunction {
+                #[allow(unused_variables)]
+                let function = move |args: Vec<Value>| -> RuntimeResult<Value> {
+                    let output = convert_args!((self), &args, $($arg_types)*).map_err(Err::into)?;
+                    output.into_js()
+                };
+                NativeFunction {
+                    function: Arc::new(function),
+                }
+            }
+        }
+    };
+}
+
+impl_into_native_function!();
+impl_into_native_function!(I1);
+impl_into_native_function!(I1, I2);
+impl_into_native_function!(I1, I2, I3);
+impl_into_native_function!(I1, I2, I3, I4);
+impl_into_native_function!(I1, I2, I3, I4, I5);
+impl_into_native_function!(I1, I2, I3, I4, I5, I6);
+impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7);
+impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8);
+impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9);
+impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9, I10);
+
+/// Helper to get a particular arg from the array and convert it to a static
+/// type
+fn get_arg<T: FromJs>(args: &[Value], index: usize) -> RuntimeResult<T> {
+    // If the arg is missing, use undefined instead to mirror JS semantics
+    // TODO remove clone? we'd have to make FromJs take &Value
+    let value = args.get(index).cloned().unwrap_or_default();
+    T::from_js(value)
 }

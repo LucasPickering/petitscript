@@ -1,12 +1,14 @@
 //! Runtime values
 
 mod array;
+#[cfg(feature = "serde")]
+pub mod cereal;
 mod function;
 mod number;
 mod object;
 
 pub use array::Array;
-pub use function::{Function, NativeFunction};
+pub use function::{Function, IntoNativeFunction, NativeFunction};
 pub use number::Number;
 pub use object::Object;
 
@@ -281,26 +283,6 @@ impl From<NativeFunction> for Value {
     }
 }
 
-#[cfg(feature = "serde")]
-impl serde::Serialize for Value {
-    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        todo!()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Value {
-    fn deserialize<D>(_: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        todo!()
-    }
-}
-
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]
 pub enum ValueType {
@@ -391,6 +373,12 @@ impl<T: Into<Value>> IntoJs for T {
     }
 }
 
+impl IntoJs for () {
+    fn into_js(self) -> RuntimeResult<Value> {
+        Ok(Value::Undefined)
+    }
+}
+
 /// Trait for converting values from [Value]
 pub trait FromJs: Sized {
     fn from_js(value: Value) -> RuntimeResult<Self>;
@@ -399,16 +387,5 @@ pub trait FromJs: Sized {
 impl<T: From<Value>> FromJs for T {
     fn from_js(value: Value) -> RuntimeResult<Self> {
         Ok(value.into())
-    }
-}
-
-/// TODO
-pub trait FromJsArguments: Sized {
-    fn from_js_arguments(values: Vec<Value>) -> RuntimeResult<Self>;
-}
-
-impl FromJsArguments for Vec<Value> {
-    fn from_js_arguments(values: Vec<Value>) -> RuntimeResult<Self> {
-        Ok(values)
     }
 }

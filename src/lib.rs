@@ -18,7 +18,7 @@ pub use crate::{
     value::{
         Array, AsyncNativeFunction, Exports, FromJs, Function,
         IntoAsyncNativeFunction, IntoJs, IntoNativeFunction, JsString,
-        NativeFunction, Number, Object, Value,
+        NativeFunction, Number, Object, Value, ValueType,
     },
 };
 

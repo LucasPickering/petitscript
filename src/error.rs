@@ -3,6 +3,7 @@ use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
     io,
+    string::FromUtf8Error,
 };
 use thiserror::Error;
 
@@ -11,6 +12,7 @@ pub type RuntimeResult<T> = Result<T, RuntimeError>;
 /// TODO
 #[derive(Debug, Error)]
 pub enum Error {
+    /// TODO add error message
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
@@ -72,6 +74,10 @@ pub enum RuntimeError {
     #[error("Cannot return while not in function")]
     IllegalReturn,
 
+    /// Attempted to convert non-UTF-8 bytes to a string
+    #[error("TODO")]
+    InvalidUtf8(#[from] FromUtf8Error),
+
     /// Second assignment to a `const` variable
     #[error("Assignment to immutable variable {name}")]
     ImmutableAssign { name: String },
@@ -80,6 +86,9 @@ pub enum RuntimeError {
     #[error("{name} is not defined")]
     Reference { name: String },
 
+    /// An operation required a specific type (or types), but received a value
+    /// of an unsupported type. This commonly occurs during type downcasting,
+    /// e.g. [Value] to [Number].
     #[error("Type error: expected {expected}, received {actual}")]
     Type {
         expected: ValueType,

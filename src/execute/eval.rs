@@ -172,13 +172,7 @@ impl Evaluate for FunctionCall {
             Value::Function(function) => function.call(&arguments, state).await,
             Value::Native(function) => function.call(arguments),
             Value::AsyncNative(function) => function.call(arguments).await,
-            Value::Undefined
-            | Value::Null
-            | Value::Boolean(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_)
-            | Value::Object(_) => Err(RuntimeError::Type {
+            _ => Err(RuntimeError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
             }),
@@ -209,6 +203,7 @@ impl Evaluate for OptionalPropertyAccess {
             | Value::String(_)
             | Value::Array(_)
             | Value::Object(_)
+            | Value::Buffer(_)
             | Value::Function(_)
             | Value::Native(_)
             | Value::AsyncNative(_) => todo!(),

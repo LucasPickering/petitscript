@@ -157,6 +157,11 @@ impl Debug for AsyncNativeFunction {
 }
 
 /// TODO
+#[diagnostic::on_unimplemented(
+    note = "Hint: All argument types must implement FromJs",
+    note = "Hint: Return type must be Result<Out, Err>, where Out implements \
+    IntoJs and Err implements Into<RuntimeError>"
+)]
 pub trait IntoAsyncNativeFunction<In, Out, Err> {
     /// TODO
     fn into_native_fn(self) -> AsyncNativeFunction;

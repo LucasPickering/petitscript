@@ -1,13 +1,18 @@
 //! Runtime values
 
 mod array;
+#[cfg(feature = "bytes")]
+mod buffer;
 #[cfg(feature = "serde")]
 pub mod cereal;
 mod function;
+mod macros;
 mod number;
 mod object;
 
 pub use array::Array;
+#[cfg(feature = "bytes")]
+pub use buffer::Buffer;
 pub use function::{
     AsyncNativeFunction, Function, IntoAsyncNativeFunction, IntoNativeFunction,
     NativeFunction,
@@ -15,27 +20,45 @@ pub use function::{
 pub use number::Number;
 pub use object::Object;
 
-use crate::{error::RuntimeResult, RuntimeError};
+use crate::{
+    error::RuntimeResult,
+    value::macros::{impl_conversions, impl_value_numeric_binary_op},
+    RuntimeError,
+};
 use std::{
     collections::HashMap,
     fmt::{self, Display},
     ops::{Add, Deref, Div, Mul, Rem, Sub},
+    path::PathBuf,
     sync::Arc,
 };
 
 /// TODO
 #[derive(Clone, Debug, Default)]
 pub enum Value {
+    /// TODO
     #[default]
     Undefined,
+    /// TODO
     Null,
+    /// `true` or `false`
     Boolean(bool),
+    /// A float or integer
     Number(Number),
+    /// A string of UTF-8 characters
     String(JsString),
+    /// An ordered list
     Array(Array),
+    /// An ordered key-value mapping
     Object(Object),
+    /// An immutable byte buffer
+    #[cfg(feature = "bytes")]
+    Buffer(Buffer),
+    /// A function defined in PetitJS
     Function(Function),
+    /// A synchronous function defined in Rust
     Native(NativeFunction),
+    /// An asynchronous function defined in Rust
     AsyncNative(AsyncNativeFunction),
 }
 
@@ -50,6 +73,7 @@ impl Value {
             Self::String(s) => !s.is_empty(),
             Self::Array(_)
             | Self::Object(_)
+            | Self::Buffer(_)
             | Self::Function(_)
             | Self::Native(_)
             | Self::AsyncNative(_) => true,
@@ -77,6 +101,7 @@ impl Value {
             Self::String(_)
             | Self::Array(_)
             | Self::Object(_)
+            | Self::Buffer(_)
             | Self::Function(_)
             | Self::Native(_)
             | Self::AsyncNative(_) => None,
@@ -132,6 +157,7 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
+            Self::Buffer(_) => ValueType::Buffer,
             Self::Function(_) | Self::Native(_) | Self::AsyncNative(_) => {
                 ValueType::Function
             }
@@ -167,9 +193,16 @@ impl Value {
         }
     }
 
-    /// TODO better name?
+    /// Convert this value into an arbitrary type, using the type's [FromJs]
+    /// implementation
+    pub fn into_todo<T: FromJs>(self) -> RuntimeResult<T> {
+        T::from_js(self)
+    }
+
+    /// Convert this value into an arbitrary type, using the type's
+    /// [Deserialize](serde::Deserialize) implementation
     #[cfg(feature = "serde")]
-    pub fn deserialize<T: serde::de::DeserializeOwned>(
+    pub fn into_serde<T: serde::de::DeserializeOwned>(
         &self,
     ) -> RuntimeResult<T> {
         todo!()
@@ -187,6 +220,7 @@ impl Display for Value {
             Self::String(string) => write!(f, "{string}"),
             Self::Array(array) => write!(f, "{array}"),
             Self::Object(object) => write!(f, "{object}"),
+            Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
             Self::Native(function) => write!(f, "{function}"),
             Self::AsyncNative(function) => write!(f, "{function}"),
@@ -223,80 +257,26 @@ impl Add for Value {
     }
 }
 
-/// Implement a numeric binary operator for [Value]
-macro_rules! impl_numeric_binary_op {
-    ($trait:ident, $func:ident, $op:tt) => {
-        impl $trait for Value {
-            type Output = Self;
+impl_value_numeric_binary_op!(Sub, sub, -);
+impl_value_numeric_binary_op!(Mul, mul, *);
+impl_value_numeric_binary_op!(Div, div, /);
+impl_value_numeric_binary_op!(Rem, rem, %);
 
-            fn $func(self, rhs: Self) -> Self::Output {
-                match (self.to_number(), rhs.to_number()) {
-                    (Some(lhs), Some(rhs)) => (lhs $op rhs).into(),
-                    _ => Number::NAN.into(),
-                }
-            }
-        }
-    };
-}
-
-impl_numeric_binary_op!(Sub, sub, -);
-impl_numeric_binary_op!(Mul, mul, *);
-impl_numeric_binary_op!(Div, div, /);
-impl_numeric_binary_op!(Rem, rem, %);
-
-impl From<bool> for Value {
-    fn from(b: bool) -> Self {
-        Self::Boolean(b)
-    }
-}
-
-impl From<Number> for Value {
-    fn from(value: Number) -> Self {
-        Self::Number(value)
-    }
-}
-
+// Implement this manually because we can only convert one way
 impl From<&str> for Value {
-    fn from(value: &str) -> Self {
-        Self::String(value.into())
+    fn from(s: &str) -> Self {
+        Self::String(s.into())
     }
 }
 
-impl From<String> for Value {
-    fn from(value: String) -> Self {
-        Self::String(value.into())
-    }
-}
-
-impl From<Array> for Value {
-    fn from(array: Array) -> Self {
-        Self::Array(array)
-    }
-}
-
-impl From<Object> for Value {
-    fn from(object: Object) -> Self {
-        Self::Object(object)
-    }
-}
-
-impl From<Function> for Value {
-    fn from(function: Function) -> Self {
-        Self::Function(function)
-    }
-}
-
-impl From<NativeFunction> for Value {
-    fn from(function: NativeFunction) -> Self {
-        Self::Native(function)
-    }
-}
-
-impl From<AsyncNativeFunction> for Value {
-    fn from(function: AsyncNativeFunction) -> Self {
-        Self::AsyncNative(function)
-    }
-}
+impl_conversions!(bool, Boolean);
+impl_conversions!(Number, Number);
+impl_conversions!(String, String);
+impl_conversions!(Array, Array);
+impl_conversions!(Object, Object);
+impl_conversions!(Function, Function);
+impl_conversions!(NativeFunction, Native, Function);
+impl_conversions!(AsyncNativeFunction, AsyncNative, Function);
 
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]
@@ -308,6 +288,7 @@ pub enum ValueType {
     String,
     Array,
     Object,
+    Buffer,
     Function,
 }
 
@@ -321,6 +302,7 @@ impl Display for ValueType {
             Self::String => write!(f, "string"),
             Self::Array => write!(f, "array"),
             Self::Object => write!(f, "object"),
+            Self::Buffer => write!(f, "buffer"),
             Self::Function => write!(f, "function"),
         }
     }
@@ -353,6 +335,15 @@ impl From<&str> for JsString {
 impl From<String> for JsString {
     fn from(value: String) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<JsString> for String {
+    fn from(string: JsString) -> Self {
+        // It'd be nice to be able to reuse the allocated string if we own the
+        // last copy of the wrapping Arc, but I can't find a way to do that
+        // since str is unsized, so we have to clone all the data
+        string.0.deref().to_owned()
     }
 }
 
@@ -394,6 +385,15 @@ impl IntoJs for () {
     }
 }
 
+impl IntoJs for PathBuf {
+    fn into_js(self) -> RuntimeResult<Value> {
+        // Attempt to convert the path to UTF-8
+        let string =
+            String::from_utf8(self.into_os_string().into_encoded_bytes())?;
+        Ok(string.into())
+    }
+}
+
 /// Trait for converting values from [Value]
 pub trait FromJs: Sized {
     fn from_js(value: Value) -> RuntimeResult<Self>;
@@ -402,5 +402,12 @@ pub trait FromJs: Sized {
 impl<T: From<Value>> FromJs for T {
     fn from_js(value: Value) -> RuntimeResult<Self> {
         Ok(value.into())
+    }
+}
+
+impl FromJs for PathBuf {
+    fn from_js(value: Value) -> RuntimeResult<Self> {
+        let string: String = value.into_todo()?;
+        Ok(string.into())
     }
 }

@@ -11,6 +11,7 @@ use crate::{
     value::{Exports, Value},
     Function,
 };
+use std::{any::Any, sync::Arc};
 
 /// TODO
 /// TODO rename
@@ -18,7 +19,7 @@ use crate::{
 pub struct Process {
     /// The program we'll be executing
     program: Program,
-    state: ExecutionState,
+    state: ProcessState,
 }
 
 impl Process {
@@ -26,7 +27,8 @@ impl Process {
     pub(crate) fn new(globals: Scope, program: Program) -> Self {
         Self {
             program,
-            state: ExecutionState {
+            state: ProcessState {
+                context: Arc::new(()),
                 root_scope: globals.child(),
                 stack_frames: Vec::new(),
                 export_default: None,
@@ -45,9 +47,9 @@ impl Process {
     pub async fn call(
         &mut self,
         function: &Function,
-        arguments: &[Value],
+        args: &[Value],
     ) -> RuntimeResult<Value> {
-        function.call(arguments, &mut self.state).await
+        function.call(&mut self.state, args).await
     }
 
     /// Get the values exported by the root module of this <TODO name here>
@@ -72,7 +74,11 @@ impl Process {
 
 /// TODO
 #[derive(Debug)]
-struct ExecutionState {
+pub struct ProcessState {
+    /// Arbitrary data the user wants to attach to this process. This needs to
+    /// Arc'd so the execution state can be cloned in order for processes to be
+    /// forked.
+    context: Arc<dyn Any>,
     /// The topmost scope in a script/module. Root scope is unique in a few
     /// ways:
     /// - If the scope stack is empty, this will still be available
@@ -93,7 +99,13 @@ struct ExecutionState {
     export_names: Vec<String>,
 }
 
-impl ExecutionState {
+impl ProcessState {
+    /// Get the process's attached used context, downcasted to a static type.
+    /// Return an error if the context is of the wrong type.
+    pub fn context<T: Any>(&self) -> RuntimeResult<&T> {
+        self.context.downcast_ref().ok_or_else(|| todo!())
+    }
+
     /// TODO
     fn scope(&self) -> &Scope {
         if let Some(last) = self.stack_frames.last() {

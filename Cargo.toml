@@ -12,17 +12,19 @@ rust-version = "1.82.0"
 [[bin]]
 name = "petit_js"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 bytes = {version = "1.0.0", default-features = false, optional = true}
 indexmap = {version = "2.7.0", features = ["serde"]}
 rslint_parser = "0.3.1"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
-smol = {version = "2.0.2", default-features = false}
+smol = {version = "2.0.2", default-features = false, optional = true}
 thiserror = "2.0.10"
 
 [features]
 bytes = ["dep:bytes"]
+cli = ["dep:smol"]
 default = []
 serde = ["dep:serde"]
 

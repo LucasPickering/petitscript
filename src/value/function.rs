@@ -1,15 +1,15 @@
 use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
+    execute::ProcessState,
     scope::Scope,
-    util::BoxFuture,
+    util::{BoxFuture, FutureExt},
     value::Value,
     FromJs, IntoJs, RuntimeError,
 };
 use std::{
     fmt::{self, Debug, Display},
     future::{self, Future},
-    pin::Pin,
     sync::Arc,
 };
 
@@ -94,13 +94,38 @@ struct FunctionInner {
 #[derive(Clone)]
 pub struct NativeFunction {
     // TODO track name
-    function: Arc<dyn Fn(Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
+    function: Arc<
+        dyn Fn(&ProcessState, Vec<Value>) -> RuntimeResult<Value> + Send + Sync,
+    >,
 }
 
 impl NativeFunction {
+    /// TODO
+    pub(crate) fn new<F, Args, Out, Err>(f: F) -> Self
+    where
+        F: 'static + Fn(&ProcessState, Args) -> Result<Out, Err> + Send + Sync,
+        Args: FromJsArgs,
+        Out: IntoJs,
+        Err: Into<RuntimeError>,
+    {
+        // Wrap the lambda with logic to convert input/output/error, and box it
+        let function = move |state: &ProcessState, args: Vec<Value>| {
+            let args = Args::from_js_args(&args)?;
+            let output = f(state, args).map_err(Err::into)?;
+            output.into_js()
+        };
+        Self {
+            function: Arc::new(function),
+        }
+    }
+
     /// Call this function
-    pub(crate) fn call(&self, args: Vec<Value>) -> RuntimeResult<Value> {
-        (self.function)(args)
+    pub(crate) fn call(
+        &self,
+        state: &ProcessState,
+        args: Vec<Value>,
+    ) -> RuntimeResult<Value> {
+        (self.function)(state, args)
     }
 }
 
@@ -119,26 +144,54 @@ impl Debug for NativeFunction {
 }
 
 /// TODO
-pub trait IntoNativeFunction<In, Out, Err> {
-    /// TODO
-    fn into_native_fn(self) -> NativeFunction;
-}
-
-/// TODO
 #[derive(Clone)]
 pub struct AsyncNativeFunction {
     // TODO track name
     function: Arc<
-        dyn Fn(Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
+        dyn Fn(
+                &ProcessState,
+                Vec<Value>,
+            ) -> BoxFuture<'static, RuntimeResult<Value>>
             + Send
             + Sync,
     >,
 }
 
 impl AsyncNativeFunction {
+    /// TODO
+    pub(crate) fn new<F, Args, Out, Err, Fut>(f: F) -> Self
+    where
+        F: 'static + Fn(&ProcessState, Args) -> Fut + Send + Sync,
+        Args: FromJsArgs,
+        Out: IntoJs,
+        Err: Into<RuntimeError>,
+        Fut: 'static + Future<Output = Result<Out, Err>>,
+    {
+        // Wrap the lambda with logic to convert input/output/error, and box it
+        let function = move |state: &ProcessState, args: Vec<Value>| {
+            // TODO explain
+            let result = Args::from_js_args(&args).map(|args| f(state, args));
+            match result {
+                Ok(future) => async move {
+                    let output = future.await.map_err(Err::into)?;
+                    output.into_js()
+                }
+                .boxed(),
+                Err(error) => future::ready(Err(error)).boxed(),
+            }
+        };
+        Self {
+            function: Arc::new(function),
+        }
+    }
+
     /// Call this function
-    pub(crate) async fn call(&self, args: Vec<Value>) -> RuntimeResult<Value> {
-        (self.function)(args).await
+    pub(crate) async fn call(
+        &self,
+        state: &ProcessState,
+        args: Vec<Value>,
+    ) -> RuntimeResult<Value> {
+        (self.function)(state, args).await
     }
 }
 
@@ -157,14 +210,8 @@ impl Debug for AsyncNativeFunction {
 }
 
 /// TODO
-#[diagnostic::on_unimplemented(
-    note = "Hint: All argument types must implement FromJs",
-    note = "Hint: Return type must be Result<Out, Err>, where Out implements \
-    IntoJs and Err implements Into<RuntimeError>"
-)]
-pub trait IntoAsyncNativeFunction<In, Out, Err> {
-    /// TODO
-    fn into_native_fn(self) -> AsyncNativeFunction;
+pub trait FromJsArgs: Sized {
+    fn from_js_args(args: &[Value]) -> RuntimeResult<Self>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
@@ -173,117 +220,70 @@ pub trait IntoAsyncNativeFunction<In, Out, Err> {
 macro_rules! call_fn {
     // Entrypoint - pass a function you want called, the array of arguments to
     // convert, and a list of the static types of each argument
-    ($f:expr, $args:expr, $($arg_types:ident)*) => {
-        call_fn!(@step $f, $args, 0usize, [], [$($arg_types,)*])
+    ($args:expr, ($($arg_types:ident,)*)) => {
+        call_fn!(@step $args, 0usize, (), ($($arg_types,)*))
     };
     // Recursive step - Pop the next arg type off the front of a list, then
     // generate an expression to pull the corresponding arg out of the array
     // and convert it
     (@step
-        $f:expr, // Function to call
         $args:expr, // Untyped arg array
         $index:expr, // Index of the *next* arg to convert
-        [$($acc:expr,)*], // Args that have been converted so far
+        ($($acc:expr,)*), // Args that have been converted so far
         // Types of args that have yet to be converted
-        [$first:ident, $($rest:ident,)*]
+        ($first:ident, $($rest:ident,)*)
     ) => {
         call_fn!(@step
-            $f,
             $args,
             $index + 1,
-            [$($acc,)* get_arg($args, $index)?,],
-            [$($rest,)*]
+            ($($acc,)* get_arg($args, $index)?,),
+            ($($rest,)*)
         )
     };
     // Base case - all args have been converted. Call the function with all our
     // arg expressions
-    (@step $f:expr, $args:expr, $_index:expr, [$($acc:expr,)*], []) => {
-        $f($($acc,)*)
+    (@step $args:expr, $_index:expr, ($($acc:expr,)*), ()) => {
+        ($($acc,)*)
     };
 }
 
-/// Generate an implementation of IntoNativeFunction for a fixed number of
-/// arguments
-macro_rules! impl_into_native_function {
+/// Generate an implementation of FromJsArgs for a fixed number of arguments
+macro_rules! impl_from_js_args {
     ($($arg_types:ident),*) => {
-        impl<F, $($arg_types,)* Out, Err> IntoNativeFunction<($($arg_types,)*), Out, Err> for F
-        where
-            F: 'static + Fn($($arg_types,)*) -> Result<Out, Err> + Send + Sync,
-            $($arg_types: FromJs,)*
-            Out: IntoJs,
-            Err: Into<RuntimeError>,
+        impl<$($arg_types,)*> FromJsArgs for ($($arg_types,)*)
+            where $($arg_types: FromJs,)*
         {
-            fn into_native_fn(self) -> NativeFunction {
-                #[allow(unused_variables)]
-                let function = move |args: Vec<Value>| -> RuntimeResult<Value> {
-                    let output = call_fn!(self, &args, $($arg_types)*).map_err(Err::into)?;
-                    output.into_js()
-                };
-                NativeFunction {
-                    function: Arc::new(function),
-                }
+            fn from_js_args(args: &[Value]) -> RuntimeResult<Self> {
+                Ok(call_fn!(args, ($($arg_types,)*)))
             }
         }
     };
 }
 
-impl_into_native_function!();
-impl_into_native_function!(I1);
-impl_into_native_function!(I1, I2);
-impl_into_native_function!(I1, I2, I3);
-impl_into_native_function!(I1, I2, I3, I4);
-impl_into_native_function!(I1, I2, I3, I4, I5);
-impl_into_native_function!(I1, I2, I3, I4, I5, I6);
-impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7);
-impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8);
-impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9);
-impl_into_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9, I10);
+impl_from_js_args!(T0);
+impl_from_js_args!(T0, T1);
+impl_from_js_args!(T0, T1, T2);
+impl_from_js_args!(T0, T1, T2, T3);
+impl_from_js_args!(T0, T1, T2, T3, T4);
+impl_from_js_args!(T0, T1, T2, T3, T4, T5);
+impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6);
+impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7);
+impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
+impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 
-/// Generate an implementation of IntoNativeFunction for a fixed number of
-/// arguments
-macro_rules! impl_into_async_native_function {
-    ($($arg_types:ident),*) => {
-        impl<F, $($arg_types,)* Fut, Out, Err> IntoAsyncNativeFunction<($($arg_types,)*), Out, Err> for F
-        where
-            F: 'static + Fn($($arg_types,)*) -> Fut + Send + Sync,
-            $($arg_types: FromJs,)*
-            Fut: 'static + Future<Output = Result<Out, Err>>,
-            Out: IntoJs,
-            Err: Into<RuntimeError>,
-        {
-            fn into_native_fn(self) -> AsyncNativeFunction {
-                #[allow(unused_variables, clippy::redundant_closure_call)]
-                let function = move |args: Vec<Value>| {
-                    // TODO explain
-                    let result = (|| Ok(call_fn!(self, &args, $($arg_types)*)))();
-                    match result {
-                        Ok(future) => Box::pin(async move {
-                            let output = future.await.map_err(Err::into)?;
-                            output.into_js()
-                        })
-                            as Pin<Box<dyn Future<Output = _>>>,
-                        Err(error) => Box::pin(future::ready(Err(error))),
-                    }
-                };
-                AsyncNativeFunction {
-                    function: Arc::new(function),
-                }
-            }
-        }
-    };
+impl FromJsArgs for () {
+    fn from_js_args(_: &[Value]) -> RuntimeResult<Self> {
+        Ok(())
+    }
 }
 
-impl_into_async_native_function!();
-impl_into_async_native_function!(I1);
-impl_into_async_native_function!(I1, I2);
-impl_into_async_native_function!(I1, I2, I3);
-impl_into_async_native_function!(I1, I2, I3, I4);
-impl_into_async_native_function!(I1, I2, I3, I4, I5);
-impl_into_async_native_function!(I1, I2, I3, I4, I5, I6);
-impl_into_async_native_function!(I1, I2, I3, I4, I5, I6, I7);
-impl_into_async_native_function!(I1, I2, I3, I4, I5, I6, I7, I8);
-impl_into_async_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9);
-impl_into_async_native_function!(I1, I2, I3, I4, I5, I6, I7, I8, I9, I10);
+/// Special case implementation: a single argument doesn't need a tuple wrapper
+impl<T0: FromJs> FromJsArgs for T0 {
+    fn from_js_args(args: &[Value]) -> RuntimeResult<Self> {
+        let arg0 = get_arg(args, 0)?;
+        Ok(arg0)
+    }
+}
 
 /// Helper to get a particular arg from the array and convert it to a static
 /// type

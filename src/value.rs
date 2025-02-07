@@ -13,10 +13,7 @@ mod object;
 pub use array::Array;
 #[cfg(feature = "bytes")]
 pub use buffer::Buffer;
-pub use function::{
-    AsyncNativeFunction, Function, IntoAsyncNativeFunction, IntoNativeFunction,
-    NativeFunction,
-};
+pub use function::{AsyncNativeFunction, FromJsArgs, Function, NativeFunction};
 pub use number::Number;
 pub use object::Object;
 

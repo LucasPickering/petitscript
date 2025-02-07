@@ -6,7 +6,7 @@ use crate::{
         ImportDeclaration, Label, LexicalDeclaration, Statement,
     },
     error::RuntimeResult,
-    execute::{eval::Evaluate, ExecutionState},
+    execute::{eval::Evaluate, ProcessState},
     util::FutureExt as _,
     value::{Function, Value},
 };
@@ -17,7 +17,7 @@ pub trait Execute {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Self::Output>;
 }
 
@@ -27,10 +27,7 @@ where
 {
     type Output = Option<O>;
 
-    async fn exec(
-        &self,
-        state: &mut ExecutionState,
-    ) -> RuntimeResult<Option<O>> {
+    async fn exec(&self, state: &mut ProcessState) -> RuntimeResult<Option<O>> {
         for statement in self {
             let output = statement.exec(state).await?;
             if let Some(output) = output {
@@ -47,7 +44,7 @@ impl Execute for Statement {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Option<Terminate>> {
         match self {
             Self::Empty => Ok(None),
@@ -129,7 +126,7 @@ impl Execute for Block {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Option<Terminate>> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state).await? {
@@ -143,7 +140,7 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    async fn exec(&self, _: &mut ExecutionState) -> RuntimeResult<()> {
+    async fn exec(&self, _: &mut ProcessState) -> RuntimeResult<()> {
         todo!()
     }
 }
@@ -151,7 +148,7 @@ impl Execute for ImportDeclaration {
 impl Execute for ExportDeclaration {
     type Output = ();
 
-    async fn exec(&self, state: &mut ExecutionState) -> RuntimeResult<()> {
+    async fn exec(&self, state: &mut ProcessState) -> RuntimeResult<()> {
         match self {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
@@ -182,7 +179,7 @@ impl Execute for Declaration {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Self::Output> {
         match self {
             Self::Lexical(lexical_declaration) => {
@@ -203,7 +200,7 @@ impl Execute for LexicalDeclaration {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Vec<String>> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
@@ -231,7 +228,7 @@ impl Execute for FunctionDeclaration {
 
     async fn exec(
         &self,
-        state: &mut ExecutionState,
+        state: &mut ProcessState,
     ) -> RuntimeResult<Self::Output> {
         let name = self.name.as_ref().map(Identifier::to_str).map(String::from);
         let scope = state.scope_mut();

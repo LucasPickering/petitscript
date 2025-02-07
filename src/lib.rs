@@ -14,16 +14,15 @@ mod value;
 pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{Error, RuntimeError, RuntimeResult},
-    execute::Process,
+    execute::{Process, ProcessState},
     value::{
-        Array, AsyncNativeFunction, Exports, FromJs, Function,
-        IntoAsyncNativeFunction, IntoJs, IntoNativeFunction, JsString,
-        NativeFunction, Number, Object, Value, ValueType,
+        Array, AsyncNativeFunction, Exports, FromJs, Function, IntoJs,
+        JsString, NativeFunction, Number, Object, Value, ValueType,
     },
 };
 
-use crate::{scope::Scope, stdlib::stdlib};
-use std::{borrow::Cow, fs, path::Path};
+use crate::{scope::Scope, stdlib::stdlib, value::FromJsArgs};
+use std::{borrow::Cow, fs, future::Future, path::Path};
 
 /// The main entrypoint for executing and evaluating PetitJS programs. An engine
 /// defines how code should be executed. TODO more
@@ -58,23 +57,37 @@ impl Engine {
     }
 
     /// TODO
-    pub fn register_fn<In, Out, Err>(
+    pub fn register_fn<F, Args, Out, Err>(
         &mut self,
         name: impl ToString,
-        function: impl IntoNativeFunction<In, Out, Err>,
-    ) {
+        function: F,
+    ) where
+        F: 'static + Fn(&ProcessState, Args) -> Result<Out, Err> + Send + Sync,
+        Args: FromJsArgs,
+        Out: IntoJs,
+        Err: Into<RuntimeError>,
+    {
         self.globals
-            .declare(name, function.into_native_fn().into(), false);
+            .declare(name, NativeFunction::new(function).into(), false);
     }
 
     /// TODO
-    pub fn register_async_fn<In, Out, Err>(
+    pub fn register_async_fn<F, Args, Out, Err, Fut>(
         &mut self,
         name: impl ToString,
-        function: impl IntoAsyncNativeFunction<In, Out, Err>,
-    ) {
-        self.globals
-            .declare(name, function.into_native_fn().into(), false);
+        function: F,
+    ) where
+        F: 'static + Fn(&ProcessState, Args) -> Fut + Send + Sync,
+        Args: FromJsArgs,
+        Out: IntoJs,
+        Err: Into<RuntimeError>,
+        Fut: 'static + Future<Output = Result<Out, Err>>,
+    {
+        self.globals.declare(
+            name,
+            AsyncNativeFunction::new(function).into(),
+            false,
+        );
     }
 
     /// Parse some source code into a loaded program. The returned [Process] can

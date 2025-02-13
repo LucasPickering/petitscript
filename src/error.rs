@@ -63,12 +63,20 @@ pub enum TransformError {
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     /// TODO
-    #[error("Name {name} is already exported")]
+    #[error("{name} is already exported")]
     AlreadyExported { name: String },
 
     /// Custom error type, for errors originating in user code
     #[error(transparent)]
     Custom(Box<dyn std::error::Error + Send + Sync>),
+
+    /// Attempted to register two values of the same type as app data
+    #[error("Multiple app data values of type `{type_name}` were registered")]
+    DuplicateAppData { type_name: &'static str },
+
+    /// Attempted to export from within a subscope
+    #[error("Export only allowed in program root")]
+    IllegalExport,
 
     /// Attempted to return while not in a function
     #[error("Cannot return while not in function")]
@@ -94,6 +102,9 @@ pub enum RuntimeError {
         expected: ValueType,
         actual: ValueType,
     },
+
+    #[error("No app data of type `{type_name}` is registered")]
+    UnknownAppData { type_name: &'static str },
 }
 
 impl RuntimeError {

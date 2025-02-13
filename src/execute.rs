@@ -2,16 +2,21 @@
 
 mod eval;
 mod exec;
+mod state;
 
 use crate::{
     ast::Program,
     error::RuntimeResult,
-    execute::exec::Execute,
+    execute::{exec::Execute, state::ThreadState},
     scope::Scope,
     value::{Exports, Value},
-    Function,
+    Function, RuntimeError,
 };
-use std::{any::Any, sync::Arc};
+use std::{
+    any::{self, Any, TypeId},
+    collections::{hash_map::Entry, HashMap},
+    sync::Arc,
+};
 
 /// TODO
 /// TODO rename
@@ -19,146 +24,83 @@ use std::{any::Any, sync::Arc};
 pub struct Process {
     /// The program we'll be executing
     program: Program,
-    state: ProcessState,
+    /// Global values available to the program, such as the stdlib
+    globals: Scope,
+    /// Arbitrary user-defined data attached to this process
+    app_data: AppData,
 }
 
 impl Process {
     /// TODO
-    pub(crate) fn new(globals: Scope, program: Program) -> Self {
+    pub(super) fn new(globals: Scope, program: Program) -> Self {
         Self {
             program,
-            state: ProcessState {
-                context: Arc::new(()),
-                root_scope: globals.child(),
-                stack_frames: Vec::new(),
-                export_default: None,
-                export_names: Vec::new(),
-            },
+            globals,
+            app_data: AppData::default(),
         }
     }
 
-    /// Execute the loaded program
-    pub async fn execute(&mut self) -> RuntimeResult<()> {
-        self.program.statements.exec(&mut self.state).await?;
-        Ok(())
+    /// Attach arbitrary data of a statically known type to this process. This
+    /// data will be accessible to all subsequent executions of this process.
+    /// This makes it easy to pass data to native functions.
+    ///
+    /// App data is keyed by its type, meaning **only one instance of any given
+    /// type can be stored.**
+    pub fn set_app_data<T: Any>(&mut self, data: T) -> RuntimeResult<()> {
+        self.app_data.set(data)
+    }
+
+    /// Execute the loaded program and return its exported values
+    pub async fn execute(&mut self) -> RuntimeResult<Exports> {
+        // Exporting is available here because we're in the root scope
+        let mut thread_state =
+            ThreadState::new(self.globals.clone(), &self.app_data, true);
+        self.program.statements.exec(&mut thread_state).await?;
+        Ok(thread_state.into_exports().unwrap())
     }
 
     /// Call a function that originated from this process
     pub async fn call(
-        &mut self,
+        &self,
         function: &Function,
         args: &[Value],
     ) -> RuntimeResult<Value> {
-        function.call(&mut self.state, args).await
-    }
-
-    /// Get the values exported by the root module of this <TODO name here>
-    pub fn exports(&self) -> Exports {
-        // Only values in the root scope can be exported
-        let scope = &self.state.root_scope;
-        Exports {
-            default: self.state.export_default.clone(),
-            named: self
-                .state
-                .export_names
-                .iter()
-                .map(|name| {
-                    let value = scope.get(name)?;
-                    Ok((name.clone(), value))
-                })
-                .collect::<RuntimeResult<_>>()
-                .expect("TODO"),
-        }
+        // Exporting is NOT allowed here, because we're not in the root scope
+        let mut thread_state =
+            ThreadState::new(self.globals.clone(), &self.app_data, false);
+        function.call(&mut thread_state, args).await
     }
 }
 
-/// TODO
-#[derive(Debug)]
-pub struct ProcessState {
-    /// Arbitrary data the user wants to attach to this process. This needs to
-    /// Arc'd so the execution state can be cloned in order for processes to be
-    /// forked.
-    context: Arc<dyn Any>,
-    /// The topmost scope in a script/module. Root scope is unique in a few
-    /// ways:
-    /// - If the scope stack is empty, this will still be available
-    /// - Only root names can be exported
-    ///
-    /// This is *not* the same as the global scope. Global scope comes from
-    /// outside this script (stdlib and user-provided values), and cannot be
-    /// mutated.
-    root_scope: Scope,
-    /// The function call stack. In our machine, a stack frame is simply a
-    /// scope of names. This should not be confused with the hierarchical
-    /// parent/child structure of frames. Pushing a new frame is *not* the same
-    /// as creating a subscope of the current scope.
-    stack_frames: Vec<Scope>,
-    /// TODO
-    export_default: Option<Value>,
-    /// TODO
-    export_names: Vec<String>,
-}
+/// Arbitrary data that a user can attach to a process. Multiple pieces of data
+/// can be attached, but data is retrieved by its type, meaning **only one entry
+/// can existing for any type**.
+#[derive(Clone, Debug, Default)]
+pub struct AppData(HashMap<TypeId, Arc<dyn Any>>);
 
-impl ProcessState {
-    /// Get the process's attached used context, downcasted to a static type.
-    /// Return an error if the context is of the wrong type.
-    pub fn context<T: Any>(&self) -> RuntimeResult<&T> {
-        self.context.downcast_ref().ok_or_else(|| todo!())
+impl AppData {
+    /// Get a piece of app data attached to the process, downcasted to a static
+    /// type. Return an error if there is no app data of the requested type.
+    pub fn get<T: Any>(&self) -> RuntimeResult<&T> {
+        let data = self.0.get(&TypeId::of::<T>()).ok_or_else(|| {
+            RuntimeError::UnknownAppData {
+                type_name: any::type_name::<T>(),
+            }
+        })?;
+        // Downcast can never fail because the key and value are derived from
+        // the same original type T
+        Ok(data.downcast_ref().expect("Incorrect type for app data"))
     }
 
-    /// TODO
-    fn scope(&self) -> &Scope {
-        if let Some(last) = self.stack_frames.last() {
-            last
-        } else {
-            &self.root_scope
+    fn set<T: Any>(&mut self, data: T) -> RuntimeResult<()> {
+        match self.0.entry(TypeId::of::<T>()) {
+            Entry::Occupied(_) => Err(RuntimeError::DuplicateAppData {
+                type_name: any::type_name::<T>(),
+            }),
+            Entry::Vacant(entry) => {
+                entry.insert(Arc::new(data));
+                Ok(())
+            }
         }
-    }
-
-    /// TODO
-    fn scope_mut(&mut self) -> &mut Scope {
-        if let Some(last) = self.stack_frames.last_mut() {
-            last
-        } else {
-            &mut self.root_scope
-        }
-    }
-
-    /// Execute a function within a new frame on the stack
-    async fn with_frame<T>(
-        &mut self,
-        scope: Scope,
-        f: impl AsyncFnOnce(&mut Self) -> T,
-    ) -> T {
-        self.stack_frames.push(scope);
-        let value = f(self).await;
-        self.stack_frames.pop();
-        value
-    }
-
-    /// Execute a function in a new scope that's a child of the current scope.
-    /// Use this for blocks such as ifs, loops, etc.
-    async fn with_subscope<T>(
-        &mut self,
-        f: impl AsyncFnOnce(&mut Self) -> T,
-    ) -> T {
-        self.scope_mut().subscope();
-        let value = f(self).await;
-        self.scope_mut().revert();
-        value
-    }
-
-    /// TODO
-    fn export(&mut self, name: String) -> RuntimeResult<()> {
-        // TODO error on duplicate export
-        self.export_names.push(name);
-        Ok(())
-    }
-
-    /// TODO
-    fn export_default(&mut self, value: Value) -> RuntimeResult<()> {
-        // TODO error if something is already exported
-        self.export_default = Some(value);
-        Ok(())
     }
 }

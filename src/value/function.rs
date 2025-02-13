@@ -1,7 +1,7 @@
 use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
-    execute::ProcessState,
+    execute::AppData,
     scope::Scope,
     util::{BoxFuture, FutureExt},
     value::Value,
@@ -94,24 +94,24 @@ struct FunctionInner {
 #[derive(Clone)]
 pub struct NativeFunction {
     // TODO track name
-    function: Arc<
-        dyn Fn(&ProcessState, Vec<Value>) -> RuntimeResult<Value> + Send + Sync,
-    >,
+    #[allow(clippy::type_complexity)]
+    function:
+        Arc<dyn Fn(&AppData, Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
 }
 
 impl NativeFunction {
     /// TODO
     pub(crate) fn new<F, Args, Out, Err>(f: F) -> Self
     where
-        F: 'static + Fn(&ProcessState, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&AppData, Args) -> Result<Out, Err> + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |state: &ProcessState, args: Vec<Value>| {
+        let function = move |app_data: &AppData, args: Vec<Value>| {
             let args = Args::from_js_args(&args)?;
-            let output = f(state, args).map_err(Err::into)?;
+            let output = f(app_data, args).map_err(Err::into)?;
             output.into_js()
         };
         Self {
@@ -122,10 +122,10 @@ impl NativeFunction {
     /// Call this function
     pub(crate) fn call(
         &self,
-        state: &ProcessState,
+        app_data: &AppData,
         args: Vec<Value>,
     ) -> RuntimeResult<Value> {
-        (self.function)(state, args)
+        (self.function)(app_data, args)
     }
 }
 
@@ -147,11 +147,9 @@ impl Debug for NativeFunction {
 #[derive(Clone)]
 pub struct AsyncNativeFunction {
     // TODO track name
+    #[allow(clippy::type_complexity)]
     function: Arc<
-        dyn Fn(
-                &ProcessState,
-                Vec<Value>,
-            ) -> BoxFuture<'static, RuntimeResult<Value>>
+        dyn Fn(&AppData, Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
             + Send
             + Sync,
     >,
@@ -161,16 +159,17 @@ impl AsyncNativeFunction {
     /// TODO
     pub(crate) fn new<F, Args, Out, Err, Fut>(f: F) -> Self
     where
-        F: 'static + Fn(&ProcessState, Args) -> Fut + Send + Sync,
+        F: 'static + Fn(&AppData, Args) -> Fut + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,
         Fut: 'static + Future<Output = Result<Out, Err>>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |state: &ProcessState, args: Vec<Value>| {
+        let function = move |app_data: &AppData, args: Vec<Value>| {
             // TODO explain
-            let result = Args::from_js_args(&args).map(|args| f(state, args));
+            let result =
+                Args::from_js_args(&args).map(|args| f(app_data, args));
             match result {
                 Ok(future) => async move {
                     let output = future.await.map_err(Err::into)?;
@@ -188,10 +187,10 @@ impl AsyncNativeFunction {
     /// Call this function
     pub(crate) async fn call(
         &self,
-        state: &ProcessState,
+        app_data: &AppData,
         args: Vec<Value>,
     ) -> RuntimeResult<Value> {
-        (self.function)(state, args).await
+        (self.function)(app_data, args).await
     }
 }
 

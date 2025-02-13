@@ -137,14 +137,14 @@ impl Transform for ext::Stmt {
             }
             // TODO for..of loop?
             Self::ForInStmt(_) => todo!(),
-            // TODO labels on these
-            Self::ContinueStmt(_) => Ok(Statement::Continue(None)),
-            Self::BreakStmt(_) => Ok(Statement::Break(None)),
+            // TODO error if labels are present
+            Self::ContinueStmt(_) => Ok(Statement::Continue),
+            Self::BreakStmt(_) => Ok(Statement::Break),
             Self::ReturnStmt(return_stmt) => {
                 let expression = return_stmt.value().transform()?;
                 Ok(Statement::Return(expression))
             }
-            Self::LabelledStmt(_) => todo!(),
+            Self::LabelledStmt(_) => unsupported("TODO", "TODO"),
             Self::SwitchStmt(_) => todo!(),
             Self::ThrowStmt(_) => todo!(),
             Self::TryStmt(_) => todo!(),

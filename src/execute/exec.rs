@@ -3,7 +3,7 @@
 use crate::{
     ast::{
         Block, Declaration, ExportDeclaration, FunctionDeclaration, Identifier,
-        ImportDeclaration, Label, LexicalDeclaration, Statement,
+        ImportDeclaration, LexicalDeclaration, Statement,
     },
     error::RuntimeResult,
     execute::{eval::Evaluate, ThreadState},
@@ -97,12 +97,8 @@ impl Execute for Statement {
             Self::ForLoop(_) => todo!(),
             Self::ForOfLoop(_) => todo!(),
 
-            Self::Continue(label) => Ok(Some(Terminate::Continue {
-                label: label.clone(),
-            })),
-            Self::Break(label) => Ok(Some(Terminate::Break {
-                label: label.clone(),
-            })),
+            Self::Continue => Ok(Some(Terminate::Continue)),
+            Self::Break => Ok(Some(Terminate::Break)),
             Self::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
                     Some(expression.eval(state).await?)
@@ -254,15 +250,9 @@ impl Execute for FunctionDeclaration {
 #[must_use]
 pub enum Terminate {
     /// Skip to the entire of the current loop iteration
-    Continue {
-        /// Name the loop to skip to the end of
-        label: Option<Label>,
-    },
+    Continue,
     /// Break out of the current loop
-    Break {
-        /// Name the loop to skip to break
-        label: Option<Label>,
-    },
+    Break,
     /// Return from the current function, optionally with a return value
     Return { return_value: Option<Value> },
 }

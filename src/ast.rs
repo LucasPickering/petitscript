@@ -23,12 +23,12 @@ pub enum Statement {
     DoWhileLoop(DoWhileLoop),
 
     Return(Option<Expression>),
-    Break(Option<Label>),
-    Continue(Option<Label>),
+    Break,
+    Continue,
 
     Import(ImportDeclaration),
     Export(ExportDeclaration),
-    // TODO: switch, labels, throw, try, catch, finally
+    // TODO: switch, throw, try, catch, finally
 }
 
 /// A collection of statements, delineated by {}. This denotes a new
@@ -152,9 +152,6 @@ impl Identifier {
         &self.0
     }
 }
-
-#[derive(Clone, Debug)]
-pub struct Label(String);
 
 #[derive(Clone, Debug)]
 pub enum Literal {

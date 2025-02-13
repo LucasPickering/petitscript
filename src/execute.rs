@@ -14,13 +14,14 @@ use crate::{
 };
 use std::{
     any::{self, Any, TypeId},
+    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
 
 /// TODO
 /// TODO rename
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Process {
     /// The program we'll be executing
     program: Program,
@@ -46,7 +47,10 @@ impl Process {
     ///
     /// App data is keyed by its type, meaning **only one instance of any given
     /// type can be stored.**
-    pub fn set_app_data<T: Any>(&mut self, data: T) -> RuntimeResult<()> {
+    pub fn set_app_data<T: Any + Send + Sync>(
+        &mut self,
+        data: T,
+    ) -> RuntimeResult<()> {
         self.app_data.set(data)
     }
 
@@ -76,24 +80,34 @@ impl Process {
 /// can be attached, but data is retrieved by its type, meaning **only one entry
 /// can existing for any type**.
 #[derive(Clone, Debug, Default)]
-pub struct AppData(HashMap<TypeId, Arc<dyn Any>>);
+pub struct AppData(
+    /// Outer Arc is a workaround to being unable to specify lifetimes properly
+    /// on async native fns. We have to pass an owned AppData in to
+    ///
+    /// Inner arc is necessary so app data can be shared when a process is
+    /// cloned
+    Arc<RefCell<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
+);
 
 impl AppData {
     /// Get a piece of app data attached to the process, downcasted to a static
     /// type. Return an error if there is no app data of the requested type.
-    pub fn get<T: Any>(&self) -> RuntimeResult<&T> {
-        let data = self.0.get(&TypeId::of::<T>()).ok_or_else(|| {
+    pub fn get<T: Any + Send + Sync>(&self) -> RuntimeResult<Arc<T>> {
+        // TODO return a ref from this instead once we eliminate the outer arc
+        let map = self.0.borrow();
+        let data = map.get(&TypeId::of::<T>()).ok_or_else(|| {
             RuntimeError::UnknownAppData {
                 type_name: any::type_name::<T>(),
             }
         })?;
         // Downcast can never fail because the key and value are derived from
         // the same original type T
-        Ok(data.downcast_ref().expect("Incorrect type for app data"))
+        Ok(Arc::downcast(Arc::clone(data))
+            .expect("Incorrect type for app data"))
     }
 
-    fn set<T: Any>(&mut self, data: T) -> RuntimeResult<()> {
-        match self.0.entry(TypeId::of::<T>()) {
+    fn set<T: Any + Send + Sync>(&mut self, data: T) -> RuntimeResult<()> {
+        match self.0.borrow_mut().entry(TypeId::of::<T>()) {
             Entry::Occupied(_) => Err(RuntimeError::DuplicateAppData {
                 type_name: any::type_name::<T>(),
             }),

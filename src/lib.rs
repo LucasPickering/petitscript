@@ -77,7 +77,7 @@ impl Engine {
         name: impl ToString,
         function: F,
     ) where
-        F: 'static + Fn(&AppData, Args) -> Fut + Send + Sync,
+        F: 'static + Fn(AppData, Args) -> Fut + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,

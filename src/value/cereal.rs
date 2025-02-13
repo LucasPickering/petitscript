@@ -1,7 +1,15 @@
 //! Serde-related implementations and helpers
 
 use crate::{FromJs, IntoJs, RuntimeResult, Value};
+use serde::Deserialize;
 use std::ops::{Deref, DerefMut};
+
+impl Value {
+    /// TODO
+    pub fn deserialize<'de, T: Deserialize<'de>>(&self) -> RuntimeResult<T> {
+        todo!()
+    }
+}
 
 impl serde::Serialize for Value {
     fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>

@@ -14,7 +14,7 @@ mod value;
 pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{Error, RuntimeError, RuntimeResult},
-    execute::{AppData, Process},
+    execute::Process,
     value::{
         Array, AsyncNativeFunction, Exports, FromJs, Function, IntoJs,
         JsString, NativeFunction, Number, Object, Value, ValueType,
@@ -62,7 +62,7 @@ impl Engine {
         name: impl ToString,
         function: F,
     ) where
-        F: 'static + Fn(&AppData, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,
@@ -77,7 +77,7 @@ impl Engine {
         name: impl ToString,
         function: F,
     ) where
-        F: 'static + Fn(AppData, Args) -> Fut + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Fut + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,

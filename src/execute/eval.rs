@@ -171,10 +171,10 @@ impl Evaluate for FunctionCall {
         match function {
             Value::Function(function) => function.call(state, &arguments).await,
             Value::Native(function) => {
-                function.call(state.app_data(), arguments)
+                function.call(state.process(), arguments)
             }
             Value::AsyncNative(function) => {
-                function.call(state.app_data().clone(), arguments).await
+                function.call(state.process(), arguments).await
             }
             _ => Err(RuntimeError::Type {
                 expected: ValueType::Function,

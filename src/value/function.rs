@@ -1,11 +1,10 @@
 use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
-    execute::AppData,
     scope::Scope,
     util::{BoxFuture, FutureExt},
     value::Value,
-    FromJs, IntoJs, RuntimeError,
+    FromJs, IntoJs, Process, RuntimeError,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -96,22 +95,22 @@ pub struct NativeFunction {
     // TODO track name
     #[allow(clippy::type_complexity)]
     function:
-        Arc<dyn Fn(&AppData, Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
+        Arc<dyn Fn(&Process, Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
 }
 
 impl NativeFunction {
     /// TODO
     pub(crate) fn new<F, Args, Out, Err>(f: F) -> Self
     where
-        F: 'static + Fn(&AppData, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |app_data: &AppData, args: Vec<Value>| {
+        let function = move |process: &Process, args: Vec<Value>| {
             let args = Args::from_js_args(&args)?;
-            let output = f(app_data, args).map_err(Err::into)?;
+            let output = f(process, args).map_err(Err::into)?;
             output.into_js()
         };
         Self {
@@ -122,10 +121,10 @@ impl NativeFunction {
     /// Call this function
     pub(crate) fn call(
         &self,
-        app_data: &AppData,
+        process: &Process,
         args: Vec<Value>,
     ) -> RuntimeResult<Value> {
-        (self.function)(app_data, args)
+        (self.function)(process, args)
     }
 }
 
@@ -149,7 +148,7 @@ pub struct AsyncNativeFunction {
     // TODO track name
     #[allow(clippy::type_complexity)]
     function: Arc<
-        dyn Fn(AppData, Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
+        dyn Fn(&Process, Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
             + Send
             + Sync,
     >,
@@ -159,19 +158,16 @@ impl AsyncNativeFunction {
     /// TODO
     pub(crate) fn new<F, Args, Out, Err, Fut>(f: F) -> Self
     where
-        // TODO accept AppData ref instead. I couldn't figure out the lifetime
-        // bounds to attach the input ref to the output future
-        F: 'static + Fn(AppData, Args) -> Fut + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Fut + Send + Sync,
         Args: FromJsArgs,
         Out: IntoJs,
         Err: Into<RuntimeError>,
         Fut: 'static + Future<Output = Result<Out, Err>>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |app_data: AppData, args: Vec<Value>| {
+        let function = move |process: &Process, args: Vec<Value>| {
             // TODO explain
-            let result =
-                Args::from_js_args(&args).map(|args| f(app_data, args));
+            let result = Args::from_js_args(&args).map(|args| f(process, args));
             match result {
                 Ok(future) => async move {
                     let output = future.await.map_err(Err::into)?;
@@ -189,10 +185,10 @@ impl AsyncNativeFunction {
     /// Call this function
     pub(crate) async fn call(
         &self,
-        app_data: AppData,
+        process: &Process,
         args: Vec<Value>,
     ) -> RuntimeResult<Value> {
-        (self.function)(app_data, args).await
+        (self.function)(process, args).await
     }
 }
 

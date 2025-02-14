@@ -1,7 +1,7 @@
 //! The PetitJS standard library
 
 use crate::{
-    error::RuntimeResult, scope::Scope, value::Object, AppData, NativeFunction,
+    error::RuntimeResult, scope::Scope, value::Object, NativeFunction, Process,
     Value,
 };
 
@@ -20,7 +20,7 @@ fn console() -> Object {
 
 /// Log values to stdout
 /// TODO support varargs
-fn console_log(_: &AppData, (value,): (Value,)) -> RuntimeResult<Value> {
+fn console_log(_: &Process, (value,): (Value,)) -> RuntimeResult<Value> {
     println!("{value}");
     /* for (i, value) in args.iter().enumerate() {
         if i > 0 {

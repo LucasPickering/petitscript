@@ -4,27 +4,23 @@ use crate::{
     error::RuntimeResult,
     scope::Scope,
     value::{Exports, Value},
-    AppData, RuntimeError,
+    Process, RuntimeError,
 };
 use std::collections::hash_map::Entry;
 
 /// TODO
 #[derive(Debug)]
 pub(super) struct ThreadState<'a> {
+    process: &'a Process,
     call_stack: CallStack,
-    app_data: &'a AppData,
     // TODO comments
     exports: Option<Exports>,
 }
 
 impl<'a> ThreadState<'a> {
-    pub fn new(
-        globals: Scope,
-        app_data: &'a AppData,
-        can_export: bool,
-    ) -> Self {
+    pub fn new(globals: Scope, process: &'a Process, can_export: bool) -> Self {
         Self {
-            app_data,
+            process,
             call_stack: CallStack::new(globals),
             exports: if can_export {
                 Some(Exports::default())
@@ -32,6 +28,10 @@ impl<'a> ThreadState<'a> {
                 None
             },
         }
+    }
+
+    pub fn process(&self) -> &Process {
+        self.process
     }
 
     /// TODO
@@ -102,10 +102,6 @@ impl<'a> ThreadState<'a> {
         let value = f(self).await;
         self.scope_mut().revert();
         value
-    }
-
-    pub fn app_data(&self) -> &AppData {
-        self.app_data
     }
 }
 

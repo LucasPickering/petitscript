@@ -14,14 +14,13 @@ use crate::{
 };
 use std::{
     any::{self, Any, TypeId},
-    cell::RefCell,
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
 
 /// TODO
 /// TODO rename
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Process {
     /// The program we'll be executing
     program: Program,
@@ -41,6 +40,12 @@ impl Process {
         }
     }
 
+    /// Get a piece of app data attached to the process, downcasted to a static
+    /// type. Return an error if there is no app data of the requested type.
+    pub fn app_data<T: Any + Send + Sync>(&self) -> RuntimeResult<&T> {
+        self.app_data.get()
+    }
+
     /// Attach arbitrary data of a statically known type to this process. This
     /// data will be accessible to all subsequent executions of this process.
     /// This makes it easy to pass data to native functions.
@@ -55,10 +60,10 @@ impl Process {
     }
 
     /// Execute the loaded program and return its exported values
-    pub async fn execute(&mut self) -> RuntimeResult<Exports> {
+    pub async fn execute(&self) -> RuntimeResult<Exports> {
         // Exporting is available here because we're in the root scope
         let mut thread_state =
-            ThreadState::new(self.globals.clone(), &self.app_data, true);
+            ThreadState::new(self.globals.clone(), self, true);
         self.program.statements.exec(&mut thread_state).await?;
         Ok(thread_state.into_exports().unwrap())
     }
@@ -71,7 +76,7 @@ impl Process {
     ) -> RuntimeResult<Value> {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
-            ThreadState::new(self.globals.clone(), &self.app_data, false);
+            ThreadState::new(self.globals.clone(), self, false);
         function.call(&mut thread_state, args).await
     }
 }
@@ -81,33 +86,26 @@ impl Process {
 /// can existing for any type**.
 #[derive(Clone, Debug, Default)]
 pub struct AppData(
-    /// Outer Arc is a workaround to being unable to specify lifetimes properly
-    /// on async native fns. We have to pass an owned AppData in to
-    ///
     /// Inner arc is necessary so app data can be shared when a process is
     /// cloned
-    Arc<RefCell<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>>,
+    HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 );
 
 impl AppData {
-    /// Get a piece of app data attached to the process, downcasted to a static
-    /// type. Return an error if there is no app data of the requested type.
-    pub fn get<T: Any + Send + Sync>(&self) -> RuntimeResult<Arc<T>> {
+    fn get<T: Any + Send + Sync>(&self) -> RuntimeResult<&T> {
         // TODO return a ref from this instead once we eliminate the outer arc
-        let map = self.0.borrow();
-        let data = map.get(&TypeId::of::<T>()).ok_or_else(|| {
+        let data = self.0.get(&TypeId::of::<T>()).ok_or_else(|| {
             RuntimeError::UnknownAppData {
                 type_name: any::type_name::<T>(),
             }
         })?;
         // Downcast can never fail because the key and value are derived from
         // the same original type T
-        Ok(Arc::downcast(Arc::clone(data))
-            .expect("Incorrect type for app data"))
+        Ok(data.downcast_ref().expect("Incorrect type for app data"))
     }
 
     fn set<T: Any + Send + Sync>(&mut self, data: T) -> RuntimeResult<()> {
-        match self.0.borrow_mut().entry(TypeId::of::<T>()) {
+        match self.0.entry(TypeId::of::<T>()) {
             Entry::Occupied(_) => Err(RuntimeError::DuplicateAppData {
                 type_name: any::type_name::<T>(),
             }),

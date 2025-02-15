@@ -82,6 +82,13 @@ pub enum RuntimeError {
     #[error("Cannot return while not in function")]
     IllegalReturn,
 
+    /// Oopsies!
+    #[error(
+        "Internal error occurred in the PetitJS engine. \
+        This is a bug; please report it! {0}"
+    )]
+    Internal(String),
+
     /// Attempted to convert non-UTF-8 bytes to a string
     #[error("TODO")]
     InvalidUtf8(#[from] FromUtf8Error),
@@ -113,5 +120,9 @@ impl RuntimeError {
         error: impl 'static + std::error::Error + Send + Sync,
     ) -> Self {
         Self::Custom(error.into())
+    }
+
+    pub(crate) fn internal(message: impl ToString) -> Self {
+        Self::Internal(message.to_string())
     }
 }

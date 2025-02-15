@@ -9,7 +9,7 @@ use std::{
 #[derive(Clone, Debug, Default)]
 pub struct Scope {
     /// TODO
-    parent: Option<Box<Self>>,
+    parent: Option<Arc<Self>>,
     /// TODO
     bindings: Bindings,
 }
@@ -25,7 +25,7 @@ impl Scope {
     /// declarations will occur in the child
     pub fn child(self) -> Self {
         Self {
-            parent: Some(Box::new(self)),
+            parent: Some(Arc::new(self)),
             bindings: Bindings::default(),
         }
     }
@@ -34,12 +34,20 @@ impl Scope {
     pub fn subscope(&mut self) {
         let parent = mem::take(self);
         // Self is now the child
-        self.parent = Some(Box::new(parent));
+        self.parent = Some(Arc::new(parent));
     }
 
     /// TODO
-    pub fn revert(&mut self) {
-        *self = *self.parent.take().expect("TODO");
+    pub fn revert(&mut self) -> RuntimeResult<()> {
+        if let Some(parent) = self.parent.take() {
+            // In most cases we'll be the only pointer to the parent so we can
+            // reclaim the original scope. If we got forked though, we'll have
+            // to clone it
+            *self = Arc::unwrap_or_clone(parent);
+            Ok(())
+        } else {
+            Err(RuntimeError::internal("TODO"))
+        }
     }
 
     /// TODO

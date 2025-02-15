@@ -3,9 +3,7 @@
 mod array;
 #[cfg(feature = "bytes")]
 mod buffer;
-#[cfg(feature = "serde")]
-pub mod cereal;
-mod function;
+pub mod function;
 mod macros;
 mod number;
 mod object;
@@ -13,15 +11,16 @@ mod object;
 pub use array::Array;
 #[cfg(feature = "bytes")]
 pub use buffer::Buffer;
-pub use function::{FromJsArgs, Function, NativeFunction};
 pub use number::Number;
 pub use object::Object;
 
 use crate::{
     error::RuntimeResult,
+    function::{Function, NativeFunction},
     value::macros::{impl_conversions, impl_value_numeric_binary_op},
     RuntimeError,
 };
+use indexmap::IndexMap;
 use std::{
     collections::HashMap,
     fmt::{self, Display},
@@ -98,6 +97,19 @@ impl Value {
             | Self::Buffer(_)
             | Self::Function(_)
             | Self::Native(_) => None,
+        }
+    }
+
+    /// If this value is a string, get the inner string. Otherwise return a type
+    /// error.
+    pub fn try_into_string(self) -> RuntimeResult<JsString> {
+        if let Self::String(string) = self {
+            Ok(string.into())
+        } else {
+            Err(RuntimeError::Type {
+                expected: ValueType::Array,
+                actual: self.type_(),
+            })
         }
     }
 
@@ -189,15 +201,6 @@ impl Value {
     pub fn into_todo<T: FromJs>(self) -> RuntimeResult<T> {
         T::from_js(self)
     }
-
-    /// Convert this value into an arbitrary type, using the type's
-    /// [Deserialize](serde::Deserialize) implementation
-    #[cfg(feature = "serde")]
-    pub fn into_serde<T: serde::de::DeserializeOwned>(
-        &self,
-    ) -> RuntimeResult<T> {
-        todo!()
-    }
 }
 
 impl Display for Value {
@@ -259,11 +262,25 @@ impl From<&str> for Value {
     }
 }
 
+// Impl `From<T> for Value` and `FromJs for T`
 impl_conversions!(bool, Boolean);
 impl_conversions!(Number, Number);
+impl_conversions!(i8, Number);
+impl_conversions!(u8, Number);
+impl_conversions!(i16, Number);
+impl_conversions!(u16, Number);
+impl_conversions!(i32, Number);
+impl_conversions!(u32, Number);
+impl_conversions!(i64, Number);
+impl_conversions!(u64, Number);
+impl_conversions!(f32, Number);
+impl_conversions!(f64, Number);
 impl_conversions!(String, String);
+impl_conversions!(char, String);
 impl_conversions!(Array, Array);
+impl_conversions!(Vec<Value>, Array);
 impl_conversions!(Object, Object);
+impl_conversions!(IndexMap<String, Value>, Array);
 impl_conversions!(Function, Function);
 impl_conversions!(NativeFunction, Native, Function);
 
@@ -312,6 +329,12 @@ impl Deref for JsString {
 impl Display for JsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<char> for JsString {
+    fn from(value: char) -> Self {
+        Self(value.to_string().into())
     }
 }
 

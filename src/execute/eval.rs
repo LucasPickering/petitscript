@@ -13,7 +13,8 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    value::{Array, Function, Number, Object, Value, ValueType},
+    function::Function,
+    value::{Array, Number, Object, Value, ValueType},
     RuntimeError,
 };
 use std::iter;
@@ -260,7 +261,7 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    pub(super) fn call(
+    pub(crate) fn call(
         &self,
         state: &mut ThreadState<'_>,
         arguments: &[Value],

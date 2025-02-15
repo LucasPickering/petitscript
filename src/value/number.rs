@@ -96,9 +96,57 @@ impl Rem for Number {
     }
 }
 
+impl From<i8> for Number {
+    fn from(value: i8) -> Self {
+        Self::Int(value.into())
+    }
+}
+
+impl From<u8> for Number {
+    fn from(value: u8) -> Self {
+        Self::Int(value.into())
+    }
+}
+
+impl From<i16> for Number {
+    fn from(value: i16) -> Self {
+        Self::Int(value.into())
+    }
+}
+
+impl From<u16> for Number {
+    fn from(value: u16) -> Self {
+        Self::Int(value.into())
+    }
+}
+
+impl From<i32> for Number {
+    fn from(value: i32) -> Self {
+        Self::Int(value.into())
+    }
+}
+
+impl From<u32> for Number {
+    fn from(value: u32) -> Self {
+        Self::Int(value.into())
+    }
+}
+
 impl From<i64> for Number {
     fn from(value: i64) -> Self {
         Self::Int(value)
+    }
+}
+
+impl From<u64> for Number {
+    fn from(value: u64) -> Self {
+        todo!()
+    }
+}
+
+impl From<f32> for Number {
+    fn from(value: f32) -> Self {
+        Self::Float(value.into())
     }
 }
 

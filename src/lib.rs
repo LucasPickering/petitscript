@@ -6,21 +6,25 @@ mod error;
 mod execute;
 mod parse;
 mod scope;
+#[cfg(feature = "serde")]
+pub mod serde;
 mod stdlib;
 mod value;
 
-#[cfg(feature = "serde")]
-pub use crate::value::cereal::SerdeJs;
 pub use crate::{
     error::{Error, RuntimeError, RuntimeResult},
     execute::Process,
     value::{
-        Array, Exports, FromJs, FromJsArgs, Function, IntoJs, JsString,
-        NativeFunction, Number, Object, Value, ValueType,
+        function, Array, Exports, FromJs, IntoJs, JsString, Number, Object,
+        Value, ValueType,
     },
 };
 
-use crate::{scope::Scope, stdlib::stdlib};
+use crate::{
+    scope::Scope,
+    stdlib::stdlib,
+    value::function::{FromJsArgs, NativeFunction},
+};
 use std::{borrow::Cow, fs, path::Path};
 
 /// The main entrypoint for executing and evaluating PetitJS programs. An engine

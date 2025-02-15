@@ -8,9 +8,10 @@ use crate::{
     ast::Program,
     error::RuntimeResult,
     execute::{exec::Execute, state::ThreadState},
+    function::Function,
     scope::Scope,
     value::{Exports, Value},
-    Function, RuntimeError,
+    RuntimeError,
 };
 use std::{
     any::{self, Any, TypeId},

@@ -7,7 +7,7 @@ use crate::{
     },
     error::RuntimeResult,
     execute::{eval::Evaluate, ThreadState},
-    value::{Function, Value},
+    value::{function::Function, Value},
 };
 
 /// TODO

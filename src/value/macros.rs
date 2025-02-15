@@ -16,7 +16,6 @@ macro_rules! impl_value_numeric_binary_op {
     };
 }
 
-/// Impl From<T> for Value, where From<T> is implemented for a variant type
 /// Implement two complementary traits for a type `T`, where `T` is convertible
 /// to a particular variant (e.g. the `String` type and the `String` variant):
 /// - `From<T>` for `Value` - Convert infallibly to `T`'s natural variant

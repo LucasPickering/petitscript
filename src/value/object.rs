@@ -82,6 +82,12 @@ impl Display for Object {
     }
 }
 
+impl From<IndexMap<String, Value>> for Object {
+    fn from(value: IndexMap<String, Value>) -> Self {
+        Self(value.into())
+    }
+}
+
 #[cfg(feature = "serde")]
 impl serde::Serialize for Object {
     fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>

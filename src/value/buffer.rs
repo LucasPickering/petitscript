@@ -1,4 +1,4 @@
-use crate::value::macros::impl_conversions;
+use crate::value::macros::{impl_value_conversions, impl_value_from};
 use bytes::Bytes;
 use std::{
     fmt::{self, Display},
@@ -39,6 +39,12 @@ impl Display for Buffer {
     }
 }
 
+impl From<&[u8]> for Buffer {
+    fn from(bytes: &[u8]) -> Self {
+        Self(bytes.to_owned().into())
+    }
+}
+
 impl From<Vec<u8>> for Buffer {
     fn from(bytes: Vec<u8>) -> Self {
         Self(bytes.into())
@@ -65,6 +71,8 @@ impl From<Buffer> for Vec<u8> {
 
 // Conversions are stashed here instead of the parent module so we don't need
 // a feature gate on each one
-impl_conversions!(Buffer, Buffer);
-impl_conversions!(Bytes, Buffer);
-impl_conversions!(Vec<u8>, Buffer);
+impl_value_conversions!(Buffer, Buffer);
+impl_value_conversions!(Bytes, Buffer);
+impl_value_conversions!(Vec<u8>, Buffer);
+// One-way conversion, because we can't convert back to a ref
+impl_value_from!(&[u8], Buffer);

@@ -8,14 +8,13 @@ use crate::{
         OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
         TemplateLiteral, UnaryOperation, UnaryOperator,
     },
-    error::RuntimeResult,
+    error::{RuntimeResult, ValueError},
     execute::{
         exec::{Execute, Terminate},
         ThreadState,
     },
     function::Function,
     value::{Array, Number, Object, Value, ValueType},
-    RuntimeError,
 };
 use std::iter;
 
@@ -163,10 +162,11 @@ impl Evaluate for FunctionCall {
             Value::Native(function) => {
                 function.call(state.process(), arguments)
             }
-            _ => Err(RuntimeError::Type {
+            _ => Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
-            }),
+            }
+            .into()),
         }
     }
 }
@@ -261,7 +261,7 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    pub(crate) fn call(
+    pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,
         arguments: &[Value],

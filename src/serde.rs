@@ -1,7 +1,9 @@
 //! Serialization and deserialization
 //!
 //! This module is designed to imitate Serde data format crate, and thus follows
-//! [the conventions laid out by Serde](https://serde.rs/conventions.html).
+//! [the conventions laid out by Serde](https://serde.rs/conventions.html),
+//! with the exception of the `Error` and `Result` types: we use [ValueError]
+//! instead.
 
 mod de;
 mod ser;
@@ -9,34 +11,28 @@ mod ser;
 pub use de::Deserializer;
 pub use ser::Serializer;
 
-use crate::{FromJs, IntoJs, RuntimeResult, Value};
+use crate::{error::ValueError, FromJs, IntoJs, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
-use thiserror::Error;
-
-/// A representation of all possible errors that could occur while serializing
-/// to or deserializing from PetitJS values
-///
-/// TODO merge into RuntimeError?
-#[derive(Debug, Error)]
-pub enum Error {}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Serialize the given data structure as a PetitJS value
-pub fn to_value<T: Serialize>(data: &T) -> Result<Value> {
-    todo!()
+pub fn to_value<T: Serialize>(data: &T) -> Result<Value, ValueError> {
+    data.serialize(&Serializer)
 }
 
 /// Deserialize an instance of type `T` from a PetitJS value
-pub fn from_value<'de, T: Deserialize<'de>>(value: &Value) -> Result<T> {
-    todo!()
+pub fn from_value<'de, T: Deserialize<'de>>(
+    value: Value,
+) -> Result<T, ValueError> {
+    T::deserialize(Deserializer::new(value))
 }
 
 impl Value {
     /// Deserialize this value into an arbitrary type, using the type's
     /// [Deserialize](serde::Deserialize) implementation
-    pub fn deserialize<'de, T: Deserialize<'de>>(&self) -> Result<T> {
+    pub fn deserialize<'de, T: Deserialize<'de>>(
+        self,
+    ) -> Result<T, ValueError> {
         from_value(self)
     }
 }
@@ -86,13 +82,13 @@ impl<T> DerefMut for SerdeJs<T> {
 }
 
 impl<T: serde::Serialize> IntoJs for SerdeJs<T> {
-    fn into_js(self) -> RuntimeResult<Value> {
+    fn into_js(self) -> Result<Value, ValueError> {
         todo!()
     }
 }
 
 impl<'de, T: serde::Deserialize<'de>> FromJs for SerdeJs<T> {
-    fn from_js(_: Value) -> RuntimeResult<Self> {
+    fn from_js(_: Value) -> Result<Self, ValueError> {
         todo!()
     }
 }

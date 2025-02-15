@@ -1,4 +1,4 @@
-use crate::value::ValueType;
+use crate::{value::ValueType, Number};
 use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
@@ -7,18 +7,31 @@ use std::{
 };
 use thiserror::Error;
 
+/// TODO get rid of this?
 pub type RuntimeResult<T> = Result<T, RuntimeError>;
 
-/// TODO
+/// Any error that can occur within PetitJS
 #[derive(Debug, Error)]
 pub enum Error {
-    /// TODO add error message
-    #[error(transparent)]
+    /// Error occurred while loading source code from a file or other I/O
+    /// source
+    #[error("TODO: {0}")]
     Io(#[from] io::Error),
+
+    /// Error occurred while parsing source code. This indicates the source is
+    /// not valid ECMAScript code
     #[error(transparent)]
     Parse(#[from] ParseError),
+
+    /// An error that occurs while transforming a parsed program from
+    /// ECMAScript to the PetitJS abstract syntax tree. This indicates the
+    /// source is valid JavaScript syntax, but is illegal in PetitJS.
     #[error(transparent)]
     Transform(#[from] TransformError),
+
+    /// An error that occurs while executing a program. All runtime errors have
+    /// an attached source span, indicating the point in the program where the
+    /// error occurred.
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 }
@@ -26,7 +39,8 @@ pub enum Error {
 #[cfg(test)]
 static_assertions::assert_impl_all!(Error: Send, Sync);
 
-/// TODO
+/// Error occurred while parsing source code. This indicates the source is not
+/// valid ECMAScript code
 #[derive(Debug, Error)]
 pub struct ParseError {
     pub source_name: Option<String>,
@@ -44,7 +58,9 @@ impl Display for ParseError {
     }
 }
 
-/// TODO
+/// An error that occurs while transforming a parsed program from ECMAScript to
+/// the PetitJS abstract syntax tree. This indicates the source is valid
+/// JavaScript syntax, but is illegal in PetitJS.
 #[derive(Debug, Error)]
 pub enum TransformError {
     /// Source code contains a syntax construct that isn't supported in our
@@ -54,12 +70,12 @@ pub enum TransformError {
         name: &'static str,
         help: &'static str,
     },
-    /// TODO
+    /// AST is missing a node that should be present
     #[error("TODO")]
     Missing,
 }
 
-/// An error that occurred while executing a script or module
+/// An error that occurred while executing a program.
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     /// TODO
@@ -89,10 +105,6 @@ pub enum RuntimeError {
     )]
     Internal(String),
 
-    /// Attempted to convert non-UTF-8 bytes to a string
-    #[error("TODO")]
-    InvalidUtf8(#[from] FromUtf8Error),
-
     /// Second assignment to a `const` variable
     #[error("Assignment to immutable variable {name}")]
     ImmutableAssign { name: String },
@@ -101,17 +113,12 @@ pub enum RuntimeError {
     #[error("{name} is not defined")]
     Reference { name: String },
 
-    /// An operation required a specific type (or types), but received a value
-    /// of an unsupported type. This commonly occurs during type downcasting,
-    /// e.g. [Value] to [Number].
-    #[error("Type error: expected {expected}, received {actual}")]
-    Type {
-        expected: ValueType,
-        actual: ValueType,
-    },
-
     #[error("No app data of type `{type_name}` is registered")]
     UnknownAppData { type_name: &'static str },
+
+    /// Error converting to/from JS values
+    #[error(transparent)]
+    Value(#[from] ValueError),
 }
 
 impl RuntimeError {
@@ -125,4 +132,34 @@ impl RuntimeError {
     pub(crate) fn internal(message: impl ToString) -> Self {
         Self::Internal(message.to_string())
     }
+}
+
+/// An error that can occur while converting to/from [Value](crate::Value)
+#[derive(Debug, Error)]
+pub enum ValueError {
+    /// TODO
+    #[error("{0}")]
+    Custom(String),
+
+    /// Attempted to convert non-UTF-8 bytes to a string
+    #[error("TODO")]
+    InvalidUtf8(#[from] FromUtf8Error),
+
+    /// Error converting [Number] to a specific number type. Could be a
+    /// mismatch (float -> int or vice versa), or a value out of range
+    #[error("Cannot convert number {number} to {expected}: {description}")]
+    Number {
+        expected: &'static str,
+        number: Number,
+        description: &'static str,
+    },
+
+    /// An operation required a specific type (or types), but received a value
+    /// of an unsupported type. This commonly occurs during type downcasting,
+    /// e.g. [Value] to [Number].
+    #[error("Type error: expected {expected}, received {actual}")]
+    Type {
+        expected: ValueType,
+        actual: ValueType,
+    },
 }

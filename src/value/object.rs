@@ -83,8 +83,14 @@ impl Display for Object {
 }
 
 impl From<IndexMap<String, Value>> for Object {
-    fn from(value: IndexMap<String, Value>) -> Self {
-        Self(value.into())
+    fn from(map: IndexMap<String, Value>) -> Self {
+        Self(map.into())
+    }
+}
+
+impl From<Object> for IndexMap<String, Value> {
+    fn from(object: Object) -> Self {
+        Arc::unwrap_or_clone(object.0)
     }
 }
 

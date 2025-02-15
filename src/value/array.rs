@@ -59,6 +59,12 @@ impl From<Vec<Value>> for Array {
     }
 }
 
+impl From<Array> for Vec<Value> {
+    fn from(array: Array) -> Self {
+        Arc::unwrap_or_clone(array.0)
+    }
+}
+
 impl Display for Array {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;

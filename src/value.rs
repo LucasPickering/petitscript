@@ -15,10 +15,12 @@ pub use number::Number;
 pub use object::Object;
 
 use crate::{
-    error::RuntimeResult,
+    error::{RuntimeResult, ValueError},
     function::{Function, NativeFunction},
-    value::macros::{impl_conversions, impl_value_numeric_binary_op},
-    RuntimeError,
+    value::macros::{
+        ensure_type, impl_value_conversions, impl_value_from,
+        impl_value_numeric_binary_op,
+    },
 };
 use indexmap::IndexMap;
 use std::{
@@ -102,11 +104,11 @@ impl Value {
 
     /// If this value is a string, get the inner string. Otherwise return a type
     /// error.
-    pub fn try_into_string(self) -> RuntimeResult<JsString> {
+    pub fn try_into_string(self) -> Result<JsString, ValueError> {
         if let Self::String(string) = self {
-            Ok(string.into())
+            Ok(string)
         } else {
-            Err(RuntimeError::Type {
+            Err(ValueError::Type {
                 expected: ValueType::Array,
                 actual: self.type_(),
             })
@@ -115,11 +117,11 @@ impl Value {
 
     /// If this value is an array, get the inner array. Otherwise return a type
     /// error.
-    pub fn try_into_array(self) -> RuntimeResult<Array> {
+    pub fn try_into_array(self) -> Result<Array, ValueError> {
         if let Self::Array(array) = self {
             Ok(array)
         } else {
-            Err(RuntimeError::Type {
+            Err(ValueError::Type {
                 expected: ValueType::Array,
                 actual: self.type_(),
             })
@@ -128,11 +130,11 @@ impl Value {
 
     /// If this value is an object, get the inner object. Otherwise return a
     /// type error.
-    pub fn try_into_object(self) -> RuntimeResult<Object> {
+    pub fn try_into_object(self) -> Result<Object, ValueError> {
         if let Self::Object(object) = self {
             Ok(object)
         } else {
-            Err(RuntimeError::Type {
+            Err(ValueError::Type {
                 expected: ValueType::Object,
                 actual: self.type_(),
             })
@@ -141,11 +143,11 @@ impl Value {
 
     /// If this value is a function, get the inner function. Otherwise return a
     /// type error.
-    pub fn try_into_function(self) -> RuntimeResult<Function> {
+    pub fn try_into_function(self) -> Result<Function, ValueError> {
         if let Self::Function(function) = self {
             Ok(function)
         } else {
-            Err(RuntimeError::Type {
+            Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: self.type_(),
             })
@@ -198,7 +200,7 @@ impl Value {
 
     /// Convert this value into an arbitrary type, using the type's [FromJs]
     /// implementation
-    pub fn into_todo<T: FromJs>(self) -> RuntimeResult<T> {
+    pub fn into_todo<T: FromJs>(self) -> Result<T, ValueError> {
         T::from_js(self)
     }
 }
@@ -255,34 +257,39 @@ impl_value_numeric_binary_op!(Mul, mul, *);
 impl_value_numeric_binary_op!(Div, div, /);
 impl_value_numeric_binary_op!(Rem, rem, %);
 
-// Implement this manually because we can only convert one way
-impl From<&str> for Value {
-    fn from(s: &str) -> Self {
-        Self::String(s.into())
+// Two-way conversions: `From<T> for Value` and `FromJs for T``
+impl_value_conversions!(bool, Boolean);
+impl_value_conversions!(Number, Number);
+impl_value_conversions!(i8, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(u8, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(i16, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(u16, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(i32, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(u32, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(i64, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(u64, Number, to_js: fallible, from_js: fallible);
+impl_value_conversions!(i128, Number, to_js: fallible, from_js: fallible);
+impl_value_conversions!(u128, Number, to_js: fallible, from_js: fallible);
+impl_value_conversions!(f32, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(f64, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(String, String);
+impl_value_conversions!(Array, Array);
+impl_value_conversions!(Vec<Value>, Array);
+impl_value_conversions!(Object, Object);
+impl_value_conversions!(IndexMap<String, Value>, Object);
+impl_value_conversions!(Function, Function);
+
+// One-way conversions: `From<T> for Value`
+impl_value_from!(NativeFunction, Native);
+impl_value_from!(&str, String);
+impl_value_from!(char, String);
+
+// Needed because this uses a different variant of ValueType for the error msg
+impl FromJs for NativeFunction {
+    fn from_js(value: Value) -> Result<Self, ValueError> {
+        Ok(ensure_type!(value, Native, Function))
     }
 }
-
-// Impl `From<T> for Value` and `FromJs for T`
-impl_conversions!(bool, Boolean);
-impl_conversions!(Number, Number);
-impl_conversions!(i8, Number);
-impl_conversions!(u8, Number);
-impl_conversions!(i16, Number);
-impl_conversions!(u16, Number);
-impl_conversions!(i32, Number);
-impl_conversions!(u32, Number);
-impl_conversions!(i64, Number);
-impl_conversions!(u64, Number);
-impl_conversions!(f32, Number);
-impl_conversions!(f64, Number);
-impl_conversions!(String, String);
-impl_conversions!(char, String);
-impl_conversions!(Array, Array);
-impl_conversions!(Vec<Value>, Array);
-impl_conversions!(Object, Object);
-impl_conversions!(IndexMap<String, Value>, Array);
-impl_conversions!(Function, Function);
-impl_conversions!(NativeFunction, Native, Function);
 
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]
@@ -382,23 +389,23 @@ impl Display for Exports {
 
 /// Trait for converting values into [Value]
 pub trait IntoJs {
-    fn into_js(self) -> RuntimeResult<Value>;
+    fn into_js(self) -> Result<Value, ValueError>;
 }
 
 impl<T: Into<Value>> IntoJs for T {
-    fn into_js(self) -> RuntimeResult<Value> {
+    fn into_js(self) -> Result<Value, ValueError> {
         Ok(self.into())
     }
 }
 
 impl IntoJs for () {
-    fn into_js(self) -> RuntimeResult<Value> {
+    fn into_js(self) -> Result<Value, ValueError> {
         Ok(Value::Undefined)
     }
 }
 
 impl IntoJs for PathBuf {
-    fn into_js(self) -> RuntimeResult<Value> {
+    fn into_js(self) -> Result<Value, ValueError> {
         // Attempt to convert the path to UTF-8
         let string =
             String::from_utf8(self.into_os_string().into_encoded_bytes())?;
@@ -408,17 +415,17 @@ impl IntoJs for PathBuf {
 
 /// Trait for converting values from [Value]
 pub trait FromJs: Sized {
-    fn from_js(value: Value) -> RuntimeResult<Self>;
+    fn from_js(value: Value) -> Result<Self, ValueError>;
 }
 
 impl<T: From<Value>> FromJs for T {
-    fn from_js(value: Value) -> RuntimeResult<Self> {
+    fn from_js(value: Value) -> Result<Self, ValueError> {
         Ok(value.into())
     }
 }
 
 impl FromJs for PathBuf {
-    fn from_js(value: Value) -> RuntimeResult<Self> {
+    fn from_js(value: Value) -> Result<Self, ValueError> {
         let string: String = value.into_todo()?;
         Ok(string.into())
     }

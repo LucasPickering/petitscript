@@ -1,9 +1,9 @@
 use crate::{
     ast::{FunctionParameter, Statement},
-    error::RuntimeResult,
+    error::{RuntimeError, RuntimeResult},
     scope::Scope,
     value::Value,
-    FromJs, IntoJs, Process, RuntimeError,
+    FromJs, IntoJs, Process,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -109,7 +109,7 @@ impl NativeFunction {
         let function = move |process: &Process, args: Vec<Value>| {
             let args = Args::from_js_args(&args)?;
             let output = f(process, args).map_err(Err::into)?;
-            output.into_js()
+            output.into_js().map_err(RuntimeError::Value)
         };
         Self {
             function: Arc::new(function),
@@ -222,5 +222,5 @@ fn get_arg<T: FromJs>(args: &[Value], index: usize) -> RuntimeResult<T> {
     // If the arg is missing, use undefined instead to mirror JS semantics
     // TODO remove clone? we'd have to make FromJs take &Value
     let value = args.get(index).cloned().unwrap_or_default();
-    T::from_js(value)
+    Ok(T::from_js(value)?)
 }

@@ -2,7 +2,7 @@
 #![deny(clippy::all)]
 
 mod ast;
-mod error;
+pub mod error;
 mod execute;
 mod parse;
 mod scope;
@@ -12,7 +12,7 @@ mod stdlib;
 mod value;
 
 pub use crate::{
-    error::{Error, RuntimeError, RuntimeResult},
+    error::Error,
     execute::Process,
     value::{
         function, Array, Exports, FromJs, IntoJs, JsString, Number, Object,
@@ -21,6 +21,7 @@ pub use crate::{
 };
 
 use crate::{
+    error::RuntimeError,
     scope::Scope,
     stdlib::stdlib,
     value::function::{FromJsArgs, NativeFunction},
@@ -45,21 +46,15 @@ impl Engine {
 
     /// Register a value in the global namespace. This will be made available
     /// to all code executed in this engine. This can be used to register
-    /// anything that implements [IntoJs], including primitive values, objects,
-    /// and functions. Objects can be used to namespace functions for
-    /// organization.
-    /// TODO update comment
-    pub fn register_global(
-        &mut self,
-        name: impl ToString,
-        value: impl IntoJs,
-    ) -> RuntimeResult<()> {
-        let value = value.into_js()?;
+    /// anything that implements [IntoJs], including primitive values and
+    /// objects. To register functions, use [register_fn](Self::register_fn)
+    /// instead.
+    pub fn register_global(&mut self, name: impl ToString, value: Value) {
         self.globals.declare(name, value, false);
-        Ok(())
     }
 
-    /// TODO
+    /// Register a Rust function as a global, allowing it to be used within
+    /// PetitJS programs
     pub fn register_fn<F, Args, Out, Err>(
         &mut self,
         name: impl ToString,

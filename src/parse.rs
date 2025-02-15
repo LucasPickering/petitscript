@@ -534,11 +534,9 @@ impl Transform for ext::Literal {
             ext::LiteralKind::BigInt(int) => {
                 Literal::Int(int.try_into().or(unsupported("TODO", "TODO"))?)
             }
-            ext::LiteralKind::String => Literal::String(
-                self.inner_string_text()
-                    .ok_or(TransformError::Missing)?
-                    .to_string(),
-            ),
+            ext::LiteralKind::String => {
+                Literal::String(self.inner_string_text().present()?.to_string())
+            }
             ext::LiteralKind::Regex => unsupported("TODO", "TODO")?,
         };
         Ok(literal)

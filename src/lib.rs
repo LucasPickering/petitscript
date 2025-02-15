@@ -72,7 +72,7 @@ impl Engine {
 
     /// Parse some source code into a loaded program. The returned [Process] can
     /// be used to execute the program.
-    pub fn load(&self, source: impl Source) -> Result<Process, Error> {
+    pub fn parse(&self, source: impl Source) -> Result<Process, Error> {
         let program = parse::parse(source)?;
         Ok(Process::new(self.globals.clone(), program))
     }

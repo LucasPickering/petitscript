@@ -2,13 +2,11 @@ use crate::{
     ast::{FunctionParameter, Statement},
     error::RuntimeResult,
     scope::Scope,
-    util::{BoxFuture, FutureExt},
     value::Value,
     FromJs, IntoJs, Process, RuntimeError,
 };
 use std::{
     fmt::{self, Debug, Display},
-    future::{self, Future},
     sync::Arc,
 };
 
@@ -137,70 +135,6 @@ impl Display for NativeFunction {
 impl Debug for NativeFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NativeFunction")
-            .field("function", &"...")
-            .finish()
-    }
-}
-
-/// TODO
-#[derive(Clone)]
-pub struct AsyncNativeFunction {
-    // TODO track name
-    #[allow(clippy::type_complexity)]
-    function: Arc<
-        dyn Fn(&Process, Vec<Value>) -> BoxFuture<'static, RuntimeResult<Value>>
-            + Send
-            + Sync,
-    >,
-}
-
-impl AsyncNativeFunction {
-    /// TODO
-    pub(crate) fn new<F, Args, Out, Err, Fut>(f: F) -> Self
-    where
-        F: 'static + Fn(&Process, Args) -> Fut + Send + Sync,
-        Args: FromJsArgs,
-        Out: IntoJs,
-        Err: Into<RuntimeError>,
-        Fut: 'static + Future<Output = Result<Out, Err>>,
-    {
-        // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |process: &Process, args: Vec<Value>| {
-            // TODO explain
-            let result = Args::from_js_args(&args).map(|args| f(process, args));
-            match result {
-                Ok(future) => async move {
-                    let output = future.await.map_err(Err::into)?;
-                    output.into_js()
-                }
-                .boxed(),
-                Err(error) => future::ready(Err(error)).boxed(),
-            }
-        };
-        Self {
-            function: Arc::new(function),
-        }
-    }
-
-    /// Call this function
-    pub(crate) async fn call(
-        &self,
-        process: &Process,
-        args: Vec<Value>,
-    ) -> RuntimeResult<Value> {
-        (self.function)(process, args).await
-    }
-}
-
-impl Display for AsyncNativeFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[AsyncNativeFunction]")
-    }
-}
-
-impl Debug for AsyncNativeFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("AsyncNativeFunction")
             .field("function", &"...")
             .finish()
     }

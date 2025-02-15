@@ -13,7 +13,7 @@ mod object;
 pub use array::Array;
 #[cfg(feature = "bytes")]
 pub use buffer::Buffer;
-pub use function::{AsyncNativeFunction, FromJsArgs, Function, NativeFunction};
+pub use function::{FromJsArgs, Function, NativeFunction};
 pub use number::Number;
 pub use object::Object;
 
@@ -55,8 +55,6 @@ pub enum Value {
     Function(Function),
     /// A synchronous function defined in Rust
     Native(NativeFunction),
-    /// An asynchronous function defined in Rust
-    AsyncNative(AsyncNativeFunction),
 }
 
 impl Value {
@@ -72,8 +70,7 @@ impl Value {
             | Self::Object(_)
             | Self::Buffer(_)
             | Self::Function(_)
-            | Self::Native(_)
-            | Self::AsyncNative(_) => true,
+            | Self::Native(_) => true,
         }
     }
 
@@ -100,8 +97,7 @@ impl Value {
             | Self::Object(_)
             | Self::Buffer(_)
             | Self::Function(_)
-            | Self::Native(_)
-            | Self::AsyncNative(_) => None,
+            | Self::Native(_) => None,
         }
     }
 
@@ -155,9 +151,7 @@ impl Value {
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
             Self::Buffer(_) => ValueType::Buffer,
-            Self::Function(_) | Self::Native(_) | Self::AsyncNative(_) => {
-                ValueType::Function
-            }
+            Self::Function(_) | Self::Native(_) => ValueType::Function,
         }
     }
 
@@ -220,7 +214,6 @@ impl Display for Value {
             Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
             Self::Native(function) => write!(f, "{function}"),
-            Self::AsyncNative(function) => write!(f, "{function}"),
         }
     }
 }
@@ -273,7 +266,6 @@ impl_conversions!(Array, Array);
 impl_conversions!(Object, Object);
 impl_conversions!(Function, Function);
 impl_conversions!(NativeFunction, Native, Function);
-impl_conversions!(AsyncNativeFunction, AsyncNative, Function);
 
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]

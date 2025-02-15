@@ -81,25 +81,22 @@ impl<'a> ThreadState<'a> {
     }
 
     /// Execute a function within a new frame on the stack
-    pub async fn with_frame<T>(
+    pub fn with_frame<T>(
         &mut self,
         scope: Scope,
-        f: impl AsyncFnOnce(&mut Self) -> T,
+        f: impl FnOnce(&mut Self) -> T,
     ) -> T {
         self.call_stack.push(scope);
-        let value = f(self).await;
+        let value = f(self);
         self.call_stack.pop();
         value
     }
 
     /// Execute a function in a new scope that's a child of the current scope.
     /// Use this for blocks such as ifs, loops, etc.
-    pub async fn with_subscope<T>(
-        &mut self,
-        f: impl AsyncFnOnce(&mut Self) -> T,
-    ) -> T {
+    pub fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         self.scope_mut().subscope();
-        let value = f(self).await;
+        let value = f(self);
         self.scope_mut().revert();
         value
     }

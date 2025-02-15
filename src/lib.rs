@@ -7,7 +7,6 @@ mod execute;
 mod parse;
 mod scope;
 mod stdlib;
-mod util;
 mod value;
 
 #[cfg(feature = "serde")]
@@ -16,13 +15,13 @@ pub use crate::{
     error::{Error, RuntimeError, RuntimeResult},
     execute::Process,
     value::{
-        Array, AsyncNativeFunction, Exports, FromJs, Function, IntoJs,
-        JsString, NativeFunction, Number, Object, Value, ValueType,
+        Array, Exports, FromJs, FromJsArgs, Function, IntoJs, JsString,
+        NativeFunction, Number, Object, Value, ValueType,
     },
 };
 
-use crate::{scope::Scope, stdlib::stdlib, value::FromJsArgs};
-use std::{borrow::Cow, fs, future::Future, path::Path};
+use crate::{scope::Scope, stdlib::stdlib};
+use std::{borrow::Cow, fs, path::Path};
 
 /// The main entrypoint for executing and evaluating PetitJS programs. An engine
 /// defines how code should be executed. TODO more
@@ -69,25 +68,6 @@ impl Engine {
     {
         self.globals
             .declare(name, NativeFunction::new(function).into(), false);
-    }
-
-    /// TODO
-    pub fn register_async_fn<F, Args, Out, Err, Fut>(
-        &mut self,
-        name: impl ToString,
-        function: F,
-    ) where
-        F: 'static + Fn(&Process, Args) -> Fut + Send + Sync,
-        Args: FromJsArgs,
-        Out: IntoJs,
-        Err: Into<RuntimeError>,
-        Fut: 'static + Future<Output = Result<Out, Err>>,
-    {
-        self.globals.declare(
-            name,
-            AsyncNativeFunction::new(function).into(),
-            false,
-        );
     }
 
     /// Parse some source code into a loaded program. The returned [Process] can

@@ -13,7 +13,6 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    util::FutureExt as _,
     value::{Array, Function, Number, Object, Value, ValueType},
     RuntimeError,
 };
@@ -22,19 +21,17 @@ use std::iter;
 /// TODO
 pub trait Evaluate {
     /// TODO
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value>;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         match self {
-            Expression::Parenthesized(expression) => {
-                expression.eval(state).boxed().await
-            }
-            Expression::Literal(literal) => literal.eval(state).await,
+            Expression::Parenthesized(expression) => expression.eval(state),
+            Expression::Literal(literal) => literal.eval(state),
             Expression::Template(template_literal) => {
-                template_literal.eval(state).await
+                template_literal.eval(state)
             }
             Expression::Identifier(identifier) => {
                 state.scope().get(identifier.to_str())
@@ -51,18 +48,18 @@ impl Evaluate for Expression {
                 state.scope().capture(),
             )
             .into()),
-            Expression::Call(call) => call.eval(state).await,
-            Expression::Property(access) => access.eval(state).await,
-            Expression::OptionalProperty(access) => access.eval(state).await,
-            Expression::Assign(assign) => assign.eval(state).await,
-            Expression::Unary(unary) => unary.eval(state).await,
+            Expression::Call(call) => call.eval(state),
+            Expression::Property(access) => access.eval(state),
+            Expression::OptionalProperty(access) => access.eval(state),
+            Expression::Assign(assign) => assign.eval(state),
+            Expression::Unary(unary) => unary.eval(state),
             // Expression::Update(update) => update.eval(state),
-            Expression::Binary(binary) => binary.eval(state).await,
+            Expression::Binary(binary) => binary.eval(state),
             Expression::Ternary(conditional) => {
-                if conditional.condition.eval(state).boxed().await?.to_bool() {
-                    conditional.true_expression.eval(state).boxed().await
+                if conditional.condition.eval(state)?.to_bool() {
+                    conditional.true_expression.eval(state)
                 } else {
-                    conditional.false_expression.eval(state).boxed().await
+                    conditional.false_expression.eval(state)
                 }
             }
         }
@@ -70,7 +67,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -78,29 +75,25 @@ impl Evaluate for Literal {
             Self::String(s) => Ok(Value::String(s.as_str().into())),
             Self::Float(f) => Ok(Value::Number(Number::Float(*f))),
             Self::Int(i) => Ok(Value::Number(Number::Int(*i))),
-            Self::Array(array_literal) => array_literal.eval(state).await,
-            Self::Object(object_literal) => object_literal.eval(state).await,
+            Self::Array(array_literal) => array_literal.eval(state),
+            Self::Object(object_literal) => object_literal.eval(state),
         }
     }
 }
 
 impl Evaluate for ArrayLiteral {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         let mut array = Array::default();
         for element in &self.elements {
             match element {
                 // These are optimized to avoid allocations where
                 // possible
                 ArrayElement::Expression(expression) => {
-                    let value = expression.eval(state).boxed().await?;
+                    let value = expression.eval(state)?;
                     array = array.insert(value);
                 }
                 ArrayElement::Spread(expression) => {
-                    let new = expression
-                        .eval(state)
-                        .boxed()
-                        .await?
-                        .try_into_array()?;
+                    let new = expression.eval(state)?.try_into_array()?;
                     array = array.insert_all(new);
                 }
             }
@@ -110,7 +103,7 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         let mut object = Object::default();
         for property in &self.properties {
             match property {
@@ -127,10 +120,10 @@ impl Evaluate for ObjectLiteral {
                         PropertyName::Expression(expression) => {
                             // TODO should we fail for non-string props
                             // instead?
-                            expression.eval(state).boxed().await?.to_string()
+                            expression.eval(state)?.to_string()
                         }
                     };
-                    let value = expression.eval(state).boxed().await?;
+                    let value = expression.eval(state)?;
                     object = object.insert(name, value);
                 }
                 ObjectProperty::Identifier(identifier) => {
@@ -140,11 +133,7 @@ impl Evaluate for ObjectLiteral {
                     object = object.insert(name, value);
                 }
                 ObjectProperty::Spread(expression) => {
-                    let new = expression
-                        .eval(state)
-                        .boxed()
-                        .await?
-                        .try_into_object()?;
+                    let new = expression.eval(state)?.try_into_object()?;
                     object = object.insert_all(new);
                 }
             }
@@ -154,27 +143,24 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    async fn eval(&self, _: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, _: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         todo!()
     }
 }
 
 impl Evaluate for FunctionCall {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let function = self.function.eval(state).boxed().await?;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+        let function = self.function.eval(state)?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
         for argument in &self.arguments {
-            let value = argument.eval(state).boxed().await?;
+            let value = argument.eval(state)?;
             arguments.push(value);
         }
 
         match function {
-            Value::Function(function) => function.call(state, &arguments).await,
+            Value::Function(function) => function.call(state, &arguments),
             Value::Native(function) => {
                 function.call(state.process(), arguments)
-            }
-            Value::AsyncNative(function) => {
-                function.call(state.process(), arguments).await
             }
             _ => Err(RuntimeError::Type {
                 expected: ValueType::Function,
@@ -185,21 +171,19 @@ impl Evaluate for FunctionCall {
 }
 
 impl Evaluate for PropertyAccess {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let value = self.expression.eval(state).boxed().await?;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+        let value = self.expression.eval(state)?;
         let key: Value = match &self.property {
             PropertyName::Literal(identifier) => identifier.to_str().into(),
-            PropertyName::Expression(expression) => {
-                expression.eval(state).boxed().await?
-            }
+            PropertyName::Expression(expression) => expression.eval(state)?,
         };
         value.get(&key)
     }
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let target = self.expression.eval(state).boxed().await?;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+        let target = self.expression.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
             Value::Boolean(_)
@@ -209,20 +193,19 @@ impl Evaluate for OptionalPropertyAccess {
             | Value::Object(_)
             | Value::Buffer(_)
             | Value::Function(_)
-            | Value::Native(_)
-            | Value::AsyncNative(_) => todo!(),
+            | Value::Native(_) => todo!(),
         }
     }
 }
 
 impl Evaluate for AssignOperation {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
         let name = match &self.lhs {
             Binding::Identifier(identifier) => identifier.to_str(),
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
         };
-        let value = self.rhs.eval(state).boxed().await?;
+        let value = self.rhs.eval(state)?;
         match self.operator {
             AssignOperator::Assign => {
                 state.scope().set(name, value.clone())?;
@@ -242,8 +225,8 @@ impl Evaluate for AssignOperation {
 }
 
 impl Evaluate for UnaryOperation {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let _ = self.expression.eval(state).boxed().await?;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+        let _ = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => todo!(),
             UnaryOperator::Negate => todo!(),
@@ -252,9 +235,9 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    async fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let lhs = self.lhs.eval(state).boxed().await?;
-        let rhs = self.rhs.eval(state).boxed().await?;
+    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+        let lhs = self.lhs.eval(state)?;
+        let rhs = self.rhs.eval(state)?;
         match self.operator {
             BinaryOperator::Add => Ok(lhs + rhs),
             BinaryOperator::Sub => Ok(lhs - rhs),
@@ -277,7 +260,7 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    pub(super) async fn call(
+    pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,
         arguments: &[Value],
@@ -298,7 +281,7 @@ impl Function {
                 value
             } else if let Some(init) = &parameter.variable.init {
                 // If the arg wasn't given, fall back to the init expression
-                init.eval(state).boxed().await?
+                init.eval(state)?
             } else {
                 // No init expression, use undefined
                 Value::Undefined
@@ -307,15 +290,11 @@ impl Function {
         }
 
         // Push the new frame onto the stack and execute the function body
-        state
-            .with_frame(scope, async |state| {
-                match self.body().exec(state).boxed().await? {
-                    Some(Terminate::Return {
-                        return_value: Some(return_value),
-                    }) => Ok(return_value),
-                    _ => Ok(Value::Undefined),
-                }
-            })
-            .await
+        state.with_frame(scope, |state| match self.body().exec(state)? {
+            Some(Terminate::Return {
+                return_value: Some(return_value),
+            }) => Ok(return_value),
+            _ => Ok(Value::Undefined),
+        })
     }
 }

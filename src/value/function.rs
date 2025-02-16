@@ -59,7 +59,7 @@ impl Display for Function {
 
 #[cfg(feature = "serde")]
 impl serde::Serialize for Function {
-    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -69,11 +69,20 @@ impl serde::Serialize for Function {
 
 #[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Function {
-    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        todo!()
+        // TODO how to do this?
+        Ok(Self(
+            FunctionInner {
+                name: None,
+                parameters: Box::new([]),
+                body: Box::new([]),
+                scope: Scope::default(),
+            }
+            .into(),
+        ))
     }
 }
 

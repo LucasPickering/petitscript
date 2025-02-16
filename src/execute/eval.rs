@@ -90,11 +90,11 @@ impl Evaluate for ArrayLiteral {
                 // possible
                 ArrayElement::Expression(expression) => {
                     let value = expression.eval(state)?;
-                    array = array.insert(value);
+                    array = array.push(value);
                 }
                 ArrayElement::Spread(expression) => {
                     let new = expression.eval(state)?.try_into_array()?;
-                    array = array.insert_all(new);
+                    array = array.concat(new);
                 }
             }
         }

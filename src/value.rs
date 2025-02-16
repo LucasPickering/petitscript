@@ -115,6 +115,20 @@ impl Value {
         }
     }
 
+    /// If this value is a byte buffer, get the inner bytes. Otherwise return a
+    /// type error.
+    #[cfg(feature = "bytes")]
+    pub fn try_into_buffer(self) -> Result<Buffer, ValueError> {
+        if let Self::Buffer(buffer) = self {
+            Ok(buffer)
+        } else {
+            Err(ValueError::Type {
+                expected: ValueType::Buffer,
+                actual: self.type_(),
+            })
+        }
+    }
+
     /// If this value is an array, get the inner array. Otherwise return a type
     /// error.
     pub fn try_into_array(self) -> Result<Array, ValueError> {

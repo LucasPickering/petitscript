@@ -1,24 +1,28 @@
 use crate::value::Value;
 use std::{
     fmt::{self, Display},
-    ops::Deref as _,
+    ops::Deref,
     sync::Arc,
 };
 
 /// TODO
+///
+/// Operations on this array will use optimistic mutation, meaning they will
+/// mutate the current array in place if there are no other references to it,
+/// and only clone the contents if they're referenced in multiple places. This
+/// makes this method very fast for most use cases.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Array(Arc<Vec<Value>>);
 
 impl Array {
-    /// TODO
-    pub fn insert(self, value: Value) -> Self {
+    /// Append a single value to the end of the array.
+    pub fn push(self, value: Value) -> Self {
         self.with_inner(|vec| vec.push(value))
     }
 
-    /// TODO
-    /// TODO better name?
-    pub fn insert_all(self, other: Self) -> Self {
+    /// Insert all elements from another array into this one.
+    pub fn concat(self, other: Self) -> Self {
         // If we're the sole owner of the other object, we can move the items
         // out. Otherwise we have to clone them over
         match Arc::try_unwrap(other.0) {
@@ -41,15 +45,24 @@ impl Array {
 
     /// TODO
     fn with_inner(mut self, f: impl FnOnce(&mut Vec<Value>)) -> Self {
-        // TODO explain
         if let Some(vec) = Arc::get_mut(&mut self.0) {
+            // If we're the only owner of the arc, we can mutate in place
             f(vec);
             self
         } else {
+            // The arc is aliased; we have to clone the contents before mutating
             let mut vec = self.0.deref().clone();
             f(&mut vec);
             Self(vec.into())
         }
+    }
+}
+
+impl Deref for Array {
+    type Target = [Value];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -77,5 +90,11 @@ impl Display for Array {
         }
         write!(f, "]")?;
         Ok(())
+    }
+}
+
+impl FromIterator<Value> for Array {
+    fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
+        Self(Arc::new(iter.into_iter().collect()))
     }
 }

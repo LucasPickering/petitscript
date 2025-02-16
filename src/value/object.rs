@@ -94,6 +94,12 @@ impl From<Object> for IndexMap<String, Value> {
     }
 }
 
+impl FromIterator<(String, Value)> for Object {
+    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+        Self(Arc::new(iter.into_iter().collect()))
+    }
+}
+
 #[cfg(feature = "serde")]
 impl serde::Serialize for Object {
     fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>

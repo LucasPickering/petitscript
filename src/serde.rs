@@ -57,7 +57,8 @@ impl<'de> serde::Deserialize<'de> for Value {
 
 /// Helper for converting a value to/from JS using its
 /// [Serialize](serde::Serialize) and/or [Deserialize](serde::Deserialize)
-/// implementations.
+/// implementations. This is useful when defining native functions that need
+/// to convert their args and/or return value using `serde`.
 pub struct SerdeJs<T>(pub T);
 
 impl<T> SerdeJs<T> {
@@ -81,14 +82,14 @@ impl<T> DerefMut for SerdeJs<T> {
     }
 }
 
-impl<T: serde::Serialize> IntoJs for SerdeJs<T> {
+impl<T: Serialize> IntoJs for SerdeJs<T> {
     fn into_js(self) -> Result<Value, ValueError> {
-        todo!()
+        to_value(&self.0)
     }
 }
 
-impl<'de, T: serde::Deserialize<'de>> FromJs for SerdeJs<T> {
-    fn from_js(_: Value) -> Result<Self, ValueError> {
-        todo!()
+impl<'de, T: Deserialize<'de>> FromJs for SerdeJs<T> {
+    fn from_js(value: Value) -> Result<Self, ValueError> {
+        Ok(Self(from_value(value)?))
     }
 }

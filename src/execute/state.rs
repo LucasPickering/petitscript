@@ -1,7 +1,6 @@
 //! Program state management
 
 use crate::{
-    error::RuntimeResult,
     scope::Scope,
     value::{Exports, Value},
     Process, RuntimeError,
@@ -35,7 +34,7 @@ impl<'a> ThreadState<'a> {
     }
 
     /// TODO
-    pub fn export(&mut self, name: String) -> RuntimeResult<()> {
+    pub fn export(&mut self, name: String) -> Result<(), RuntimeError> {
         let exports =
             self.exports.as_mut().ok_or(RuntimeError::IllegalExport)?;
 
@@ -53,7 +52,7 @@ impl<'a> ThreadState<'a> {
     }
 
     /// TODO
-    pub fn export_default(&mut self, value: Value) -> RuntimeResult<()> {
+    pub fn export_default(&mut self, value: Value) -> Result<(), RuntimeError> {
         let exports =
             self.exports.as_mut().ok_or(RuntimeError::IllegalExport)?;
         // TODO only allow root scope to be exported

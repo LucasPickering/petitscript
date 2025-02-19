@@ -6,12 +6,11 @@ mod state;
 
 use crate::{
     ast::Program,
-    error::RuntimeResult,
     execute::{exec::Execute, state::ThreadState},
     function::Function,
     scope::Scope,
     value::{Exports, Value},
-    RuntimeError,
+    Error,
 };
 use std::{
     any::{self, Any, TypeId},
@@ -44,7 +43,7 @@ impl Process {
     /// Get a piece of app data attached to the process, downcasted to a static
     /// type. Return an error if there is no app data of the requested type. See
     /// [Self::set_app_data] to attach app data to this process.
-    pub fn app_data<T: Any + Send + Sync>(&self) -> RuntimeResult<&T> {
+    pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
         self.app_data.get()
     }
 
@@ -57,12 +56,12 @@ impl Process {
     pub fn set_app_data<T: Any + Send + Sync>(
         &mut self,
         data: T,
-    ) -> RuntimeResult<()> {
+    ) -> Result<(), Error> {
         self.app_data.set(data)
     }
 
     /// Execute the loaded program and return its exported values
-    pub fn execute(&self) -> RuntimeResult<Exports> {
+    pub fn execute(&self) -> Result<Exports, Error> {
         // Exporting is available here because we're in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, true);
@@ -75,7 +74,7 @@ impl Process {
         &self,
         function: &Function,
         args: &[Value],
-    ) -> RuntimeResult<Value> {
+    ) -> Result<Value, Error> {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
@@ -94,10 +93,10 @@ struct AppData(
 );
 
 impl AppData {
-    fn get<T: Any + Send + Sync>(&self) -> RuntimeResult<&T> {
+    fn get<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
         // TODO return a ref from this instead once we eliminate the outer arc
         let data = self.0.get(&TypeId::of::<T>()).ok_or_else(|| {
-            RuntimeError::UnknownAppData {
+            Error::UnknownAppData {
                 type_name: any::type_name::<T>(),
             }
         })?;
@@ -106,9 +105,9 @@ impl AppData {
         Ok(data.downcast_ref().expect("Incorrect type for app data"))
     }
 
-    fn set<T: Any + Send + Sync>(&mut self, data: T) -> RuntimeResult<()> {
+    fn set<T: Any + Send + Sync>(&mut self, data: T) -> Result<(), Error> {
         match self.0.entry(TypeId::of::<T>()) {
-            Entry::Occupied(_) => Err(RuntimeError::DuplicateAppData {
+            Entry::Occupied(_) => Err(Error::DuplicateAppData {
                 type_name: any::type_name::<T>(),
             }),
             Entry::Vacant(entry) => {

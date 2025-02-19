@@ -1,6 +1,6 @@
 use crate::{
-    ast::{FunctionParameter, Statement},
-    error::{RuntimeError, RuntimeResult},
+    ast::{FunctionParameter, Spanned, Statement},
+    error::RuntimeError,
     scope::Scope,
     value::Value,
     FromJs, IntoJs, Process,
@@ -15,10 +15,10 @@ use std::{
 pub struct Function(Arc<FunctionInner>);
 
 impl Function {
-    pub fn new(
+    pub(crate) fn new(
         name: Option<String>,
-        parameters: Box<[FunctionParameter]>,
-        body: Box<[Statement]>,
+        parameters: Box<[Spanned<FunctionParameter>]>,
+        body: Box<[Spanned<Statement>]>,
         scope: Scope,
     ) -> Self {
         let inner = FunctionInner {
@@ -41,12 +41,12 @@ impl Function {
     }
 
     /// TODO
-    pub(crate) fn parameters(&self) -> &[FunctionParameter] {
+    pub(crate) fn parameters(&self) -> &[Spanned<FunctionParameter>] {
         self.0.parameters.as_ref()
     }
 
     /// Get the body's list of executable statements
-    pub(crate) fn body(&self) -> &[Statement] {
+    pub(crate) fn body(&self) -> &[Spanned<Statement>] {
         &self.0.body
     }
 }
@@ -89,8 +89,8 @@ impl<'de> serde::Deserialize<'de> for Function {
 #[derive(Debug)]
 struct FunctionInner {
     name: Option<String>,
-    parameters: Box<[FunctionParameter]>,
-    body: Box<[Statement]>,
+    parameters: Box<[Spanned<FunctionParameter>]>,
+    body: Box<[Spanned<Statement>]>,
     /// Captured variables. This is defined at function definition, and will be
     /// exposed to all calls of the function
     scope: Scope,
@@ -101,8 +101,11 @@ struct FunctionInner {
 pub struct NativeFunction {
     // TODO track name
     #[allow(clippy::type_complexity)]
-    function:
-        Arc<dyn Fn(&Process, Vec<Value>) -> RuntimeResult<Value> + Send + Sync>,
+    function: Arc<
+        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
+            + Send
+            + Sync,
+    >,
 }
 
 impl NativeFunction {
@@ -130,7 +133,7 @@ impl NativeFunction {
         &self,
         process: &Process,
         args: Vec<Value>,
-    ) -> RuntimeResult<Value> {
+    ) -> Result<Value, RuntimeError> {
         (self.function)(process, args)
     }
 }
@@ -151,7 +154,7 @@ impl Debug for NativeFunction {
 
 /// TODO
 pub trait FromJsArgs: Sized {
-    fn from_js_args(args: &[Value]) -> RuntimeResult<Self>;
+    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
@@ -193,7 +196,7 @@ macro_rules! impl_from_js_args {
         impl<$($arg_types,)*> FromJsArgs for ($($arg_types,)*)
             where $($arg_types: FromJs,)*
         {
-            fn from_js_args(args: &[Value]) -> RuntimeResult<Self> {
+            fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
                 Ok(call_fn!(args, ($($arg_types,)*)))
             }
         }
@@ -212,14 +215,14 @@ impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
 impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 
 impl FromJsArgs for () {
-    fn from_js_args(_: &[Value]) -> RuntimeResult<Self> {
+    fn from_js_args(_: &[Value]) -> Result<Self, RuntimeError> {
         Ok(())
     }
 }
 
 /// Special case implementation: a single argument doesn't need a tuple wrapper
 impl<T0: FromJs> FromJsArgs for T0 {
-    fn from_js_args(args: &[Value]) -> RuntimeResult<Self> {
+    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
         let arg0 = get_arg(args, 0)?;
         Ok(arg0)
     }
@@ -227,7 +230,7 @@ impl<T0: FromJs> FromJsArgs for T0 {
 
 /// Helper to get a particular arg from the array and convert it to a static
 /// type
-fn get_arg<T: FromJs>(args: &[Value], index: usize) -> RuntimeResult<T> {
+fn get_arg<T: FromJs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
     // If the arg is missing, use undefined instead to mirror JS semantics
     // TODO remove clone? we'd have to make FromJs take &Value
     let value = args.get(index).cloned().unwrap_or_default();

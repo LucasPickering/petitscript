@@ -15,7 +15,7 @@ pub use number::Number;
 pub use object::Object;
 
 use crate::{
-    error::{RuntimeResult, ValueError},
+    error::{RuntimeError, ValueError},
     function::{Function, NativeFunction},
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
@@ -184,7 +184,7 @@ impl Value {
     }
 
     /// TODO
-    pub fn get(&self, key: &Self) -> RuntimeResult<Value> {
+    pub fn get(&self, key: &Self) -> Result<Value, RuntimeError> {
         match (self, key) {
             (Self::Array(_), Self::Number(_)) => todo!(),
             // TODO support number keys here?

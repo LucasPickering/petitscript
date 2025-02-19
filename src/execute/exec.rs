@@ -2,19 +2,21 @@
 
 use crate::{
     ast::{
-        Block, Declaration, ExportDeclaration, FunctionDeclaration, Identifier,
-        ImportDeclaration, LexicalDeclaration, Statement,
+        Block, Declaration, DoWhileLoop, ExportDeclaration, ForLoop, ForOfLoop,
+        FunctionDeclaration, If, ImportDeclaration, LexicalDeclaration,
+        Spanned, Statement, WhileLoop,
     },
-    error::RuntimeResult,
+    error::ResultExt,
     execute::{eval::Evaluate, ThreadState},
     value::{function::Function, Value},
+    Error,
 };
 
 /// TODO
 pub trait Execute {
     type Output;
 
-    fn exec(&self, state: &mut ThreadState) -> RuntimeResult<Self::Output>;
+    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error>;
 }
 
 impl<T, O> Execute for [T]
@@ -23,7 +25,7 @@ where
 {
     type Output = Option<O>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Option<O>> {
+    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Option<O>, Error> {
         for statement in self {
             let output = statement.exec(state)?;
             if let Some(output) = output {
@@ -34,61 +36,40 @@ where
     }
 }
 
-impl Execute for Statement {
+impl Execute for Spanned<Statement> {
     /// We can break out of a loop iter, loop, or fn from here
     type Output = Option<Terminate>;
 
     fn exec(
         &self,
         state: &mut ThreadState<'_>,
-    ) -> RuntimeResult<Option<Terminate>> {
-        match self {
-            Self::Empty => Ok(None),
-            Self::Block(block) => {
+    ) -> Result<Option<Terminate>, Error> {
+        match &self.data {
+            Statement::Empty => Ok(None),
+            Statement::Block(block) => {
                 // A block gets a new lexical scope
                 state.with_subscope(|state| block.statements.exec(state))
             }
-            Self::Expression(expression) => {
+            Statement::Expression(expression) => {
                 // Expression may have side effects, so evaluate it and throw
                 // away the outcome
                 expression.eval(state)?;
                 Ok(None)
             }
-            Self::Declaration(declaration) => {
+            Statement::Declaration(declaration) => {
                 declaration.exec(state)?;
                 Ok(None)
             }
 
-            Self::If(if_statement) => {
-                if if_statement.condition.eval(state)?.to_bool() {
-                    if_statement.body.exec(state)
-                } else if let Some(statement) = &if_statement.else_body {
-                    statement.exec(state)
-                } else {
-                    Ok(None)
-                }
-            }
-            Self::DoWhileLoop(do_while_loop) => {
-                loop {
-                    do_while_loop.body.exec(state)?;
-                    if !do_while_loop.condition.eval(state)?.to_bool() {
-                        break;
-                    }
-                }
-                Ok(None)
-            }
-            Self::WhileLoop(while_loop) => {
-                while while_loop.condition.eval(state)?.to_bool() {
-                    while_loop.body.exec(state)?;
-                }
-                Ok(None)
-            }
-            Self::ForLoop(_) => todo!(),
-            Self::ForOfLoop(_) => todo!(),
+            Statement::If(if_statement) => if_statement.exec(state),
+            Statement::DoWhileLoop(do_while_loop) => do_while_loop.exec(state),
+            Statement::WhileLoop(while_loop) => while_loop.exec(state),
+            Statement::ForLoop(for_loop) => for_loop.exec(state),
+            Statement::ForOfLoop(for_of_loop) => for_of_loop.exec(state),
 
-            Self::Continue => Ok(Some(Terminate::Continue)),
-            Self::Break => Ok(Some(Terminate::Break)),
-            Self::Return(expression) => {
+            Statement::Continue => Ok(Some(Terminate::Continue)),
+            Statement::Break => Ok(Some(Terminate::Break)),
+            Statement::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
                     Some(expression.eval(state)?)
                 } else {
@@ -97,11 +78,11 @@ impl Execute for Statement {
                 Ok(Some(Terminate::Return { return_value }))
             }
 
-            Self::Import(import) => {
+            Statement::Import(import) => {
                 import.exec(state)?;
                 Ok(None)
             }
-            Self::Export(export) => {
+            Statement::Export(export) => {
                 export.exec(state)?;
                 Ok(None)
             }
@@ -115,7 +96,7 @@ impl Execute for Block {
     fn exec(
         &self,
         state: &mut ThreadState<'_>,
-    ) -> RuntimeResult<Option<Terminate>> {
+    ) -> Result<Option<Terminate>, Error> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -128,20 +109,20 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    fn exec(&self, _: &mut ThreadState<'_>) -> RuntimeResult<()> {
+    fn exec(&self, _: &mut ThreadState<'_>) -> Result<(), Error> {
         todo!()
     }
 }
 
-impl Execute for ExportDeclaration {
+impl Execute for Spanned<ExportDeclaration> {
     type Output = ();
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> RuntimeResult<()> {
-        match self {
+    fn exec(&self, state: &mut ThreadState<'_>) -> Result<(), Error> {
+        match &self.data {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
-                    state.export(name)?;
+                    state.export(name).spanned_err(declaration.span)?;
                 }
                 Ok(())
             }
@@ -150,21 +131,25 @@ impl Execute for ExportDeclaration {
             ) => {
                 let name = function_declaration.exec(state)?.expect("TODO");
                 // Fetch the function we just declared. Should never fail
-                let value = state.scope().get(&name)?;
-                state.export_default(value)
+                let value = state
+                    .scope()
+                    .get(name.as_str())
+                    .spanned_err(function_declaration.span)?;
+                state.export_default(value).spanned_err(self.span)
             }
             ExportDeclaration::DefaultExpression(expression) => {
                 let value = expression.eval(state)?;
-                state.export_default(value)
+                state.export_default(value).spanned_err(self.span)
             }
         }
     }
 }
 
 impl Execute for Declaration {
+    /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Self::Output> {
+    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
         match self {
             Self::Lexical(lexical_declaration) => {
                 lexical_declaration.exec(state)
@@ -177,11 +162,66 @@ impl Execute for Declaration {
     }
 }
 
-impl Execute for LexicalDeclaration {
+impl Execute for If {
+    type Output = Option<Terminate>;
+
+    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+        if self.condition.eval(state)?.to_bool() {
+            self.body.exec(state)
+        } else if let Some(statement) = &self.else_body {
+            statement.exec(state)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl Execute for DoWhileLoop {
+    type Output = Option<Terminate>;
+
+    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+        loop {
+            self.body.exec(state)?;
+            if !self.condition.eval(state)?.to_bool() {
+                break;
+            }
+        }
+        Ok(None)
+    }
+}
+
+impl Execute for WhileLoop {
+    type Output = Option<Terminate>;
+
+    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+        while self.condition.eval(state)?.to_bool() {
+            self.body.exec(state)?;
+        }
+        Ok(None)
+    }
+}
+
+impl Execute for ForLoop {
+    type Output = Option<Terminate>;
+
+    fn exec(&self, _state: &mut ThreadState) -> Result<Self::Output, Error> {
+        todo!()
+    }
+}
+
+impl Execute for ForOfLoop {
+    type Output = Option<Terminate>;
+
+    fn exec(&self, _state: &mut ThreadState) -> Result<Self::Output, Error> {
+        todo!()
+    }
+}
+
+impl Execute for Spanned<LexicalDeclaration> {
     /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Vec<String>> {
+    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -190,11 +230,10 @@ impl Execute for LexicalDeclaration {
             } else {
                 Value::Undefined
             };
-            let names = state.scope_mut().bind(
-                &variable.binding,
-                value,
-                self.mutable,
-            )?;
+            let names = state
+                .scope_mut()
+                .bind(&variable.binding, value, self.mutable)
+                .spanned_err(self.span)?;
             declared.extend(names);
         }
 
@@ -206,8 +245,8 @@ impl Execute for FunctionDeclaration {
     /// Emit declared name
     type Output = Option<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Self::Output> {
-        let name = self.name.as_ref().map(Identifier::to_str).map(String::from);
+    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
+        let name = self.name.as_ref().map(|name| name.to_string());
         let scope = state.scope_mut();
         let function = Function::new(
             name.clone(),
@@ -217,7 +256,7 @@ impl Execute for FunctionDeclaration {
         );
 
         if let Some(name) = &name {
-            scope.declare(name.clone(), function.into(), false);
+            scope.declare(name.as_str(), function.into(), false);
         }
         Ok(name)
     }

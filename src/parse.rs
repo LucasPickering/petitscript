@@ -7,17 +7,17 @@ use crate::{
         AssignOperation, AssignOperator, BinaryOperation, BinaryOperator,
         Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
         Expression, ForLoop, FunctionCall, FunctionDeclaration,
-        FunctionParameter, Identifier, If, ImportDeclaration,
+        FunctionParameter, Identifier, If, ImportDeclaration, IntoSpanned,
         LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
-        ObjectProperty, Program, PropertyAccess, PropertyName, Statement,
-        TemplateLiteral, Variable, WhileLoop,
+        ObjectProperty, Program, PropertyAccess, PropertyName, Span, Spanned,
+        Statement, TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
 };
 use rslint_parser::{
     ast::{self as ext},
-    AstNode,
+    AstNode, TextRange,
 };
 
 /// Parse source code into an Abstract Syntax Tree
@@ -32,36 +32,18 @@ pub fn parse(source: impl Source) -> Result<Program, Error> {
     Ok(ast.transform()?)
 }
 
-/// Transform an optional value to an optional output
+/// Transform an rslint AST node to a local AST node
 trait Transform {
     type Output;
 
     fn transform(self) -> Result<Self::Output, TransformError>;
 }
 
-/// Transform a series of AST nodes of the same type
-impl<T: ext::AstNode + Transform> Transform for ext::AstChildren<T> {
-    type Output = Box<[T::Output]>;
-
-    fn transform(self) -> Result<Self::Output, TransformError> {
-        self.map(T::transform).collect::<Result<_, _>>()
-    }
-}
-
-/// TODO
-impl<T: Transform> Transform for Option<T> {
-    type Output = Option<T::Output>;
-
-    fn transform(self) -> Result<Self::Output, TransformError> {
-        self.map(T::transform).transpose()
-    }
-}
-
 impl Transform for ext::Module {
     type Output = Program;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let statements = self.items().transform()?;
+        let statements = self.items().transform_all()?;
         Ok(Program { statements })
     }
 }
@@ -72,21 +54,14 @@ impl Transform for ext::ModuleItem {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             Self::ImportDecl(import_decl) => {
-                import_decl.transform().map(Statement::Import)
+                import_decl.transform_spanned().map(Statement::Import)
             }
             Self::ExportDefaultDecl(_) => todo!(),
-            Self::ExportDefaultExpr(export_default_expr) => {
-                let expression =
-                    export_default_expr.expr().present()?.transform()?;
-                Ok(Statement::Export(ExportDeclaration::DefaultExpression(
-                    expression,
-                )))
-            }
+            Self::ExportDefaultExpr(export_default_expr) => export_default_expr
+                .transform_spanned()
+                .map(Statement::Export),
             Self::ExportDecl(export_decl) => {
-                let declaration = export_decl.decl().present()?.transform()?;
-                Ok(Statement::Export(ExportDeclaration::Declaration(
-                    declaration,
-                )))
+                export_decl.transform_spanned().map(Statement::Export)
             }
             Self::ExportNamed(_) => todo!(),
             Self::ExportWildcard(_) => todo!(),
@@ -108,6 +83,28 @@ impl Transform for ext::ImportDecl {
     }
 }
 
+impl Transform for ext::ExportDecl {
+    type Output = ExportDeclaration;
+
+    fn transform(self) -> Result<Self::Output, TransformError> {
+        self.decl()
+            .present()?
+            .transform_spanned()
+            .map(ExportDeclaration::Declaration)
+    }
+}
+
+impl Transform for ext::ExportDefaultExpr {
+    type Output = ExportDeclaration;
+
+    fn transform(self) -> Result<Self::Output, TransformError> {
+        self.expr()
+            .present()?
+            .transform_spanned()
+            .map(ExportDeclaration::DefaultExpression)
+    }
+}
+
 impl Transform for ext::Stmt {
     type Output = Statement;
 
@@ -118,22 +115,24 @@ impl Transform for ext::Stmt {
             Self::ExprStmt(expr_stmt) => expr_stmt
                 .expr()
                 .present()?
-                .transform()
+                .transform_spanned()
                 .map(Statement::Expression),
 
             // Things that definitely can't return None
             Self::BlockStmt(block_stmt) => {
-                block_stmt.transform().map(Statement::Block)
+                block_stmt.transform_spanned().map(Statement::Block)
             }
-            Self::IfStmt(if_stmt) => if_stmt.transform().map(Statement::If),
-            Self::DoWhileStmt(do_while_stmt) => {
-                do_while_stmt.transform().map(Statement::DoWhileLoop)
+            Self::IfStmt(if_stmt) => {
+                if_stmt.transform_spanned().map(Statement::If)
             }
+            Self::DoWhileStmt(do_while_stmt) => do_while_stmt
+                .transform_spanned()
+                .map(Statement::DoWhileLoop),
             Self::WhileStmt(while_stmt) => {
-                while_stmt.transform().map(Statement::WhileLoop)
+                while_stmt.transform_spanned().map(Statement::WhileLoop)
             }
             Self::ForStmt(for_stmt) => {
-                for_stmt.transform().map(Statement::ForLoop)
+                for_stmt.transform_spanned().map(Statement::ForLoop)
             }
             // TODO for..of loop?
             Self::ForInStmt(_) => todo!(),
@@ -141,14 +140,16 @@ impl Transform for ext::Stmt {
             Self::ContinueStmt(_) => Ok(Statement::Continue),
             Self::BreakStmt(_) => Ok(Statement::Break),
             Self::ReturnStmt(return_stmt) => {
-                let expression = return_stmt.value().transform()?;
+                let expression = return_stmt.value().transform_spanned_opt()?;
                 Ok(Statement::Return(expression))
             }
             Self::LabelledStmt(_) => unsupported("TODO", "TODO"),
             Self::SwitchStmt(_) => todo!(),
             Self::ThrowStmt(_) => todo!(),
             Self::TryStmt(_) => todo!(),
-            Self::Decl(decl) => decl.transform().map(Statement::Declaration),
+            Self::Decl(decl) => {
+                decl.transform_spanned().map(Statement::Declaration)
+            }
             Self::DebuggerStmt(_) => unsupported("TODO", "TODO"),
             Self::WithStmt(_) => unsupported("TODO", "TODO"),
         }
@@ -159,7 +160,7 @@ impl Transform for ext::BlockStmt {
     type Output = Block;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let statements = self.stmts().transform()?;
+        let statements = self.stmts().transform_all()?;
         Ok(Block { statements })
     }
 }
@@ -173,11 +174,11 @@ impl Transform for ext::IfStmt {
             .present()?
             .condition()
             .present()?
-            .transform()?;
-        // THis body is not optional
-        let body = self.cons().present()?.transform()?;
+            .transform_spanned()?;
+        // This body is NOT optional
+        let body = self.cons().present()?.transform_spanned()?;
         // This body IS optional
-        let else_body = self.alt().transform()?;
+        let else_body = self.alt().transform_spanned_opt()?;
         Ok(If {
             condition,
             body: body.into(),
@@ -216,10 +217,10 @@ impl Transform for ext::Decl {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             Self::VarDecl(var_decl) => {
-                var_decl.transform().map(Declaration::Lexical)
+                var_decl.transform_spanned().map(Declaration::Lexical)
             }
             Self::FnDecl(fn_decl) => {
-                fn_decl.transform().map(Declaration::Function)
+                fn_decl.transform_spanned().map(Declaration::Function)
             }
             Self::ClassDecl(_) => {
                 unsupported("`class`", "Classes are not supported")
@@ -241,7 +242,7 @@ impl Transform for ext::VarDecl {
             return unsupported("`var`", "Use `const` or `let` instead");
         }
         let mutable = self.is_let();
-        let variables = self.declared().transform()?;
+        let variables = self.declared().transform_all()?;
         Ok(LexicalDeclaration { variables, mutable })
     }
 }
@@ -251,7 +252,7 @@ impl Transform for ext::Declarator {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let binding = self.pattern().present()?.transform()?;
-        let init = self.value().transform()?.map(Box::new);
+        let init = self.value().transform_spanned_opt()?.map(Box::new);
         Ok(Variable { binding, init })
     }
 }
@@ -263,7 +264,7 @@ impl Transform for ext::PatternOrExpr {
         match self {
             ext::PatternOrExpr::Pattern(pattern) => pattern.transform(),
             ext::PatternOrExpr::Expr(ext::Expr::NameRef(name_ref)) => {
-                name_ref.transform().map(Binding::Identifier)
+                name_ref.transform_spanned().map(Binding::Identifier)
             }
             ext::PatternOrExpr::Expr(_) => todo!("how this happen?"),
         }
@@ -276,12 +277,13 @@ impl Transform for ext::Pattern {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             Self::SinglePattern(single_pattern) => {
-                single_pattern.transform().map(Binding::Identifier)
+                single_pattern.transform_spanned().map(Binding::Identifier)
             }
             Self::ArrayPattern(_) => todo!(),
-            Self::ObjectPattern(object_pattern) => {
-                object_pattern.elements().transform().map(Binding::Object)
-            }
+            Self::ObjectPattern(object_pattern) => object_pattern
+                .elements()
+                .transform_all()
+                .map(Binding::Object),
             Self::ExprPattern(_) => todo!("what it this?"),
             Self::RestPattern(_) => todo!("not allowed here"),
             Self::AssignPattern(_) => todo!("not allowed here"),
@@ -314,8 +316,10 @@ impl Transform for ext::ObjectPatternProp {
         match self {
             Self::AssignPattern(_) => todo!(),
             Self::KeyValuePattern(key_value_pattern) => {
-                let key = key_value_pattern.key().present()?.transform()?;
-                let value = key_value_pattern.value().present()?.transform()?;
+                let key =
+                    key_value_pattern.key().present()?.transform_spanned()?;
+                let value =
+                    key_value_pattern.value().present()?.transform_spanned()?;
                 Ok(ObjectPatternElement::Mapped {
                     key,
                     value,
@@ -323,14 +327,15 @@ impl Transform for ext::ObjectPatternProp {
                 })
             }
             Self::RestPattern(rest_pattern) => {
-                let binding = rest_pattern.pat().present()?.transform()?;
+                let binding =
+                    rest_pattern.pat().present()?.transform_spanned()?;
                 Ok(ObjectPatternElement::Rest {
                     binding,
                     init: None,
                 })
             }
             Self::SinglePattern(single_pattern) => {
-                let identifier = single_pattern.transform()?;
+                let identifier = single_pattern.transform_spanned()?;
                 Ok(ObjectPatternElement::Identifier {
                     identifier,
                     init: None,
@@ -344,7 +349,7 @@ impl Transform for ext::NameRef {
     type Output = Identifier;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        Ok(Identifier(self.ident_token().present()?.to_string()))
+        Ok(Identifier::new(self.ident_token().present()?.to_string()))
     }
 }
 
@@ -352,7 +357,7 @@ impl Transform for ext::Name {
     type Output = Identifier;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        Ok(Identifier(self.text()))
+        Ok(Identifier::new(self.text()))
     }
 }
 
@@ -360,7 +365,7 @@ impl Transform for ext::FnDecl {
     type Output = FunctionDeclaration;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let name = self.name().transform()?;
+        let name = self.name().transform_spanned_opt()?;
         let parameters = self.parameters().present()?.transform()?;
         let body = self.body().present()?.transform()?.statements;
         Ok(FunctionDeclaration {
@@ -377,14 +382,17 @@ impl Transform for ext::ArrowExpr {
     fn transform(self) -> Result<Self::Output, TransformError> {
         let parameters = match self.params().present()? {
             ext::ArrowExprParams::Name(name) => {
-                let identifier = name.transform()?;
+                let identifier = name.transform_spanned()?;
+                let span = identifier.span;
                 let parameter = FunctionParameter {
                     variable: Variable {
                         binding: Binding::Identifier(identifier),
                         init: None,
-                    },
+                    }
+                    .into_spanned(span),
                     varargs: false,
-                };
+                }
+                .into_spanned(span);
                 Box::new([parameter])
             }
             ext::ArrowExprParams::ParameterList(parameter_list) => {
@@ -393,10 +401,15 @@ impl Transform for ext::ArrowExpr {
         };
         let body = match self.body().present()? {
             ext::ExprOrBlock::Expr(expr) => {
-                ArrowFunctionBody::Expression(expr.transform()?.into())
+                let expression = expr.transform_spanned()?;
+                let span = expression.span;
+                ArrowFunctionBody::Expression(expression.into())
+                    .into_spanned(span)
             }
             ext::ExprOrBlock::Block(block_stmt) => {
+                let span = block_stmt.range().into();
                 ArrowFunctionBody::Block(block_stmt.transform()?.statements)
+                    .into_spanned(span)
             }
         };
         Ok(ArrowFunction { parameters, body })
@@ -404,7 +417,7 @@ impl Transform for ext::ArrowExpr {
 }
 
 impl Transform for ext::ParameterList {
-    type Output = Box<[FunctionParameter]>;
+    type Output = Box<[Spanned<FunctionParameter>]>;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         /// Recursive helper for converting a pattern to a function parameter.
@@ -412,31 +425,35 @@ impl Transform for ext::ParameterList {
         /// different places in the AST with different semantics
         fn transform(
             pattern: ext::Pattern,
-        ) -> Result<FunctionParameter, TransformError> {
+        ) -> Result<Spanned<FunctionParameter>, TransformError> {
             match pattern {
                 ext::Pattern::RestPattern(rest_pattern) => {
                     let pattern = rest_pattern.pat().present()?;
                     let mut parameter = transform(pattern)?;
-                    parameter.varargs = true;
+                    parameter.data.varargs = true;
                     Ok(parameter)
                 }
                 ext::Pattern::AssignPattern(assign_pattern) => {
                     let pattern = assign_pattern.key().present()?;
                     let mut parameter = transform(pattern)?;
-                    let expression =
-                        assign_pattern.value().present()?.transform()?;
-                    parameter.variable.init = Some(expression.into());
+                    let expression = assign_pattern
+                        .value()
+                        .present()?
+                        .transform_spanned()?;
+                    parameter.data.variable.data.init = Some(expression.into());
                     Ok(parameter)
                 }
                 pattern => {
-                    let binding = pattern.transform()?;
+                    let binding = pattern.transform_spanned()?;
                     Ok(FunctionParameter {
                         variable: Variable {
-                            binding,
+                            binding: binding.data,
                             init: None,
-                        },
+                        }
+                        .into_spanned(binding.span),
                         varargs: false,
-                    })
+                    }
+                    .into_spanned(binding.span))
                 }
             }
         }
@@ -451,44 +468,52 @@ impl Transform for ext::Expr {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             Self::Literal(literal) => {
-                literal.transform().map(Expression::Literal)
+                literal.transform_spanned().map(Expression::Literal)
             }
             Self::Template(template) => {
-                template.transform().map(Expression::Template)
+                template.transform_spanned().map(Expression::Template)
             }
             Self::NameRef(name_ref) => {
-                name_ref.transform().map(Expression::Identifier)
+                name_ref.transform_spanned().map(Expression::Identifier)
             }
-            Self::ArrayExpr(array_expr) => array_expr
-                .transform()
-                .map(|array| Expression::Literal(Literal::Array(array))),
-            Self::ObjectExpr(object_expr) => object_expr
-                .transform()
-                .map(|object| Expression::Literal(Literal::Object(object))),
+            Self::ArrayExpr(array_expr) => {
+                array_expr.transform_spanned().map(|array| {
+                    Expression::Literal(
+                        Literal::Array(array.data).into_spanned(array.span),
+                    )
+                })
+            }
+            Self::ObjectExpr(object_expr) => {
+                object_expr.transform_spanned().map(|object| {
+                    Expression::Literal(
+                        Literal::Object(object.data).into_spanned(object.span),
+                    )
+                })
+            }
             Self::GroupingExpr(grouping_expr) => {
                 grouping_expr.inner().present()?.transform()
             }
             Self::BracketExpr(bracket_expr) => {
-                bracket_expr.transform().map(Expression::Property)
+                bracket_expr.transform_spanned().map(Expression::Property)
             }
             Self::DotExpr(dot_expr) => {
-                dot_expr.transform().map(Expression::Property)
+                dot_expr.transform_spanned().map(Expression::Property)
             }
             Self::CallExpr(call_expr) => {
-                call_expr.transform().map(Expression::Call)
+                call_expr.transform_spanned().map(Expression::Call)
             }
             Self::UnaryExpr(_) => todo!(),
             Self::BinExpr(bin_expr) => {
-                bin_expr.transform().map(Expression::Binary)
+                bin_expr.transform_spanned().map(Expression::Binary)
             }
             Self::CondExpr(_) => todo!(),
             Self::AssignExpr(assign_expr) => {
-                assign_expr.transform().map(Expression::Assign)
+                assign_expr.transform_spanned().map(Expression::Assign)
             }
             Self::SequenceExpr(_) => todo!(),
-            Self::ArrowExpr(arrow_expr) => {
-                arrow_expr.transform().map(Expression::ArrowFunction)
-            }
+            Self::ArrowExpr(arrow_expr) => arrow_expr
+                .transform_spanned()
+                .map(Expression::ArrowFunction),
             Self::FnExpr(_) => todo!("wtf is this?"),
 
             // Unsupported
@@ -559,12 +584,17 @@ impl Transform for ext::ArrayExpr {
             .elements()
             .map(|element| match element {
                 ext::ExprOrSpread::Expr(expr) => {
-                    Ok(ArrayElement::Expression(expr.transform()?))
+                    let expression = expr.transform_spanned()?;
+                    let span = expression.span;
+                    Ok(ArrayElement::Expression(expression).into_spanned(span))
                 }
                 ext::ExprOrSpread::Spread(spread_element) => {
-                    let expression =
-                        spread_element.element().present()?.transform()?;
-                    Ok(ArrayElement::Spread(expression))
+                    let expression = spread_element
+                        .element()
+                        .present()?
+                        .transform_spanned()?;
+                    let span = expression.span;
+                    Ok(ArrayElement::Spread(expression).into_spanned(span))
                 }
             })
             .collect::<Result<_, _>>()?;
@@ -576,7 +606,7 @@ impl Transform for ext::ObjectExpr {
     type Output = ObjectLiteral;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let properties = self.props().transform()?;
+        let properties = self.props().transform_all()?;
         Ok(ObjectLiteral { properties })
     }
 }
@@ -587,19 +617,23 @@ impl Transform for ext::ObjectProp {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             Self::LiteralProp(literal_prop) => {
-                let property = literal_prop.key().present()?.transform()?;
-                let expression = literal_prop.value().present()?.transform()?;
+                let property =
+                    literal_prop.key().present()?.transform_spanned()?;
+                let expression =
+                    literal_prop.value().present()?.transform_spanned()?;
                 Ok(ObjectProperty::Property {
                     property,
                     expression,
                 })
             }
             Self::IdentProp(ident_prop) => {
-                let identifier = ident_prop.name().present()?.transform()?;
+                let identifier =
+                    ident_prop.name().present()?.transform_spanned()?;
                 Ok(ObjectProperty::Identifier(identifier))
             }
             Self::SpreadProp(spread_prop) => {
-                let expression = spread_prop.value().present()?.transform()?;
+                let expression =
+                    spread_prop.value().present()?.transform_spanned()?;
                 Ok(ObjectProperty::Spread(expression))
             }
             Self::InitializedProp(_) => todo!("what is this?"),
@@ -616,19 +650,29 @@ impl Transform for ext::PropName {
     fn transform(self) -> Result<Self::Output, TransformError> {
         match self {
             ext::PropName::Ident(name) => {
-                let identifier = name.transform()?;
+                // {x: ...}
+                let identifier = name.transform_spanned()?;
                 Ok(PropertyName::Literal(identifier))
             }
             ext::PropName::Computed(computed_property_name) => {
-                let expression =
-                    computed_property_name.prop().present()?.transform()?;
+                // {[f()]: ...}
+                let expression = computed_property_name
+                    .prop()
+                    .present()?
+                    .transform_spanned()?;
                 Ok(PropertyName::Expression(expression.into()))
             }
             ext::PropName::Literal(literal) => {
+                // {"123": ...}
                 if let ext::LiteralKind::String = literal.kind() {
                     let s = literal.inner_string_text().present()?.to_string();
+                    let span = literal.range().into();
                     Ok(PropertyName::Expression(
-                        Expression::Literal(Literal::String(s)).into(),
+                        Expression::Literal(
+                            Literal::String(s).into_spanned(span),
+                        )
+                        .into_spanned(span)
+                        .into(),
                     ))
                 } else {
                     todo!("not allowed?")
@@ -642,11 +686,14 @@ impl Transform for ext::BracketExpr {
     type Output = PropertyAccess;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let expression = self.object().present()?.transform()?;
-        let property = self.prop().present()?.transform()?;
+        let expression = self.object().present()?.transform_spanned()?;
+        let prop = self.prop().present()?;
+        let property_span = prop.range().into();
+        let property = prop.transform_spanned()?;
         Ok(PropertyAccess {
             expression: expression.into(),
-            property: PropertyName::Expression(property.into()),
+            property: PropertyName::Expression(property.into())
+                .into_spanned(property_span),
         })
     }
 }
@@ -655,11 +702,12 @@ impl Transform for ext::DotExpr {
     type Output = PropertyAccess;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let expression = self.object().present()?.transform()?;
-        let identifier = self.prop().present()?.transform()?;
+        let expression = self.object().present()?.transform_spanned()?;
+        let identifier = self.prop().present()?.transform_spanned()?;
+        let span = self.range().into();
         Ok(PropertyAccess {
             expression: expression.into(),
-            property: PropertyName::Literal(identifier),
+            property: PropertyName::Literal(identifier).into_spanned(span),
         })
     }
 }
@@ -669,8 +717,8 @@ impl Transform for ext::BinExpr {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let operator = self.op().present()?.transform()?;
-        let lhs = self.lhs().present()?.transform()?;
-        let rhs = self.rhs().present()?.transform()?;
+        let lhs = self.lhs().present()?.transform_spanned()?;
+        let rhs = self.rhs().present()?.transform_spanned()?;
         Ok(BinaryOperation {
             operator,
             lhs: lhs.into(),
@@ -684,8 +732,8 @@ impl Transform for ext::AssignExpr {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let operator = self.op().present()?.transform()?;
-        let lhs = self.lhs().present()?.transform()?;
-        let rhs = self.rhs().present()?.transform()?;
+        let lhs = self.lhs().present()?.transform_spanned()?;
+        let rhs = self.rhs().present()?.transform_spanned()?;
         Ok(AssignOperation {
             operator,
             lhs,
@@ -761,8 +809,8 @@ impl Transform for ext::CallExpr {
     type Output = FunctionCall;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        let arguments = self.arguments().present()?.args().transform()?;
-        let function = self.callee().present()?.transform()?;
+        let arguments = self.arguments().present()?.args().transform_all()?;
+        let function = self.callee().present()?.transform_spanned()?;
         Ok(FunctionCall {
             function: function.into(),
             arguments,
@@ -770,13 +818,71 @@ impl Transform for ext::CallExpr {
     }
 }
 
+/// An extension of [Transform], for AST items that implement [ext::AstNode]
+/// and therefore have source spans attached
+/// TODO can we combine this with the base trait?
+trait TransformSpanned: Transform {
+    fn transform_spanned(self)
+        -> Result<Spanned<Self::Output>, TransformError>;
+}
+
+impl<T: ext::AstNode + Transform> TransformSpanned for T {
+    fn transform_spanned(
+        self,
+    ) -> Result<Spanned<Self::Output>, TransformError> {
+        let span: Span = self.syntax().text_range().into();
+        let data = self.transform()?;
+        Ok(Spanned { data, span })
+    }
+}
+
+/// TODO
+trait TransformAll<T: Transform> {
+    fn transform_all(self)
+        -> Result<Box<[Spanned<T::Output>]>, TransformError>;
+}
+
+impl<T: ext::AstNode + Transform> TransformAll<T> for ext::AstChildren<T> {
+    fn transform_all(
+        self,
+    ) -> Result<Box<[Spanned<T::Output>]>, TransformError> {
+        self.map(T::transform_spanned).collect::<Result<_, _>>()
+    }
+}
+
 trait OptionExt<T> {
+    /// Ensure an AST node is present. Rslint has a very forgiving parser that
+    /// allows most AST nodes to be missing, because it's designed to work on
+    /// incomplete/incorrect code. We need correct code to execute though, so
+    /// this method makes it easy to enforce AST nodes are present.
     fn present(self) -> Result<T, TransformError>;
+
+    /// Call [TransformSpanned] on an optional AST node
+    fn transform_spanned_opt(
+        self,
+    ) -> Result<Option<Spanned<T::Output>>, TransformError>
+    where
+        T: TransformSpanned;
 }
 
 impl<T> OptionExt<T> for Option<T> {
     fn present(self) -> Result<T, TransformError> {
         self.ok_or(TransformError::Missing)
+    }
+
+    fn transform_spanned_opt(
+        self,
+    ) -> Result<Option<Spanned<T::Output>>, TransformError>
+    where
+        T: TransformSpanned,
+    {
+        self.map(T::transform_spanned).transpose()
+    }
+}
+
+impl From<TextRange> for Span {
+    fn from(range: TextRange) -> Self {
+        Span::new(range.start().into(), range.end().into())
     }
 }
 

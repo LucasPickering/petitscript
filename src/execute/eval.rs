@@ -5,10 +5,10 @@ use crate::{
         ArrayElement, ArrayLiteral, ArrowFunctionBody, AssignOperation,
         AssignOperator, BinaryOperation, BinaryOperator, Binding, Expression,
         FunctionCall, Literal, ObjectLiteral, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-        TemplateLiteral, UnaryOperation, UnaryOperator,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned,
+        Statement, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
-    error::{RuntimeResult, ValueError},
+    error::{Error, ResultExt, ValueError},
     execute::{
         exec::{Execute, Terminate},
         ThreadState,
@@ -21,28 +21,32 @@ use std::iter;
 /// TODO
 pub trait Evaluate {
     /// TODO
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value>;
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         match self {
             Expression::Parenthesized(expression) => expression.eval(state),
             Expression::Literal(literal) => literal.eval(state),
             Expression::Template(template_literal) => {
                 template_literal.eval(state)
             }
-            Expression::Identifier(identifier) => {
-                state.scope().get(identifier.to_str())
-            }
+            Expression::Identifier(identifier) => state
+                .scope()
+                .get(identifier.as_str())
+                .spanned_err(identifier.span),
             Expression::ArrowFunction(function) => Ok(Function::new(
                 None, // TODO grab name from binding if possible
                 function.parameters.clone(),
-                match function.body.clone() {
+                match function.body.data.clone() {
                     ArrowFunctionBody::Block(statements) => statements,
                     ArrowFunctionBody::Expression(expression) => {
-                        Box::new([Statement::Return(Some(*expression))])
+                        Box::new([Spanned {
+                            span: expression.span,
+                            data: Statement::Return(Some(*expression)),
+                        }])
                     }
                 },
                 state.scope().capture(),
@@ -67,7 +71,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -82,10 +86,10 @@ impl Evaluate for Literal {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let mut array = Array::default();
         for element in &self.elements {
-            match element {
+            match &element.data {
                 // These are optimized to avoid allocations where
                 // possible
                 ArrayElement::Expression(expression) => {
@@ -93,7 +97,10 @@ impl Evaluate for ArrayLiteral {
                     array = array.push(value);
                 }
                 ArrayElement::Spread(expression) => {
-                    let new = expression.eval(state)?.try_into_array()?;
+                    let new = expression
+                        .eval(state)?
+                        .try_into_array()
+                        .spanned_err(expression.span)?;
                     array = array.concat(new);
                 }
             }
@@ -103,18 +110,18 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let mut object = Object::default();
         for property in &self.properties {
-            match property {
+            match &property.data {
                 ObjectProperty::Property {
                     property,
                     expression,
                 } => {
-                    let name = match property {
+                    let name = match &property.data {
                         // {field: "value"}
                         PropertyName::Literal(identifier) => {
-                            identifier.to_str().to_owned()
+                            identifier.as_str().to_owned()
                         }
                         // {["field"]: "value"}
                         PropertyName::Expression(expression) => {
@@ -128,12 +135,18 @@ impl Evaluate for ObjectLiteral {
                 }
                 ObjectProperty::Identifier(identifier) => {
                     // Shorthand notation: { field }
-                    let name = identifier.to_str().to_owned();
-                    let value = state.scope().get(&name)?;
+                    let name = identifier.as_str().to_owned();
+                    let value = state
+                        .scope()
+                        .get(&name)
+                        .spanned_err(identifier.span)?;
                     object = object.insert(name, value);
                 }
                 ObjectProperty::Spread(expression) => {
-                    let new = expression.eval(state)?.try_into_object()?;
+                    let new = expression
+                        .eval(state)?
+                        .try_into_object()
+                        .spanned_err(expression.span)?;
                     object = object.insert_all(new);
                 }
             }
@@ -143,13 +156,13 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, _: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, _: &mut ThreadState<'_>) -> Result<Value, Error> {
         todo!()
     }
 }
 
-impl Evaluate for FunctionCall {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+impl Evaluate for Spanned<FunctionCall> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let function = self.function.eval(state)?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
         for argument in &self.arguments {
@@ -159,31 +172,31 @@ impl Evaluate for FunctionCall {
 
         match function {
             Value::Function(function) => function.call(state, &arguments),
-            Value::Native(function) => {
-                function.call(state.process(), arguments)
-            }
+            Value::Native(function) => function
+                .call(state.process(), arguments)
+                .spanned_err(self.span),
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
-            }
-            .into()),
+            })
+            .spanned_err(self.span),
         }
     }
 }
 
-impl Evaluate for PropertyAccess {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+impl Evaluate for Spanned<PropertyAccess> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let value = self.expression.eval(state)?;
-        let key: Value = match &self.property {
-            PropertyName::Literal(identifier) => identifier.to_str().into(),
+        let key: Value = match &self.property.data {
+            PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
         };
-        value.get(&key)
+        value.get(&key).spanned_err(self.span)
     }
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let target = self.expression.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
@@ -199,17 +212,20 @@ impl Evaluate for OptionalPropertyAccess {
     }
 }
 
-impl Evaluate for AssignOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
-        let name = match &self.lhs {
-            Binding::Identifier(identifier) => identifier.to_str(),
+impl Evaluate for Spanned<AssignOperation> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+        let name = match &self.lhs.data {
+            Binding::Identifier(identifier) => identifier.as_str(),
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
         };
         let value = self.rhs.eval(state)?;
         match self.operator {
             AssignOperator::Assign => {
-                state.scope().set(name, value.clone())?;
+                state
+                    .scope()
+                    .set(name, value.clone())
+                    .spanned_err(self.span)?;
                 // Return assigned value
                 Ok(value)
             }
@@ -226,7 +242,7 @@ impl Evaluate for AssignOperation {
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let _ = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => todo!(),
@@ -236,7 +252,7 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> RuntimeResult<Value> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         let lhs = self.lhs.eval(state)?;
         let rhs = self.rhs.eval(state)?;
         match self.operator {
@@ -265,7 +281,7 @@ impl Function {
         &self,
         state: &mut ThreadState<'_>,
         arguments: &[Value],
-    ) -> RuntimeResult<Value> {
+    ) -> Result<Value, Error> {
         // Start with the function's captured scope
         let mut scope = self.scope().clone();
 
@@ -287,7 +303,9 @@ impl Function {
                 // No init expression, use undefined
                 Value::Undefined
             };
-            scope.bind(&parameter.variable.binding, value, false)?;
+            scope
+                .bind(&parameter.variable.binding, value, false)
+                .spanned_err(parameter.variable.span)?;
         }
 
         // Push the new frame onto the stack and execute the function body

@@ -1,4 +1,4 @@
-use crate::{ast, error::RuntimeResult, value::Value, RuntimeError};
+use crate::{ast, value::Value, RuntimeError};
 use indexmap::IndexMap;
 use std::{
     mem,
@@ -38,7 +38,7 @@ impl Scope {
     }
 
     /// TODO
-    pub fn revert(&mut self) -> RuntimeResult<()> {
+    pub fn revert(&mut self) -> Result<(), RuntimeError> {
         if let Some(parent) = self.parent.take() {
             // In most cases we'll be the only pointer to the parent so we can
             // reclaim the original scope. If we got forked though, we'll have
@@ -67,7 +67,7 @@ impl Scope {
     }
 
     /// TODO
-    pub fn get(&self, name: &str) -> RuntimeResult<Value> {
+    pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
         match self.bindings.get(name) {
             Some(value) => Ok(value),
             None => {
@@ -83,7 +83,7 @@ impl Scope {
     }
 
     /// TODO
-    pub fn set(&self, name: &str, value: Value) -> RuntimeResult<()> {
+    pub fn set(&self, name: &str, value: Value) -> Result<(), RuntimeError> {
         match self.bindings.set(name, value) {
             SetOutcome::NotDefined(value) => {
                 if let Some(parent) = self.parent.as_ref() {
@@ -91,7 +91,7 @@ impl Scope {
                 } else {
                     // Var isn't defined anywhere
                     Err(RuntimeError::Reference {
-                        name: name.to_owned(),
+                        name: name.to_string(),
                     })
                 }
             }
@@ -106,10 +106,10 @@ impl Scope {
         binding: &ast::Binding,
         value: Value,
         mutable: bool,
-    ) -> RuntimeResult<Vec<String>> {
+    ) -> Result<Vec<String>, RuntimeError> {
         match binding {
             ast::Binding::Identifier(identifier) => {
-                let name = identifier.to_str().to_owned();
+                let name = identifier.as_str().to_owned();
                 self.declare(name.clone(), value, mutable);
                 Ok(vec![name])
             }
@@ -151,7 +151,7 @@ impl Bindings {
             }
             Some(Binding::Immutable(_)) => {
                 SetOutcome::Err(RuntimeError::ImmutableAssign {
-                    name: name.to_owned(),
+                    name: name.to_string(),
                 })
             }
             None => SetOutcome::NotDefined(value),

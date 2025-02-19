@@ -1,4 +1,4 @@
-use crate::{value::ValueType, Number};
+use crate::{ast::Span, value::ValueType, Number};
 use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
@@ -7,12 +7,13 @@ use std::{
 };
 use thiserror::Error;
 
-/// TODO get rid of this?
-pub type RuntimeResult<T> = Result<T, RuntimeError>;
-
 /// Any error that can occur within PetitJS
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Attempted to register two values of the same type as app data
+    #[error("Multiple app data values of type `{type_name}` were registered")]
+    DuplicateAppData { type_name: &'static str },
+
     /// Error occurred while loading source code from a file or other I/O
     /// source
     #[error("TODO: {0}")]
@@ -32,8 +33,16 @@ pub enum Error {
     /// An error that occurs while executing a program. All runtime errors have
     /// an attached source span, indicating the point in the program where the
     /// error occurred.
-    #[error(transparent)]
-    Runtime(#[from] RuntimeError),
+    #[error("Error at {span}: {error}")]
+    Runtime {
+        #[source]
+        error: RuntimeError,
+        span: Span,
+    },
+
+    /// Requested app data of a type that has not been set
+    #[error("No app data of type `{type_name}` is registered")]
+    UnknownAppData { type_name: &'static str },
 }
 
 #[cfg(test)]
@@ -75,20 +84,17 @@ pub enum TransformError {
     Missing,
 }
 
-/// An error that occurred while executing a program.
+/// Any error that can occur during the execution of a program
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     /// TODO
     #[error("{name} is already exported")]
     AlreadyExported { name: String },
 
-    /// Custom error type, for errors originating in user code
+    /// Custom error type, for errors originating in user-provided native
+    /// functions
     #[error(transparent)]
     Custom(Box<dyn std::error::Error + Send + Sync>),
-
-    /// Attempted to register two values of the same type as app data
-    #[error("Multiple app data values of type `{type_name}` were registered")]
-    DuplicateAppData { type_name: &'static str },
 
     /// Attempted to export from within a subscope
     #[error("Export only allowed in program root")]
@@ -99,6 +105,7 @@ pub enum RuntimeError {
     IllegalReturn,
 
     /// Oopsies!
+    /// TODO include bug report link here
     #[error(
         "Internal error occurred in the PetitJS engine. \
         This is a bug; please report it! {0}"
@@ -112,9 +119,6 @@ pub enum RuntimeError {
     /// Reference to an identifier that isn't bound
     #[error("{name} is not defined")]
     Reference { name: String },
-
-    #[error("No app data of type `{type_name}` is registered")]
-    UnknownAppData { type_name: &'static str },
 
     /// Error converting to/from JS values
     #[error(transparent)]
@@ -162,4 +166,25 @@ pub enum ValueError {
         expected: ValueType,
         actual: ValueType,
     },
+}
+
+pub(crate) trait ResultExt<T, E> {
+    /// Convert a `Result<T, E>` to a `Result<T, Error>` by attaching a span to
+    /// the error
+    fn spanned_err(self, span: Span) -> Result<T, Error>;
+}
+
+impl<T> ResultExt<T, RuntimeError> for Result<T, RuntimeError> {
+    fn spanned_err(self, span: Span) -> Result<T, Error> {
+        self.map_err(|error| Error::Runtime { error, span })
+    }
+}
+
+impl<T> ResultExt<T, ValueError> for Result<T, ValueError> {
+    fn spanned_err(self, span: Span) -> Result<T, Error> {
+        self.map_err(|error| Error::Runtime {
+            error: error.into(),
+            span,
+        })
+    }
 }

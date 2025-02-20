@@ -1,8 +1,8 @@
 //! The PetitJS standard library
 
 use crate::{
-    error::RuntimeError, scope::Scope, value::Object, NativeFunction, Process,
-    Value,
+    error::RuntimeError, function::Varargs, scope::Scope, value::Object,
+    NativeFunction, Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -20,14 +20,16 @@ fn console() -> Object {
 
 /// Log values to stdout
 /// TODO support varargs
-fn console_log(_: &Process, (value,): (Value,)) -> Result<Value, RuntimeError> {
-    println!("{value}");
-    /* for (i, value) in args.iter().enumerate() {
+fn console_log(
+    _: &Process,
+    Varargs(values): Varargs,
+) -> Result<(), RuntimeError> {
+    for (i, value) in values.iter().enumerate() {
         if i > 0 {
             print!(" ");
         }
         print!("{value}");
     }
-    println!(); */
-    Ok(Value::Undefined)
+    println!();
+    Ok(())
 }

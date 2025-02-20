@@ -7,8 +7,10 @@
 // TODO comments on everything
 
 use std::{
+    collections::HashMap,
     fmt::{self, Display},
     ops::Deref,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 /// Root AST node. This is a parsed program, ready to be executed
@@ -45,6 +47,8 @@ pub enum Statement {
 #[derive(Clone, Debug)]
 pub struct Block {
     pub statements: Box<[Spanned<Statement>]>,
+    /// TODO
+    pub functions: HashMap<FunctionId, FunctionDefinition>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,7 +70,18 @@ pub struct Variable {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunctionDeclaration {
+pub enum FunctionDeclaration {
+    /// Lifting hasn't been performed yet, the function definitions is still
+    /// inline. This code isn't executable yet!
+    Inline(FunctionDefinition),
+    /// Function definition has been lifted to the top of the program, and this
+    /// is just a pointer to the definition
+    Lifted(FunctionId),
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+pub(crate) struct FunctionDefinition {
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
     /// We don't use [Block] here because we don't need this to create a new
@@ -75,10 +90,42 @@ pub struct FunctionDeclaration {
     pub body: Box<[Spanned<Statement>]>,
 }
 
+/// One parameter in a function definition
 #[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub variable: Spanned<Variable>,
     pub varargs: bool,
+}
+
+/// A unique identifier for a function definition. This ID provides the
+/// following guarantees:
+/// - Globally unique, so two identical functions in different processes will
+///   _not_ share the same ID
+/// - Composed of primitives so it can be serialized and deserialized, and still
+///   used to call the same function
+/// - Stable across processes of the same program. This allows you to serialize
+///   a function ID, then recreate its process later and still use the ID to
+///   call the function, provided the process's program hasn't changed at all
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct FunctionId {
+    /// A globally unique ID for the process in which this function originated.
+    /// It can only be invoked in this process
+    process_id: usize,
+    /// An ID for this function, unique only within the scope of its process
+    function_id: usize,
+}
+
+impl FunctionId {
+    /// TODO
+    pub(crate) fn new(process_id: usize) -> Self {
+        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+        let function_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+
+        Self {
+            process_id,
+            function_id,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -143,8 +190,9 @@ pub enum Expression {
     Property(Spanned<PropertyAccess>),
     /// Optional chaining operator: `?.`
     OptionalProperty(Spanned<OptionalPropertyAccess>),
-    /// Lambda syntax: `(...) => {...}` or `() => value`
-    ArrowFunction(Spanned<ArrowFunction>),
+    /// Lambda syntax: `(...) => {...}` or `() => value`. This shares the same
+    /// AST node as the `function` syntax; they get combined during parsing
+    ArrowFunction(Spanned<FunctionDeclaration>),
     Unary(Spanned<UnaryOperation>),
     Binary(Spanned<BinaryOperation>),
     Ternary(Spanned<TernaryConditional>),
@@ -163,15 +211,11 @@ impl Identifier {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    pub fn into_string(self) -> String {
-        self.0
-    }
 }
 
 impl Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", 0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -238,18 +282,6 @@ pub struct PropertyAccess {
 pub struct OptionalPropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ArrowFunction {
-    pub parameters: Box<[Spanned<FunctionParameter>]>,
-    pub body: Spanned<ArrowFunctionBody>,
-}
-
-#[derive(Clone, Debug)]
-pub enum ArrowFunctionBody {
-    Block(Box<[Spanned<Statement>]>),
-    Expression(Box<Spanned<Expression>>),
 }
 
 #[derive(Clone, Debug)]
@@ -394,7 +426,7 @@ pub enum ArrayPatternElement {
 // TODO move source span stuff?
 
 /// TODO
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Span {
     /// Byte offset for the beginning of this span. Always <= end_span.
     start_offset: usize,

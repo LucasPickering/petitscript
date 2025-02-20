@@ -3,14 +3,14 @@
 
 use crate::{
     ast::{
-        ArrayElement, ArrayLiteral, ArrowFunction, ArrowFunctionBody,
-        AssignOperation, AssignOperator, BinaryOperation, BinaryOperator,
-        Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
-        Expression, ForLoop, FunctionCall, FunctionDeclaration,
-        FunctionParameter, Identifier, If, ImportDeclaration, IntoSpanned,
-        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
-        ObjectProperty, Program, PropertyAccess, PropertyName, Span, Spanned,
-        Statement, TemplateLiteral, Variable, WhileLoop,
+        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
+        BinaryOperation, BinaryOperator, Binding, Block, Declaration,
+        DoWhileLoop, ExportDeclaration, Expression, ForLoop, FunctionCall,
+        FunctionDeclaration, FunctionDefinition, FunctionParameter, Identifier,
+        If, ImportDeclaration, IntoSpanned, LexicalDeclaration, Literal,
+        ObjectLiteral, ObjectPatternElement, ObjectProperty, Program,
+        PropertyAccess, PropertyName, Span, Spanned, Statement,
+        TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -19,6 +19,7 @@ use rslint_parser::{
     ast::{self as ext},
     AstNode, TextRange,
 };
+use std::collections::HashMap;
 
 /// Parse source code into an Abstract Syntax Tree
 pub fn parse(source: impl Source) -> Result<Program, Error> {
@@ -161,7 +162,12 @@ impl Transform for ext::BlockStmt {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let statements = self.stmts().transform_all()?;
-        Ok(Block { statements })
+        // Function definitions will be lifted in a later compiler stage
+        let functions = HashMap::new();
+        Ok(Block {
+            statements,
+            functions,
+        })
     }
 }
 
@@ -368,16 +374,16 @@ impl Transform for ext::FnDecl {
         let name = self.name().transform_spanned_opt()?;
         let parameters = self.parameters().present()?.transform()?;
         let body = self.body().present()?.transform()?.statements;
-        Ok(FunctionDeclaration {
+        Ok(FunctionDeclaration::Inline(FunctionDefinition {
             name,
             parameters,
             body,
-        })
+        }))
     }
 }
 
 impl Transform for ext::ArrowExpr {
-    type Output = ArrowFunction;
+    type Output = FunctionDeclaration;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let parameters = match self.params().present()? {
@@ -403,16 +409,19 @@ impl Transform for ext::ArrowExpr {
             ext::ExprOrBlock::Expr(expr) => {
                 let expression = expr.transform_spanned()?;
                 let span = expression.span;
-                ArrowFunctionBody::Expression(expression.into())
-                    .into_spanned(span)
+                Box::new([
+                    Statement::Return(Some(expression)).into_spanned(span)
+                ])
             }
             ext::ExprOrBlock::Block(block_stmt) => {
-                let span = block_stmt.range().into();
-                ArrowFunctionBody::Block(block_stmt.transform()?.statements)
-                    .into_spanned(span)
+                block_stmt.transform()?.statements
             }
         };
-        Ok(ArrowFunction { parameters, body })
+        Ok(FunctionDeclaration::Inline(FunctionDefinition {
+            name: None,
+            parameters,
+            body,
+        }))
     }
 }
 

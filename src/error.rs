@@ -1,4 +1,4 @@
-use crate::{ast::Span, value::ValueType, Number};
+use crate::{ast::Span, function::Function, value::ValueType, Number};
 use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
@@ -16,7 +16,7 @@ pub enum Error {
 
     /// Error occurred while loading source code from a file or other I/O
     /// source
-    #[error("TODO: {0}")]
+    #[error(transparent)]
     Io(#[from] io::Error),
 
     /// Error occurred while parsing source code. This indicates the source is
@@ -88,7 +88,7 @@ pub enum TransformError {
 #[derive(Debug, Error)]
 pub enum RuntimeError {
     /// TODO
-    #[error("{name} is already exported")]
+    #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
 
     /// Custom error type, for errors originating in user-provided native
@@ -113,12 +113,16 @@ pub enum RuntimeError {
     Internal(String),
 
     /// Second assignment to a `const` variable
-    #[error("Assignment to immutable variable {name}")]
+    #[error("Assignment to immutable variable `{name}`")]
     ImmutableAssign { name: String },
 
     /// Reference to an identifier that isn't bound
-    #[error("{name} is not defined")]
+    #[error("`{name}` is not defined")]
     Reference { name: String },
+
+    /// TODO
+    #[error("Unknown function {function}")]
+    UnknownFunction { function: Function },
 
     /// Error converting to/from JS values
     #[error(transparent)]
@@ -133,6 +137,7 @@ impl RuntimeError {
         Self::Custom(error.into())
     }
 
+    /// Create an error that indicates an internal bug in the runtime
     pub(crate) fn internal(message: impl ToString) -> Self {
         Self::Internal(message.to_string())
     }

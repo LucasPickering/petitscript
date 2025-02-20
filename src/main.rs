@@ -1,11 +1,18 @@
-use petit_js::{Engine, Error};
+use petit_js::Engine;
 use std::{env, path::Path};
 
-fn main() -> Result<(), Error> {
+fn main() {
     let path = env::args().nth(1).expect("Expected path");
     let engine = Engine::new();
-    let process = engine.parse(Path::new(&path))?;
-    let exports = process.execute()?;
-    println!("Exported:\n{exports:#}");
-    Ok(())
+    let process = match engine.parse(Path::new(&path)) {
+        Ok(process) => process,
+        Err(error) => {
+            eprintln!("{error}");
+            return;
+        }
+    };
+    match process.execute() {
+        Ok(exports) => println!("Exported:\n{exports:#}"),
+        Err(error) => eprintln!("{error}"),
+    }
 }

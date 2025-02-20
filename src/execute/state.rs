@@ -35,6 +35,7 @@ impl<'a> ThreadState<'a> {
 
     /// TODO
     pub fn export(&mut self, name: String) -> Result<(), RuntimeError> {
+        let value = self.scope().get(&name)?;
         let exports =
             self.exports.as_mut().ok_or(RuntimeError::IllegalExport)?;
 
@@ -44,7 +45,6 @@ impl<'a> ThreadState<'a> {
                 name: entry.key().clone(),
             }),
             Entry::Vacant(entry) => {
-                let value = Value::default(); // TODO
                 entry.insert(value);
                 Ok(())
             }
@@ -58,7 +58,7 @@ impl<'a> ThreadState<'a> {
         // TODO only allow root scope to be exported
         if exports.default.is_some() {
             return Err(RuntimeError::AlreadyExported {
-                name: "[default]".into(),
+                name: "(default)".into(),
             });
         }
         exports.default = Some(value);

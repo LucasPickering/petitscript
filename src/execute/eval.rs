@@ -5,7 +5,7 @@ use crate::{
         ArrayElement, ArrayLiteral, ArrowFunctionBody, AssignOperation,
         AssignOperator, BinaryOperation, BinaryOperator, Binding, Expression,
         FunctionCall, Literal, ObjectLiteral, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, Span, Spanned,
         Statement, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{Error, ResultExt, ValueError},
@@ -13,7 +13,7 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::Function,
+    function::{Function, FunctionDefinition},
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::iter;
@@ -37,21 +37,24 @@ impl Evaluate for Expression {
                 .scope()
                 .get(identifier.as_str())
                 .spanned_err(identifier.span),
-            Expression::ArrowFunction(function) => Ok(Function::new(
-                None, // TODO grab name from binding if possible
-                function.parameters.clone(),
-                match function.body.data.clone() {
-                    ArrowFunctionBody::Block(statements) => statements,
-                    ArrowFunctionBody::Expression(expression) => {
-                        Box::new([Spanned {
-                            span: expression.span,
-                            data: Statement::Return(Some(*expression)),
-                        }])
-                    }
-                },
-                state.scope().capture(),
-            )
-            .into()),
+            Expression::ArrowFunction(function) => {
+                Ok(state
+                    .scope_mut()
+                    .create_function(FunctionDefinition {
+                        name: None, // TODO grab name from binding if possible
+                        parameters: function.parameters.clone(),
+                        body: match function.body.data.clone() {
+                            ArrowFunctionBody::Block(statements) => statements,
+                            ArrowFunctionBody::Expression(expression) => {
+                                Box::new([Spanned {
+                                    span: expression.span,
+                                    data: Statement::Return(Some(*expression)),
+                                }])
+                            }
+                        },
+                    })
+                    .into())
+            }
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
             Expression::OptionalProperty(access) => access.eval(state),
@@ -282,8 +285,11 @@ impl Function {
         state: &mut ThreadState<'_>,
         arguments: &[Value],
     ) -> Result<Value, Error> {
-        // Start with the function's captured scope
-        let mut scope = self.scope().clone();
+        let (mut scope, definition) = state
+            .scope()
+            .get_function_definition(self)
+            // TODO use a real span
+            .spanned_err(Span::default())?;
 
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out
@@ -293,7 +299,7 @@ impl Function {
             .cloned()
             .map(Some)
             .chain(iter::repeat(None));
-        for (parameter, value) in self.parameters().iter().zip(args_iter) {
+        for (parameter, value) in definition.parameters.iter().zip(args_iter) {
             let value = if let Some(value) = value {
                 value
             } else if let Some(init) = &parameter.variable.init {
@@ -309,7 +315,7 @@ impl Function {
         }
 
         // Push the new frame onto the stack and execute the function body
-        state.with_frame(scope, |state| match self.body().exec(state)? {
+        state.with_frame(scope, |state| match definition.body.exec(state)? {
             Some(Terminate::Return {
                 return_value: Some(return_value),
             }) => Ok(return_value),

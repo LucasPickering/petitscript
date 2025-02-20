@@ -8,7 +8,8 @@ use crate::{
     },
     error::ResultExt,
     execute::{eval::Evaluate, ThreadState},
-    value::{function::Function, Value},
+    function::FunctionDefinition,
+    value::Value,
     Error,
 };
 
@@ -248,13 +249,15 @@ impl Execute for FunctionDeclaration {
     fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
         let name = self.name.as_ref().map(|name| name.to_string());
         let scope = state.scope_mut();
-        let function = Function::new(
-            name.clone(),
-            self.parameters.clone(),
-            self.body.clone(),
-            scope.clone(),
-        );
 
+        // Define the function and get a pointer to it
+        let function = scope.create_function(FunctionDefinition {
+            name: name.clone(),
+            parameters: self.parameters.clone(),
+            body: self.body.clone(),
+        });
+
+        // Bind the name to the function pointer
         if let Some(name) = &name {
             scope.declare(name.as_str(), function.into(), false);
         }

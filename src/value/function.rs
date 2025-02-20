@@ -1,7 +1,6 @@
 use crate::{
-    ast::{FunctionParameter, Spanned, Statement},
+    ast::{FunctionId, FunctionParameter, Spanned, Statement},
     error::RuntimeError,
-    scope::Scope,
     value::Value,
     FromJs, IntoJs, Process,
 };
@@ -12,48 +11,33 @@ use std::{
 
 /// TODO
 #[derive(Clone, Debug)]
-pub struct Function(Arc<FunctionInner>);
+pub struct Function {
+    /// TODO
+    id: FunctionId,
+    /// Duplicate the name, for printing/debugging
+    name: Option<String>,
+}
 
 impl Function {
-    pub(crate) fn new(
-        name: Option<String>,
-        parameters: Box<[Spanned<FunctionParameter>]>,
-        body: Box<[Spanned<Statement>]>,
-        scope: Scope,
-    ) -> Self {
-        let inner = FunctionInner {
-            name,
-            parameters,
-            body,
-            scope,
-        };
-        Self(inner.into())
+    /// TODO
+    pub(crate) fn new(id: FunctionId, name: Option<String>) -> Self {
+        Self { id, name }
     }
 
     /// TODO
-    pub fn name(&self) -> Option<&str> {
-        self.0.name.as_deref()
+    pub(crate) fn id(&self) -> FunctionId {
+        self.id
     }
 
     /// TODO
-    pub(crate) fn scope(&self) -> &Scope {
-        &self.0.scope
-    }
-
-    /// TODO
-    pub(crate) fn parameters(&self) -> &[Spanned<FunctionParameter>] {
-        self.0.parameters.as_ref()
-    }
-
-    /// Get the body's list of executable statements
-    pub(crate) fn body(&self) -> &[Spanned<Statement>] {
-        &self.0.body
+    pub fn name(&self) -> &str {
+        self.name.as_deref().unwrap_or("(anonymous)")
     }
 }
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
+        write!(f, "[Function: {}]", self.name())
     }
 }
 
@@ -73,27 +57,16 @@ impl<'de> serde::Deserialize<'de> for Function {
     where
         D: serde::Deserializer<'de>,
     {
-        // TODO how to do this?
-        Ok(Self(
-            FunctionInner {
-                name: None,
-                parameters: Box::new([]),
-                body: Box::new([]),
-                scope: Scope::default(),
-            }
-            .into(),
-        ))
+        todo!()
     }
 }
 
+/// TODO
 #[derive(Debug)]
-struct FunctionInner {
-    name: Option<String>,
-    parameters: Box<[Spanned<FunctionParameter>]>,
-    body: Box<[Spanned<Statement>]>,
-    /// Captured variables. This is defined at function definition, and will be
-    /// exposed to all calls of the function
-    scope: Scope,
+pub(crate) struct FunctionDefinition {
+    pub name: Option<String>,
+    pub parameters: Box<[Spanned<FunctionParameter>]>,
+    pub body: Box<[Spanned<Statement>]>,
 }
 
 /// TODO
@@ -118,6 +91,7 @@ impl NativeFunction {
         Err: Into<RuntimeError>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
+        // TODO take &'a [Value] instead?
         let function = move |process: &Process, args: Vec<Value>| {
             let args = Args::from_js_args(&args)?;
             let output = f(process, args).map_err(Err::into)?;
@@ -151,6 +125,9 @@ impl Debug for NativeFunction {
             .finish()
     }
 }
+
+/// TODO
+pub struct Varargs(pub Vec<Value>);
 
 /// TODO
 pub trait FromJsArgs: Sized {
@@ -193,7 +170,7 @@ macro_rules! call_fn {
 /// Generate an implementation of FromJsArgs for a fixed number of arguments
 macro_rules! impl_from_js_args {
     ($($arg_types:ident),*) => {
-        impl<$($arg_types,)*> FromJsArgs for ($($arg_types,)*)
+        impl<'a, $($arg_types,)*> FromJsArgs for ($($arg_types,)*)
             where $($arg_types: FromJs,)*
         {
             fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
@@ -201,6 +178,28 @@ macro_rules! impl_from_js_args {
             }
         }
     };
+}
+
+impl FromJsArgs for () {
+    fn from_js_args(_: &[Value]) -> Result<Self, RuntimeError> {
+        Ok(())
+    }
+}
+
+/// TODO
+impl FromJsArgs for Varargs {
+    fn from_js_args(values: &[Value]) -> Result<Self, RuntimeError> {
+        // TODO remove clones
+        Ok(Self(values.to_owned()))
+    }
+}
+
+/// Special case implementation: a single argument doesn't need a tuple wrapper
+impl<T0: FromJs> FromJsArgs for T0 {
+    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
+        let arg0 = get_arg(args, 0)?;
+        Ok(arg0)
+    }
 }
 
 impl_from_js_args!(T0);
@@ -213,20 +212,6 @@ impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6);
 impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7);
 impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
 impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
-
-impl FromJsArgs for () {
-    fn from_js_args(_: &[Value]) -> Result<Self, RuntimeError> {
-        Ok(())
-    }
-}
-
-/// Special case implementation: a single argument doesn't need a tuple wrapper
-impl<T0: FromJs> FromJsArgs for T0 {
-    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
-        let arg0 = get_arg(args, 0)?;
-        Ok(arg0)
-    }
-}
 
 /// Helper to get a particular arg from the array and convert it to a static
 /// type

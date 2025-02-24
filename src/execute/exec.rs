@@ -2,13 +2,12 @@
 
 use crate::{
     ast::{
-        Block, Declaration, DoWhileLoop, ExportDeclaration, ForLoop, ForOfLoop,
-        FunctionDeclaration, If, ImportDeclaration, LexicalDeclaration,
-        Spanned, Statement, WhileLoop,
+        Ast, Block, Declaration, DoWhileLoop, ExportDeclaration, ForLoop,
+        ForOfLoop, FunctionDeclaration, If, ImportDeclaration,
+        LexicalDeclaration, Spanned, Statement, WhileLoop,
     },
     error::ResultExt,
     execute::{eval::Evaluate, ThreadState},
-    function::FunctionDefinition,
     value::Value,
     Error,
 };
@@ -34,6 +33,15 @@ where
             }
         }
         Ok(None)
+    }
+}
+
+impl Execute for Ast {
+    type Output = ();
+
+    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+        self.statements.exec(state)?;
+        Ok(())
     }
 }
 
@@ -242,24 +250,23 @@ impl Execute for Spanned<LexicalDeclaration> {
     }
 }
 
-impl Execute for FunctionDeclaration {
+impl Execute for Spanned<FunctionDeclaration> {
     /// Emit declared name
     type Output = Option<String>;
 
     fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
-        let name = self.name.as_ref().map(|name| name.to_string());
-        let scope = state.scope_mut();
-
-        // Define the function and get a pointer to it
-        let function = scope.create_function(FunctionDefinition {
-            name: name.clone(),
-            parameters: self.parameters.clone(),
-            body: self.body.clone(),
-        });
+        let function = self
+            .pointer
+            .eval(state)?
+            .try_into_function()
+            .expect("TODO should always return fn");
+        let name = function.name().map(String::from);
 
         // Bind the name to the function pointer
         if let Some(name) = &name {
-            scope.declare(name.as_str(), function.into(), false);
+            state
+                .scope_mut()
+                .declare(name.as_str(), function.into(), false);
         }
         Ok(name)
     }

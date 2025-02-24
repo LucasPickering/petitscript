@@ -1,6 +1,7 @@
 //! Program state management
 
 use crate::{
+    compile::Program,
     scope::Scope,
     value::{Exports, Value},
     Process, RuntimeError,
@@ -31,6 +32,11 @@ impl<'a> ThreadState<'a> {
 
     pub fn process(&self) -> &Process {
         self.process
+    }
+
+    /// Get the program being executed
+    pub fn program(&self) -> &Program {
+        &self.process.program
     }
 
     /// TODO

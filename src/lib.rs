@@ -2,9 +2,9 @@
 #![deny(clippy::all)]
 
 mod ast;
+mod compile;
 pub mod error;
 mod execute;
-mod parse;
 mod scope;
 #[cfg(feature = "serde")]
 pub mod serde;
@@ -69,10 +69,10 @@ impl Engine {
             .declare(name, NativeFunction::new(function).into(), false);
     }
 
-    /// Parse some source code into a loaded program. The returned [Process] can
-    /// be used to execute the program.
-    pub fn parse(&self, source: impl Source) -> Result<Process, Error> {
-        let program = parse::parse(source)?;
+    /// Compile some source code into a loaded program. The returned [Process]
+    /// can be used to execute the program.
+    pub fn compile(&self, source: impl Source) -> Result<Process, Error> {
+        let program = compile::compile(source)?;
         Ok(Process::new(self.globals.clone(), program))
     }
 }

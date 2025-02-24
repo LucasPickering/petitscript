@@ -5,7 +5,7 @@ mod exec;
 mod state;
 
 use crate::{
-    ast::Program,
+    compile::Program,
     execute::{exec::Execute, state::ThreadState},
     function::Function,
     scope::Scope,
@@ -65,7 +65,7 @@ impl Process {
         // Exporting is available here because we're in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, true);
-        self.program.statements.exec(&mut thread_state)?;
+        self.program.ast().exec(&mut thread_state)?;
         Ok(thread_state.into_exports().unwrap())
     }
 

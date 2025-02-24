@@ -6,20 +6,21 @@
 
 // TODO comments on everything
 
+use crate::compile::FunctionId;
 use std::{
-    collections::HashMap,
     fmt::{self, Display},
-    ops::Deref,
-    sync::atomic::{AtomicUsize, Ordering},
+    hash::Hash,
+    ops::{Deref, DerefMut},
 };
 
-/// Root AST node. This is a parsed program, ready to be executed
-#[derive(Clone, Debug)]
-pub struct Program {
+/// The root AST node. This is the outcome of parsing a program, but is not yet
+/// ready for execution.
+#[derive(Clone, Debug, Hash)]
+pub struct Ast {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Statement {
     Empty,
     Block(Spanned<Block>),
@@ -44,43 +45,52 @@ pub enum Statement {
 /// A collection of statements, delineated by {}. This denotes a new
 /// lexical scope.
 /// TODO kill this and inline into the enum variant?
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Block {
     pub statements: Box<[Spanned<Statement>]>,
-    /// TODO
-    pub functions: HashMap<FunctionId, FunctionDefinition>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Declaration {
     Lexical(Spanned<LexicalDeclaration>),
     Function(Spanned<FunctionDeclaration>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct LexicalDeclaration {
     pub variables: Box<[Spanned<Variable>]>,
     pub mutable: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct Variable {
     pub binding: Binding,
     pub init: Option<Box<Spanned<Expression>>>,
 }
 
-#[derive(Clone, Debug)]
-pub enum FunctionDeclaration {
+#[derive(Clone, Debug, Hash)]
+pub struct FunctionDeclaration {
+    pub pointer: FunctionPointer,
+}
+
+/// TODO rename this
+#[derive(Clone, Debug, Hash)]
+pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
-    Inline(FunctionDefinition),
+    Inline(Spanned<FunctionDefinition>),
     /// Function definition has been lifted to the top of the program, and this
     /// is just a pointer to the definition
-    Lifted(FunctionId),
+    Lifted {
+        id: FunctionId,
+        /// Retain the name from the declaration, if there was one, for
+        /// convenience
+        name: Option<Spanned<Identifier>>,
+    },
 }
 
 /// TODO
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub(crate) struct FunctionDefinition {
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
@@ -91,44 +101,13 @@ pub(crate) struct FunctionDefinition {
 }
 
 /// One parameter in a function definition
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct FunctionParameter {
     pub variable: Spanned<Variable>,
     pub varargs: bool,
 }
 
-/// A unique identifier for a function definition. This ID provides the
-/// following guarantees:
-/// - Globally unique, so two identical functions in different processes will
-///   _not_ share the same ID
-/// - Composed of primitives so it can be serialized and deserialized, and still
-///   used to call the same function
-/// - Stable across processes of the same program. This allows you to serialize
-///   a function ID, then recreate its process later and still use the ID to
-///   call the function, provided the process's program hasn't changed at all
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct FunctionId {
-    /// A globally unique ID for the process in which this function originated.
-    /// It can only be invoked in this process
-    process_id: usize,
-    /// An ID for this function, unique only within the scope of its process
-    function_id: usize,
-}
-
-impl FunctionId {
-    /// TODO
-    pub(crate) fn new(process_id: usize) -> Self {
-        static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
-        let function_id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-
-        Self {
-            process_id,
-            function_id,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct If {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
@@ -136,7 +115,7 @@ pub struct If {
     pub else_body: Option<Box<Spanned<Statement>>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct ForLoop {
     pub initializer: Box<Spanned<Statement>>,
     pub condition: Spanned<Expression>,
@@ -144,31 +123,31 @@ pub struct ForLoop {
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct WhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct DoWhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct ImportDeclaration {
     // TODO
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ExportDeclaration {
     Reexport {
         // TODO
@@ -178,7 +157,7 @@ pub enum ExportDeclaration {
     DefaultExpression(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Expression {
     Parenthesized(Box<Spanned<Expression>>),
     /// Primitive and complex type literals
@@ -192,7 +171,7 @@ pub enum Expression {
     OptionalProperty(Spanned<OptionalPropertyAccess>),
     /// Lambda syntax: `(...) => {...}` or `() => value`. This shares the same
     /// AST node as the `function` syntax; they get combined during parsing
-    ArrowFunction(Spanned<FunctionDeclaration>),
+    ArrowFunction(Spanned<FunctionPointer>),
     Unary(Spanned<UnaryOperation>),
     Binary(Spanned<BinaryOperation>),
     Ternary(Spanned<TernaryConditional>),
@@ -220,40 +199,48 @@ impl Display for Identifier {
 }
 
 /// TODO document why no spans
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Literal {
     Null,
     Undefined,
     Boolean(bool),
-    Float(f64),
+    Float(HashableF64),
     Int(i64),
     String(String),
     Array(ArrayLiteral),
     Object(ObjectLiteral),
 }
 
+/// TODO remove this
 #[derive(Clone, Debug)]
+pub struct HashableF64(pub f64);
+
+impl Hash for HashableF64 {
+    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
+}
+
+#[derive(Clone, Debug, Hash)]
 pub struct TemplateLiteral {
     // TODO
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct ArrayLiteral {
     pub elements: Box<[Spanned<ArrayElement>]>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ArrayElement {
     Expression(Spanned<Expression>),
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct ObjectLiteral {
     pub properties: Box<[Spanned<ObjectProperty>]>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
@@ -266,31 +253,31 @@ pub enum ObjectProperty {
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct FunctionCall {
     pub function: Box<Spanned<Expression>>,
     pub arguments: Box<[Spanned<Expression>]>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct PropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct OptionalPropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
     pub expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum UnaryOperator {
     /// `!`
     BooleanNot,
@@ -299,14 +286,14 @@ pub enum UnaryOperator {
     // TODO bitwise operations
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
     pub lhs: Box<Spanned<Expression>>,
     pub rhs: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -343,21 +330,21 @@ pub enum BinaryOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct TernaryConditional {
     pub condition: Box<Spanned<Expression>>,
     pub true_expression: Box<Spanned<Expression>>,
     pub false_expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct AssignOperation {
     pub operator: AssignOperator,
     pub lhs: Spanned<Binding>,
     pub rhs: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum AssignOperator {
     /// `x = y`
     Assign,
@@ -380,7 +367,7 @@ pub enum AssignOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Spanned<Identifier>),
@@ -388,7 +375,7 @@ pub enum PropertyName {
     Expression(Box<Spanned<Expression>>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Binding {
     /// `const x = 3`
     Identifier(Spanned<Identifier>),
@@ -398,7 +385,7 @@ pub enum Binding {
     Array(Box<[Spanned<ArrayPatternElement>]>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
@@ -418,7 +405,7 @@ pub enum ObjectPatternElement {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum ArrayPatternElement {
     // TODO
 }
@@ -457,12 +444,26 @@ pub struct Spanned<T> {
     pub span: Span,
 }
 
-// TODO remove this?
 impl<T> Deref for Spanned<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.data
+    }
+}
+
+impl<T> DerefMut for Spanned<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
+}
+
+/// This `Hash` implementation **ignores** the span, because AST hashes should
+/// only be a function of the structure of a program, not its concrete source
+/// code.
+impl<T: Hash> Hash for Spanned<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.data.hash(state);
     }
 }
 

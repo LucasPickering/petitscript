@@ -1,12 +1,6 @@
-use crate::{
-    ast,
-    function::{Function, FunctionDefinition, FunctionId},
-    value::Value,
-    RuntimeError,
-};
+use crate::{ast, value::Value, RuntimeError};
 use indexmap::IndexMap;
 use std::{
-    collections::HashMap,
     mem,
     sync::{Arc, RwLock},
 };
@@ -64,40 +58,6 @@ impl Scope {
         mutable: bool,
     ) {
         self.bindings.declare(name.to_string(), value, mutable);
-    }
-
-    /// TODO
-    pub fn create_function(
-        &mut self,
-        definition: FunctionDefinition,
-    ) -> Function {
-        let id: FunctionId = FunctionId::new(0); // TODO use real process ID
-        let function = Function::new(id, definition.name.clone());
-        self.bindings.functions.insert(id, definition.into());
-        function
-    }
-
-    /// Look up a function definition by its unique ID. Return an error if the
-    /// function doesn't exist in this scope. This can occur if a user tried
-    /// to call a function from a process that it didn't originate from.
-    ///
-    /// TODO explain tuple
-    pub fn get_function_definition(
-        &self,
-        function: &Function,
-    ) -> Result<(Scope, Arc<FunctionDefinition>), RuntimeError> {
-        match self.bindings.get_function(function.id()) {
-            Some(definition) => Ok((self.clone(), definition)),
-            None => {
-                if let Some(parent) = self.parent.as_ref() {
-                    parent.get_function_definition(function)
-                } else {
-                    Err(RuntimeError::UnknownFunction {
-                        function: function.clone(),
-                    })
-                }
-            }
-        }
     }
 
     /// Get the value of a binding. Return an error if the binding doesn't exist
@@ -163,8 +123,6 @@ impl Scope {
 struct Bindings {
     /// TODO
     bindings: IndexMap<String, Binding>,
-    /// TODO
-    functions: HashMap<FunctionId, Arc<FunctionDefinition>>,
 }
 
 impl Bindings {
@@ -181,11 +139,6 @@ impl Bindings {
     /// TODO
     fn get(&self, name: &str) -> Option<Value> {
         self.bindings.get(name).map(|binding| binding.value())
-    }
-
-    /// TODO
-    fn get_function(&self, id: FunctionId) -> Option<Arc<FunctionDefinition>> {
-        self.functions.get(&id).map(Arc::clone)
     }
 
     /// TODO

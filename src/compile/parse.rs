@@ -3,14 +3,14 @@
 
 use crate::{
     ast::{
-        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
+        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator, Ast,
         BinaryOperation, BinaryOperator, Binding, Block, Declaration,
         DoWhileLoop, ExportDeclaration, Expression, ForLoop, FunctionCall,
-        FunctionDeclaration, FunctionDefinition, FunctionParameter, Identifier,
-        If, ImportDeclaration, IntoSpanned, LexicalDeclaration, Literal,
-        ObjectLiteral, ObjectPatternElement, ObjectProperty, Program,
-        PropertyAccess, PropertyName, Span, Spanned, Statement,
-        TemplateLiteral, Variable, WhileLoop,
+        FunctionDeclaration, FunctionDefinition, FunctionParameter,
+        FunctionPointer, HashableF64, Identifier, If, ImportDeclaration,
+        IntoSpanned, LexicalDeclaration, Literal, ObjectLiteral,
+        ObjectPatternElement, ObjectProperty, PropertyAccess, PropertyName,
+        Span, Spanned, Statement, TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -19,10 +19,9 @@ use rslint_parser::{
     ast::{self as ext},
     AstNode, TextRange,
 };
-use std::collections::HashMap;
 
 /// Parse source code into an Abstract Syntax Tree
-pub fn parse(source: impl Source) -> Result<Program, Error> {
+pub fn parse(source: impl Source) -> Result<Ast, Error> {
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()
@@ -41,11 +40,11 @@ trait Transform {
 }
 
 impl Transform for ext::Module {
-    type Output = Program;
+    type Output = Ast;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let statements = self.items().transform_all()?;
-        Ok(Program { statements })
+        Ok(Ast { statements })
     }
 }
 
@@ -162,12 +161,7 @@ impl Transform for ext::BlockStmt {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let statements = self.stmts().transform_all()?;
-        // Function definitions will be lifted in a later compiler stage
-        let functions = HashMap::new();
-        Ok(Block {
-            statements,
-            functions,
-        })
+        Ok(Block { statements })
     }
 }
 
@@ -371,19 +365,24 @@ impl Transform for ext::FnDecl {
     type Output = FunctionDeclaration;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
+        // Name is optional: both `function f()` and `function()` are valid
         let name = self.name().transform_spanned_opt()?;
         let parameters = self.parameters().present()?.transform()?;
         let body = self.body().present()?.transform()?.statements;
-        Ok(FunctionDeclaration::Inline(FunctionDefinition {
-            name,
-            parameters,
-            body,
-        }))
+        let pointer = FunctionPointer::Inline(
+            FunctionDefinition {
+                name,
+                parameters,
+                body,
+            }
+            .into_spanned(self.range().into()),
+        );
+        Ok(FunctionDeclaration { pointer })
     }
 }
 
 impl Transform for ext::ArrowExpr {
-    type Output = FunctionDeclaration;
+    type Output = FunctionPointer;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         let parameters = match self.params().present()? {
@@ -417,11 +416,14 @@ impl Transform for ext::ArrowExpr {
                 block_stmt.transform()?.statements
             }
         };
-        Ok(FunctionDeclaration::Inline(FunctionDefinition {
-            name: None,
-            parameters,
-            body,
-        }))
+        Ok(FunctionPointer::Inline(
+            FunctionDefinition {
+                name: None,
+                parameters,
+                body,
+            }
+            .into_spanned(self.range().into()),
+        ))
     }
 }
 
@@ -564,7 +566,7 @@ impl Transform for ext::Literal {
             // TODO undefined literal?
             ext::LiteralKind::Null => Literal::Null,
             ext::LiteralKind::Bool(b) => Literal::Boolean(b),
-            ext::LiteralKind::Number(f) => Literal::Float(f),
+            ext::LiteralKind::Number(f) => Literal::Float(HashableF64(f)),
             ext::LiteralKind::BigInt(int) => {
                 Literal::Int(int.try_into().or(unsupported("TODO", "TODO"))?)
             }

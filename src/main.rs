@@ -4,7 +4,7 @@ use std::{env, path::Path};
 fn main() {
     let path = env::args().nth(1).expect("Expected path");
     let engine = Engine::new();
-    let process = match engine.parse(Path::new(&path)) {
+    let process = match engine.compile(Path::new(&path)) {
         Ok(process) => process,
         Err(error) => {
             eprintln!("{error}");

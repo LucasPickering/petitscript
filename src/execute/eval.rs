@@ -2,21 +2,22 @@
 
 use crate::{
     ast::{
-        ArrayElement, ArrayLiteral, ArrowFunctionBody, AssignOperation,
-        AssignOperator, BinaryOperation, BinaryOperator, Binding, Expression,
-        FunctionCall, Literal, ObjectLiteral, ObjectProperty,
+        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
+        BinaryOperation, BinaryOperator, Binding, Expression, FunctionCall,
+        FunctionPointer, Literal, ObjectLiteral, ObjectProperty,
         OptionalPropertyAccess, PropertyAccess, PropertyName, Span, Spanned,
-        Statement, TemplateLiteral, UnaryOperation, UnaryOperator,
+        TemplateLiteral, UnaryOperation, UnaryOperator,
     },
-    error::{Error, ResultExt, ValueError},
+    error::{Error, ResultExt, RuntimeError, ValueError},
     execute::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::{Function, FunctionDefinition},
+    function::Function,
+    scope::Scope,
     value::{Array, Number, Object, Value, ValueType},
 };
-use std::iter;
+use std::{iter, sync::Arc};
 
 /// TODO
 pub trait Evaluate {
@@ -37,24 +38,7 @@ impl Evaluate for Expression {
                 .scope()
                 .get(identifier.as_str())
                 .spanned_err(identifier.span),
-            Expression::ArrowFunction(function) => {
-                Ok(state
-                    .scope_mut()
-                    .create_function(FunctionDefinition {
-                        name: None, // TODO grab name from binding if possible
-                        parameters: function.parameters.clone(),
-                        body: match function.body.data.clone() {
-                            ArrowFunctionBody::Block(statements) => statements,
-                            ArrowFunctionBody::Expression(expression) => {
-                                Box::new([Spanned {
-                                    span: expression.span,
-                                    data: Statement::Return(Some(*expression)),
-                                }])
-                            }
-                        },
-                    })
-                    .into())
-            }
+            Expression::ArrowFunction(function) => function.eval(state),
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
             Expression::OptionalProperty(access) => access.eval(state),
@@ -80,7 +64,7 @@ impl Evaluate for Literal {
             Self::Undefined => Ok(Value::Undefined),
             Self::Boolean(b) => Ok(Value::Boolean(*b)),
             Self::String(s) => Ok(Value::String(s.as_str().into())),
-            Self::Float(f) => Ok(Value::Number(Number::Float(*f))),
+            Self::Float(f) => Ok(Value::Number(Number::Float(f.0))),
             Self::Int(i) => Ok(Value::Number(Number::Int(*i))),
             Self::Array(array_literal) => array_literal.eval(state),
             Self::Object(object_literal) => object_literal.eval(state),
@@ -161,6 +145,24 @@ impl Evaluate for ObjectLiteral {
 impl Evaluate for TemplateLiteral {
     fn eval(&self, _: &mut ThreadState<'_>) -> Result<Value, Error> {
         todo!()
+    }
+}
+
+impl Evaluate for FunctionPointer {
+    fn eval(&self, _: &mut ThreadState<'_>) -> Result<Value, Error> {
+        // All functions should have been lifted during compilation. If not,
+        // that's a compiler bug
+        match self {
+            FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
+                format!("Function definition {definition:?} was not lifted"),
+            ))
+            .spanned_err(definition.span),
+            FunctionPointer::Lifted { id, name } => {
+                // TODO use correct scope
+                let name = name.as_ref().map(|name| name.data.to_string());
+                Ok(Function::new(*id, name, Scope::default()).into())
+            }
+        }
     }
 }
 
@@ -285,11 +287,14 @@ impl Function {
         state: &mut ThreadState<'_>,
         arguments: &[Value],
     ) -> Result<Value, Error> {
-        let (mut scope, definition) = state
-            .scope()
-            .get_function_definition(self)
-            // TODO use a real span
-            .spanned_err(Span::default())?;
+        let definition = Arc::clone(
+            state
+                .program()
+                .get_function_definition(self)
+                // TODO use a real span
+                .spanned_err(Span::default())?,
+        );
+        let mut scope = self.captures().clone();
 
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out

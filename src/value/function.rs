@@ -1,7 +1,5 @@
 use crate::{
-    ast::{FunctionId, FunctionParameter, Spanned, Statement},
-    error::RuntimeError,
-    value::Value,
+    compile::FunctionId, error::RuntimeError, scope::Scope, value::Value,
     FromJs, IntoJs, Process,
 };
 use std::{
@@ -9,19 +7,32 @@ use std::{
     sync::Arc,
 };
 
-/// TODO
+/// An executable function, bound to a specific program. All functions in
+/// PetitJS are closures, meaning they capture their environment when created,
+/// and references to outside variables may be used within the function body.
 #[derive(Clone, Debug)]
 pub struct Function {
     /// TODO
     id: FunctionId,
-    /// Duplicate the name, for printing/debugging
+    /// The name is also contained in the function definition that the ID
+    /// points to, but we duplicate it here for easy access during
+    /// printing/debugging
     name: Option<String>,
+    /// The parent scope of the function body at the site where the function
+    /// was defined. This is a bit lazy, as it captures the entire environment,
+    /// rather than scanning the body and only capturing the names that are
+    /// actually referenced.
+    captures: Scope,
 }
 
 impl Function {
     /// TODO
-    pub(crate) fn new(id: FunctionId, name: Option<String>) -> Self {
-        Self { id, name }
+    pub(crate) fn new(
+        id: FunctionId,
+        name: Option<String>,
+        captures: Scope,
+    ) -> Self {
+        Self { id, name, captures }
     }
 
     /// TODO
@@ -30,14 +41,19 @@ impl Function {
     }
 
     /// TODO
-    pub fn name(&self) -> &str {
-        self.name.as_deref().unwrap_or("(anonymous)")
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    /// TODO
+    pub fn captures(&self) -> &Scope {
+        &self.captures
     }
 }
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Function: {}]", self.name())
+        write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
     }
 }
 
@@ -59,14 +75,6 @@ impl<'de> serde::Deserialize<'de> for Function {
     {
         todo!()
     }
-}
-
-/// TODO
-#[derive(Debug)]
-pub(crate) struct FunctionDefinition {
-    pub name: Option<String>,
-    pub parameters: Box<[Spanned<FunctionParameter>]>,
-    pub body: Box<[Spanned<Statement>]>,
 }
 
 /// TODO

@@ -14,7 +14,6 @@ use crate::{
         ThreadState,
     },
     function::Function,
-    scope::Scope,
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{iter, sync::Arc};
@@ -149,7 +148,7 @@ impl Evaluate for TemplateLiteral {
 }
 
 impl Evaluate for FunctionPointer {
-    fn eval(&self, _: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
         match self {
@@ -158,9 +157,9 @@ impl Evaluate for FunctionPointer {
             ))
             .spanned_err(definition.span),
             FunctionPointer::Lifted { id, name } => {
-                // TODO use correct scope
                 let name = name.as_ref().map(|name| name.data.to_string());
-                Ok(Function::new(*id, name, Scope::default()).into())
+                let scope = state.scope().clone();
+                Ok(Function::new(*id, name, scope).into())
             }
         }
     }
@@ -282,6 +281,7 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
+    /// Call this function with some arguments
     pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,

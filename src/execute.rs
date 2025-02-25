@@ -75,6 +75,10 @@ impl Process {
         function: &Function,
         args: &[Value],
     ) -> Result<Value, Error> {
+        if function.id().program_id() != self.program.id() {
+            todo!("error")
+        }
+
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);

@@ -6,6 +6,8 @@
 
 // TODO comments on everything
 
+pub mod visit;
+
 use crate::compile::FunctionId;
 use std::{
     fmt::{self, Display},
@@ -91,7 +93,7 @@ pub enum FunctionPointer {
 
 /// TODO
 #[derive(Clone, Debug, Hash)]
-pub(crate) struct FunctionDefinition {
+pub struct FunctionDefinition {
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
     /// We don't use [Block] here because we don't need this to create a new

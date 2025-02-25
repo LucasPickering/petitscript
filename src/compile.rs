@@ -7,7 +7,7 @@ pub use lift::FunctionId;
 
 use crate::{
     ast::{Ast, FunctionDefinition},
-    compile::lift::FunctionRegistry,
+    compile::lift::FunctionTable,
     error::RuntimeError,
     function::Function,
     Error, Source,
@@ -21,8 +21,12 @@ use std::{
 pub fn compile(source: impl Source) -> Result<Program, Error> {
     let mut ast = parse::parse(source)?;
     let id = compute_id(&ast);
-    let functions = FunctionRegistry::lift(id, &mut ast);
-    Ok(Program { id, ast, functions })
+    let function_table = FunctionTable::lift(id, &mut ast);
+    Ok(Program {
+        id,
+        ast,
+        function_table,
+    })
 }
 
 /// An executable program. This is produced by [compile]
@@ -30,7 +34,7 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 pub struct Program {
     id: ProgramId,
     ast: Ast,
-    functions: FunctionRegistry,
+    function_table: FunctionTable,
 }
 
 impl Program {
@@ -50,7 +54,7 @@ impl Program {
         &self,
         function: &Function,
     ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
-        self.functions.get(function)
+        self.function_table.get(function)
     }
 }
 

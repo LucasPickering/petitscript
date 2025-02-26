@@ -65,7 +65,10 @@ impl Process {
         // Exporting is available here because we're in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, true);
-        self.program.ast().exec(&mut thread_state)?;
+        self.program
+            .ast()
+            .exec(&mut thread_state)
+            .map_err(|error| thread_state.qualify_error(error))?;
         Ok(thread_state.into_exports().unwrap())
     }
 
@@ -82,7 +85,9 @@ impl Process {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
-        function.call(&mut thread_state, args)
+        function
+            .call(&mut thread_state, args)
+            .map_err(|error| thread_state.qualify_error(error))
     }
 }
 

@@ -1,10 +1,11 @@
 //! Program state management
 
 use crate::{
+    ast::source::Spanned,
     compile::Program,
     scope::Scope,
     value::{Exports, Value},
-    Process, RuntimeError,
+    Error, Process, RuntimeError,
 };
 use std::collections::hash_map::Entry;
 
@@ -73,6 +74,16 @@ impl<'a> ThreadState<'a> {
 
     pub fn into_exports(self) -> Option<Exports> {
         self.exports
+    }
+
+    /// Map an error with a raw byte span to lines and columns, bound to a
+    /// particular source. This allows the error to be returned to the user and
+    /// displayed prettily.
+    pub fn qualify_error(&self, error: Spanned<RuntimeError>) -> Error {
+        Error::Runtime {
+            error: error.data,
+            span: error.span.qualify(self.program().source()),
+        }
     }
 
     /// TODO

@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        visit::{AstVisitor, Walk as _},
+        walk::{AstVisitor, Walk as _},
         Ast, FunctionDefinition, FunctionPointer,
     },
     compile::ProgramId,
@@ -59,12 +59,16 @@ impl AstVisitor for FunctionTable {
             FunctionPointer::Inline(definition) => {
                 let id = FunctionId::new(self.program_id);
                 let name = definition.name.clone();
-                let FunctionPointer::Inline(definition) = mem::replace(
+                let FunctionPointer::Inline(mut definition) = mem::replace(
                     function,
                     FunctionPointer::Lifted { id, name },
                 ) else {
                     unreachable!()
                 };
+                // We have to manually continue the walk into the function
+                // definition, because once we move it into the table, it's
+                // no longer part of the primary AST walk
+                definition.walk(self);
                 self.functions.insert(id, Arc::new(definition.data));
             }
             FunctionPointer::Lifted { id, .. } => {

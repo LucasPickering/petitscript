@@ -3,14 +3,15 @@
 
 use crate::{
     ast::{
+        source::{IntoSpanned, Span, Spanned},
         ArrayElement, ArrayLiteral, AssignOperation, AssignOperator, Ast,
         BinaryOperation, BinaryOperator, Binding, Block, Declaration,
         DoWhileLoop, ExportDeclaration, Expression, ForLoop, FunctionCall,
         FunctionDeclaration, FunctionDefinition, FunctionParameter,
         FunctionPointer, HashableF64, Identifier, If, ImportDeclaration,
-        IntoSpanned, LexicalDeclaration, Literal, ObjectLiteral,
-        ObjectPatternElement, ObjectProperty, PropertyAccess, PropertyName,
-        Span, Spanned, Statement, TemplateLiteral, Variable, WhileLoop,
+        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
+        ObjectProperty, PropertyAccess, PropertyName, Statement,
+        TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -21,7 +22,7 @@ use rslint_parser::{
 };
 
 /// Parse source code into an Abstract Syntax Tree
-pub fn parse(source: impl Source) -> Result<Ast, Error> {
+pub fn parse(source: &impl Source) -> Result<Ast, Error> {
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()

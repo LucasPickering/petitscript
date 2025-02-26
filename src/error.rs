@@ -1,4 +1,9 @@
-use crate::{ast::Span, function::Function, value::ValueType, Number};
+use crate::{
+    ast::source::{IntoSpanned, QualifiedSpan, Span, Spanned},
+    function::Function,
+    value::ValueType,
+    Number,
+};
 use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
@@ -37,7 +42,7 @@ pub enum Error {
     Runtime {
         #[source]
         error: RuntimeError,
-        span: Span,
+        span: QualifiedSpan,
     },
 
     /// Requested app data of a type that has not been set
@@ -174,22 +179,13 @@ pub enum ValueError {
 }
 
 pub(crate) trait ResultExt<T, E> {
-    /// Convert a `Result<T, E>` to a `Result<T, Error>` by attaching a span to
-    /// the error
-    fn spanned_err(self, span: Span) -> Result<T, Error>;
+    /// Convert a `Result<T, E>` to a `Result<T, Spanned<E>>` by attaching a
+    /// span to the error
+    fn spanned_err(self, span: Span) -> Result<T, Spanned<RuntimeError>>;
 }
 
-impl<T> ResultExt<T, RuntimeError> for Result<T, RuntimeError> {
-    fn spanned_err(self, span: Span) -> Result<T, Error> {
-        self.map_err(|error| Error::Runtime { error, span })
-    }
-}
-
-impl<T> ResultExt<T, ValueError> for Result<T, ValueError> {
-    fn spanned_err(self, span: Span) -> Result<T, Error> {
-        self.map_err(|error| Error::Runtime {
-            error: error.into(),
-            span,
-        })
+impl<T, E: Into<RuntimeError>> ResultExt<T, E> for Result<T, E> {
+    fn spanned_err(self, span: Span) -> Result<T, Spanned<RuntimeError>> {
+        self.map_err(|error| error.into().into_spanned(span))
     }
 }

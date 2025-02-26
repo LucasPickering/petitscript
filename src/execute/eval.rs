@@ -2,13 +2,14 @@
 
 use crate::{
     ast::{
+        source::{Span, Spanned},
         ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
         BinaryOperation, BinaryOperator, Binding, Expression, FunctionCall,
         FunctionPointer, Literal, ObjectLiteral, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, Span, Spanned,
-        TemplateLiteral, UnaryOperation, UnaryOperator,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, TemplateLiteral,
+        UnaryOperation, UnaryOperator,
     },
-    error::{Error, ResultExt, RuntimeError, ValueError},
+    error::{ResultExt, RuntimeError, ValueError},
     execute::{
         exec::{Execute, Terminate},
         ThreadState,
@@ -20,13 +21,22 @@ use std::{iter, sync::Arc};
 
 /// TODO
 pub trait Evaluate {
-    /// TODO
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error>;
+    /// Evaluate an AST node into a runtime [Value]. Errors are returned wrapped
+    /// with the source span of the AST node from which the error originated.
+    /// We use `Spanned<RuntimeError>` instead of `Error::Runtime` because we
+    /// don't have the context needed here to qualify the spans.
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         match self {
             Expression::Parenthesized(expression) => expression.eval(state),
             Expression::Literal(literal) => literal.eval(state),
@@ -57,7 +67,10 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -72,7 +85,10 @@ impl Evaluate for Literal {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let mut array = Array::default();
         for element in &self.elements {
             match &element.data {
@@ -96,7 +112,10 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let mut object = Object::default();
         for property in &self.properties {
             match &property.data {
@@ -142,13 +161,19 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, _: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        _: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         todo!()
     }
 }
 
 impl Evaluate for FunctionPointer {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
         match self {
@@ -166,7 +191,10 @@ impl Evaluate for FunctionPointer {
 }
 
 impl Evaluate for Spanned<FunctionCall> {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let function = self.function.eval(state)?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
         for argument in &self.arguments {
@@ -189,7 +217,10 @@ impl Evaluate for Spanned<FunctionCall> {
 }
 
 impl Evaluate for Spanned<PropertyAccess> {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let value = self.expression.eval(state)?;
         let key: Value = match &self.property.data {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
@@ -200,7 +231,10 @@ impl Evaluate for Spanned<PropertyAccess> {
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let target = self.expression.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
@@ -217,7 +251,10 @@ impl Evaluate for OptionalPropertyAccess {
 }
 
 impl Evaluate for Spanned<AssignOperation> {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let name = match &self.lhs.data {
             Binding::Identifier(identifier) => identifier.as_str(),
             Binding::Object(_) => todo!(),
@@ -246,7 +283,10 @@ impl Evaluate for Spanned<AssignOperation> {
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let _ = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => todo!(),
@@ -256,7 +296,10 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, Error> {
+    fn eval(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let lhs = self.lhs.eval(state)?;
         let rhs = self.rhs.eval(state)?;
         match self.operator {
@@ -286,7 +329,7 @@ impl Function {
         &self,
         state: &mut ThreadState<'_>,
         arguments: &[Value],
-    ) -> Result<Value, Error> {
+    ) -> Result<Value, Spanned<RuntimeError>> {
         let definition = Arc::clone(
             state
                 .program()

@@ -2,21 +2,27 @@
 
 use crate::{
     ast::{
-        Ast, Block, Declaration, DoWhileLoop, ExportDeclaration, ForLoop,
-        ForOfLoop, FunctionDeclaration, If, ImportDeclaration,
-        LexicalDeclaration, Spanned, Statement, WhileLoop,
+        source::Spanned, Ast, Block, Declaration, DoWhileLoop,
+        ExportDeclaration, ForLoop, ForOfLoop, FunctionDeclaration, If,
+        ImportDeclaration, LexicalDeclaration, Statement, WhileLoop,
     },
-    error::ResultExt,
+    error::{ResultExt, RuntimeError},
     execute::{eval::Evaluate, ThreadState},
     value::Value,
-    Error,
 };
 
 /// TODO
 pub trait Execute {
     type Output;
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error>;
+    /// TODO. Errors are returned wrapped with the source span of the AST node
+    /// from which the error originated. We use `Spanned<RuntimeError>` instead
+    /// of `Error::Runtime` because we don't have the context needed here to
+    /// qualify the spans.
+    fn exec(
+        &self,
+        state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>>;
 }
 
 impl<T, O> Execute for [T]
@@ -25,7 +31,10 @@ where
 {
     type Output = Option<O>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Option<O>, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Option<O>, Spanned<RuntimeError>> {
         for statement in self {
             let output = statement.exec(state)?;
             if let Some(output) = output {
@@ -39,7 +48,10 @@ where
 impl Execute for Ast {
     type Output = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         self.statements.exec(state)?;
         Ok(())
     }
@@ -52,7 +64,7 @@ impl Execute for Spanned<Statement> {
     fn exec(
         &self,
         state: &mut ThreadState<'_>,
-    ) -> Result<Option<Terminate>, Error> {
+    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
         match &self.data {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
@@ -105,7 +117,7 @@ impl Execute for Block {
     fn exec(
         &self,
         state: &mut ThreadState<'_>,
-    ) -> Result<Option<Terminate>, Error> {
+    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -118,7 +130,10 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output = ();
 
-    fn exec(&self, _: &mut ThreadState<'_>) -> Result<(), Error> {
+    fn exec(
+        &self,
+        _: &mut ThreadState<'_>,
+    ) -> Result<(), Spanned<RuntimeError>> {
         todo!()
     }
 }
@@ -126,7 +141,10 @@ impl Execute for ImportDeclaration {
 impl Execute for Spanned<ExportDeclaration> {
     type Output = ();
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> Result<(), Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<(), Spanned<RuntimeError>> {
         match &self.data {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
@@ -158,7 +176,10 @@ impl Execute for Declaration {
     /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         match self {
             Self::Lexical(lexical_declaration) => {
                 lexical_declaration.exec(state)
@@ -174,7 +195,10 @@ impl Execute for Declaration {
 impl Execute for If {
     type Output = Option<Terminate>;
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         if self.condition.eval(state)?.to_bool() {
             self.body.exec(state)
         } else if let Some(statement) = &self.else_body {
@@ -188,7 +212,10 @@ impl Execute for If {
 impl Execute for DoWhileLoop {
     type Output = Option<Terminate>;
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         loop {
             self.body.exec(state)?;
             if !self.condition.eval(state)?.to_bool() {
@@ -202,7 +229,10 @@ impl Execute for DoWhileLoop {
 impl Execute for WhileLoop {
     type Output = Option<Terminate>;
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         while self.condition.eval(state)?.to_bool() {
             self.body.exec(state)?;
         }
@@ -213,7 +243,10 @@ impl Execute for WhileLoop {
 impl Execute for ForLoop {
     type Output = Option<Terminate>;
 
-    fn exec(&self, _state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        _state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         todo!()
     }
 }
@@ -221,7 +254,10 @@ impl Execute for ForLoop {
 impl Execute for ForOfLoop {
     type Output = Option<Terminate>;
 
-    fn exec(&self, _state: &mut ThreadState) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        _state: &mut ThreadState,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         todo!()
     }
 }
@@ -230,7 +266,10 @@ impl Execute for Spanned<LexicalDeclaration> {
     /// Return the list of declared names
     type Output = Vec<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -254,7 +293,10 @@ impl Execute for Spanned<FunctionDeclaration> {
     /// Emit declared name
     type Output = Option<String>;
 
-    fn exec(&self, state: &mut ThreadState<'_>) -> Result<Self::Output, Error> {
+    fn exec(
+        &self,
+        state: &mut ThreadState<'_>,
+    ) -> Result<Self::Output, Spanned<RuntimeError>> {
         let function = self
             .pointer
             .eval(state)?

@@ -6,13 +6,13 @@
 
 // TODO comments on everything
 
-pub mod visit;
+pub mod source;
+pub mod walk;
 
-use crate::compile::FunctionId;
+use crate::{ast::source::Spanned, compile::FunctionId};
 use std::{
     fmt::{self, Display},
     hash::Hash,
-    ops::{Deref, DerefMut},
 };
 
 /// The root AST node. This is the outcome of parsing a program, but is not yet
@@ -410,72 +410,4 @@ pub enum ObjectPatternElement {
 #[derive(Clone, Debug, Hash)]
 pub enum ArrayPatternElement {
     // TODO
-}
-
-// TODO move source span stuff?
-
-/// TODO
-#[derive(Copy, Clone, Debug, Default)]
-pub struct Span {
-    /// Byte offset for the beginning of this span. Always <= end_span.
-    start_offset: usize,
-    /// Byte offset for the end of this span. Always >= start_span.
-    end_offset: usize,
-}
-
-impl Span {
-    pub fn new(start_offset: usize, end_offset: usize) -> Self {
-        Self {
-            start_offset,
-            end_offset,
-        }
-    }
-}
-
-impl Display for Span {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO get lines/columns somehow
-        write!(f, "{}-{}", self.start_offset, self.end_offset)
-    }
-}
-
-/// TODO
-#[derive(Copy, Clone, Debug)]
-pub struct Spanned<T> {
-    pub data: T,
-    pub span: Span,
-}
-
-impl<T> Deref for Spanned<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> DerefMut for Spanned<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-/// This `Hash` implementation **ignores** the span, because AST hashes should
-/// only be a function of the structure of a program, not its concrete source
-/// code.
-impl<T: Hash> Hash for Spanned<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.data.hash(state);
-    }
-}
-
-/// TODO
-pub trait IntoSpanned: Sized {
-    fn into_spanned(self, span: Span) -> Spanned<Self>;
-}
-
-impl<T> IntoSpanned for T {
-    fn into_spanned(self, span: Span) -> Spanned<Self> {
-        Spanned { data: self, span }
-    }
 }

@@ -12,6 +12,7 @@ mod stdlib;
 mod value;
 
 pub use crate::{
+    ast::source::Source,
     error::Error,
     execute::Process,
     value::{
@@ -26,7 +27,6 @@ use crate::{
     stdlib::stdlib,
     value::function::{FromJsArgs, NativeFunction},
 };
-use std::{borrow::Cow, fs, path::Path};
 
 /// The main entrypoint for executing and evaluating PetitJS programs. An engine
 /// defines how code should be executed. TODO more
@@ -74,34 +74,5 @@ impl Engine {
     pub fn compile(&self, source: impl Source) -> Result<Process, Error> {
         let program = compile::compile(source)?;
         Ok(Process::new(self.globals.clone(), program))
-    }
-}
-
-/// A source of source code. E.g. a string literal or a file path
-pub trait Source {
-    /// TODO
-    fn name(&self) -> Option<&str>;
-
-    /// TODO
-    fn text(&self) -> Result<Cow<'_, str>, Error>;
-}
-
-impl Source for String {
-    fn name(&self) -> Option<&str> {
-        None
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, Error> {
-        Ok(self.as_str().into())
-    }
-}
-
-impl Source for &Path {
-    fn name(&self) -> Option<&str> {
-        self.to_str()
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, Error> {
-        Ok(fs::read_to_string(self)?.into())
     }
 }

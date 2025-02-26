@@ -19,11 +19,12 @@ use std::{
 
 /// Compile source code into an executable [Program]
 pub fn compile(source: impl Source) -> Result<Program, Error> {
-    let mut ast = parse::parse(source)?;
+    let mut ast = parse::parse(&source)?;
     let id = compute_id(&ast);
     let function_table = FunctionTable::lift(id, &mut ast);
     Ok(Program {
         id,
+        source: Box::new(source),
         ast,
         function_table,
     })
@@ -33,6 +34,7 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 #[derive(Debug)]
 pub struct Program {
     id: ProgramId,
+    source: Box<dyn Source>,
     ast: Ast,
     function_table: FunctionTable,
 }
@@ -41,6 +43,11 @@ impl Program {
     /// TODO
     pub fn id(&self) -> ProgramId {
         self.id
+    }
+
+    /// TODO
+    pub fn source(&self) -> &dyn Source {
+        &*self.source
     }
 
     /// TODO

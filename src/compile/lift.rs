@@ -89,6 +89,7 @@ impl AstVisitor for FunctionTable {
 ///   a function ID, then recreate its process later and still use the ID to
 ///   call the function, provided the process's program hasn't changed at all
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionId {
     /// A globally unique ID for the process in which this function originated.
     /// It can only be invoked in this process

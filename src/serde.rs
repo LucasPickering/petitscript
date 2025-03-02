@@ -6,6 +6,7 @@
 //! instead.
 
 mod de;
+mod impls;
 mod ser;
 
 pub use de::Deserializer;
@@ -15,7 +16,7 @@ use crate::{error::ValueError, FromJs, IntoJs, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
-/// Serialize the given data structure as a PetitJS value
+/// Serialize an instance of type `T` into a PetitJS value
 pub fn to_value<T: Serialize>(data: &T) -> Result<Value, ValueError> {
     data.serialize(&Serializer)
 }

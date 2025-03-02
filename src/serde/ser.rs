@@ -166,6 +166,7 @@ impl serde::Serializer for &Serializer {
         _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
+        // TODO add special case for function
         Ok(SerializeMap::new(Some(len)))
     }
 

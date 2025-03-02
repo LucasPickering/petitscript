@@ -69,6 +69,7 @@ impl Program {
 /// stable, such that the same source code parsed by the same version of PetitJS
 /// will always give the same program ID, irrespective of whitespace.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) struct ProgramId(u64);
 
 /// Calculate a program's ID, based on its AST

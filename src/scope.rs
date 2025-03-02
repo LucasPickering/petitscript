@@ -115,13 +115,35 @@ impl Scope {
             ast::Binding::Array(_) => todo!(),
         }
     }
+
+    /// TODO delete this once function capturing is smarter
+    pub fn flatten(&self) -> Bindings {
+        if let Some(parent) = self.parent.as_ref() {
+            let mut bindings = parent.flatten();
+            bindings.bindings.extend(self.bindings.bindings.clone());
+            bindings
+        } else {
+            self.bindings.clone()
+        }
+    }
+
+    /// TODO remove
+    pub fn from_bindings(bindings: Bindings) -> Self {
+        Self {
+            parent: None,
+            bindings,
+        }
+    }
 }
 
-/// TODO
+/// A set of unique names, each bound to a value. This is a flat map, with no
+/// hierarchy. For hierarchical scoping, see [Scope].
 /// TODO rename to not overlap with AST Binding type
 #[derive(Clone, Debug, Default)]
-struct Bindings {
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Bindings {
     /// TODO
+    #[cfg_attr(feature = "serde", serde(flatten))]
     bindings: IndexMap<String, Binding>,
 }
 
@@ -160,6 +182,7 @@ impl Bindings {
 
 /// TODO
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 enum Binding {
     Immutable(Value),
     Mutable(Arc<RwLock<Value>>),

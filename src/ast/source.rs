@@ -11,7 +11,7 @@ use std::{
 };
 
 /// A source of source code. E.g. a string literal or a file path
-pub trait Source: 'static + Debug {
+pub trait Source: 'static + Debug + Send + Sync {
     /// TODO
     fn name(&self) -> Option<&str>;
 

@@ -1,6 +1,12 @@
-use crate::{error::ValueError, Array, Number, Object, Value};
+use crate::{
+    compile::FunctionId, error::ValueError, function::Function,
+    scope::Bindings, Array, Number, Object, Value,
+};
 use indexmap::IndexMap;
-use serde::de::{self, Deserializer as _, Error as _};
+use serde::de::{
+    self, value::StrDeserializer, Deserializer as _, Error as _,
+    IntoDeserializer,
+};
 use std::fmt::Display;
 
 impl de::Error for ValueError {
@@ -9,20 +15,22 @@ impl de::Error for ValueError {
     }
 }
 
-impl Value {
-    /// TODO
-    pub fn into_deserializer(self) -> Deserializer {
+impl IntoDeserializer<'_, ValueError> for Value {
+    type Deserializer = Deserializer;
+
+    fn into_deserializer(self) -> Deserializer {
         Deserializer { value: self }
     }
 }
 
-/// TODO
+/// Deserialize from [Value] to any type that implements
+/// [Deserialize](serde::Deserialize)
 pub struct Deserializer {
     value: Value,
 }
 
 impl Deserializer {
-    /// TODO
+    /// Create a new deserializer to convert from the given value
     pub fn new(value: Value) -> Self {
         Self { value }
     }
@@ -49,8 +57,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             #[cfg(feature = "bytes")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
-            // TODO how to do?
-            Value::Function(_) => visitor.visit_i32(0),
+            Value::Function(_) => todo!("error"),
             Value::Native(_) => todo!("not supported"),
         }
     }
@@ -108,14 +115,24 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
 
     fn deserialize_struct<V>(
         self,
-        _name: &'static str,
-        _fields: &'static [&'static str],
+        name: &'static str,
+        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_map(visitor)
+        if name == Function::SERDE_NAME {
+            // Caller has asked for a function, let's see if we have one
+            let function = self.value.try_into_function()?;
+            // We have a function. Serialize it as a map (a sequence of keys and
+            // values) and let the visitor recompose it back into a function
+            let deserializer = FunctionDeserializer::new(function, fields);
+            visitor.visit_map(deserializer)
+        } else {
+            // User asked for an unknown struct type - treat it as a regular map
+            self.deserialize_map(visitor)
+        }
     }
 
     fn deserialize_enum<V>(
@@ -309,5 +326,74 @@ impl<'de> de::EnumAccess<'de> for EnumDeserializer {
             .ok_or_else(|| ValueError::custom("TODO"))?;
         let key = seed.deserialize(Value::from(key).into_deserializer())?;
         Ok((key, value.into_deserializer()))
+    }
+}
+
+/// TODO
+struct FunctionDeserializer {
+    // TODO explain options
+    id: FunctionId,
+    name: Option<String>,
+    captures: Option<Bindings>,
+    /// TODO
+    fields: &'static [&'static str],
+    /// TODO
+    next_field: usize,
+}
+
+impl FunctionDeserializer {
+    fn new(function: Function, fields: &'static [&'static str]) -> Self {
+        let (id, name, captures) = function.into_parts();
+        Self {
+            id,
+            name,
+            captures: Some(captures),
+            fields,
+            next_field: 0,
+        }
+    }
+}
+
+// We'll produce a map of the static fields in a function
+impl<'de> de::MapAccess<'de> for FunctionDeserializer {
+    type Error = ValueError;
+
+    fn next_key_seed<K>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, Self::Error>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        // Emit the next field in the sequence
+        let Some(field) = self.fields.get(self.next_field) else {
+            return Ok(None);
+        };
+        seed.deserialize(StrDeserializer::new(field)).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        let field = self
+            .fields
+            .get(self.next_field)
+            .ok_or_else(|| ValueError::custom("TODO impossible"))?;
+        self.next_field += 1;
+        match *field {
+            Function::FIELD_ID => {
+                todo!()
+            }
+            Function::FIELD_NAME => {
+                todo!()
+            }
+            Function::FIELD_CAPTURES => todo!(),
+            _ => todo!(),
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.fields.len() - self.next_field)
     }
 }

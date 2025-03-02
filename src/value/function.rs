@@ -1,5 +1,5 @@
 use crate::{
-    compile::FunctionId, error::RuntimeError, scope::Scope, value::Value,
+    compile::FunctionId, error::RuntimeError, scope::Bindings, value::Value,
     FromJs, IntoJs, Process,
 };
 use std::{
@@ -22,7 +22,8 @@ pub struct Function {
     /// was defined. This is a bit lazy, as it captures the entire environment,
     /// rather than scanning the body and only capturing the names that are
     /// actually referenced.
-    captures: Scope,
+    /// Boxed to reduce the type size
+    captures: Box<Bindings>,
 }
 
 impl Function {
@@ -30,9 +31,13 @@ impl Function {
     pub(crate) fn new(
         id: FunctionId,
         name: Option<String>,
-        captures: Scope,
+        captures: Bindings,
     ) -> Self {
-        Self { id, name, captures }
+        Self {
+            id,
+            name,
+            captures: captures.into(),
+        }
     }
 
     /// TODO
@@ -46,34 +51,19 @@ impl Function {
     }
 
     /// TODO
-    pub fn captures(&self) -> &Scope {
+    pub fn captures(&self) -> &Bindings {
         &self.captures
+    }
+
+    /// TODO
+    pub(crate) fn into_parts(self) -> (FunctionId, Option<String>, Bindings) {
+        (self.id, self.name, *self.captures)
     }
 }
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for Function {
-    fn serialize<S>(&self, _: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        todo!()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Function {
-    fn deserialize<D>(_: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        todo!()
     }
 }
 

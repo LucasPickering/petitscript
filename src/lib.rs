@@ -37,6 +37,9 @@ pub struct Engine {
     globals: Scope,
 }
 
+#[cfg(test)]
+static_assertions::assert_impl_all!(Engine: Send, Sync);
+
 impl Engine {
     /// TODO
     pub fn new() -> Self {

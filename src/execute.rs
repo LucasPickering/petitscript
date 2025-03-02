@@ -30,6 +30,9 @@ pub struct Process {
     app_data: AppData,
 }
 
+#[cfg(test)]
+static_assertions::assert_impl_all!(Process: Send, Sync);
+
 impl Process {
     /// TODO
     pub(super) fn new(globals: Scope, program: Program) -> Self {
@@ -79,7 +82,7 @@ impl Process {
         args: &[Value],
     ) -> Result<Value, Error> {
         if function.id().program_id() != self.program.id() {
-            todo!("error")
+            todo!("error program ID mismatch")
         }
 
         // Exporting is NOT allowed here, because we're not in the root scope

@@ -15,6 +15,7 @@ use crate::{
         ThreadState,
     },
     function::Function,
+    scope::Scope,
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{iter, sync::Arc};
@@ -184,7 +185,7 @@ impl Evaluate for FunctionPointer {
             FunctionPointer::Lifted { id, name } => {
                 let name = name.as_ref().map(|name| name.data.to_string());
                 let scope = state.scope().clone();
-                Ok(Function::new(*id, name, scope).into())
+                Ok(Function::new(*id, name, scope.flatten()).into())
             }
         }
     }
@@ -243,9 +244,10 @@ impl Evaluate for OptionalPropertyAccess {
             | Value::String(_)
             | Value::Array(_)
             | Value::Object(_)
-            | Value::Buffer(_)
             | Value::Function(_)
             | Value::Native(_) => todo!(),
+            #[cfg(feature = "bytes")]
+            Value::Buffer(_) => todo!(),
         }
     }
 }
@@ -337,7 +339,7 @@ impl Function {
                 // TODO use a real span
                 .spanned_err(Span::default())?,
         );
-        let mut scope = self.captures().clone();
+        let mut scope = Scope::from_bindings(self.captures().clone());
 
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out

@@ -58,6 +58,9 @@ pub enum Value {
     Native(NativeFunction),
 }
 
+#[cfg(test)]
+static_assertions::assert_impl_all!(Value: Send, Sync);
+
 impl Value {
     /// Coerce this value to a boolean. Truthy values return true, falsy values
     /// return false.
@@ -69,9 +72,10 @@ impl Value {
             Self::String(s) => !s.is_empty(),
             Self::Array(_)
             | Self::Object(_)
-            | Self::Buffer(_)
             | Self::Function(_)
             | Self::Native(_) => true,
+            #[cfg(feature = "bytes")]
+            Self::Buffer(_) => true,
         }
     }
 
@@ -96,9 +100,10 @@ impl Value {
             Self::String(_)
             | Self::Array(_)
             | Self::Object(_)
-            | Self::Buffer(_)
             | Self::Function(_)
             | Self::Native(_) => None,
+            #[cfg(feature = "bytes")]
+            Self::Buffer(_) => None,
         }
     }
 
@@ -178,6 +183,7 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
+            #[cfg(feature = "bytes")]
             Self::Buffer(_) => ValueType::Buffer,
             Self::Function(_) | Self::Native(_) => ValueType::Function,
         }
@@ -230,6 +236,7 @@ impl Display for Value {
             Self::String(string) => write!(f, "{string}"),
             Self::Array(array) => write!(f, "{array}"),
             Self::Object(object) => write!(f, "{object}"),
+            #[cfg(feature = "bytes")]
             Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
             Self::Native(function) => write!(f, "{function}"),
@@ -245,6 +252,8 @@ impl PartialEq for Value {
             (Self::String(l0), Self::String(r0)) => l0 == r0,
             (Self::Array(l0), Self::Array(r0)) => l0 == r0,
             (Self::Object(l0), Self::Object(r0)) => l0 == r0,
+            #[cfg(feature = "bytes")]
+            (Self::Buffer(l0), Self::Buffer(r0)) => l0 == r0,
             // Functions are never equal
             (Self::Function(_), Self::Function(_))
             | (Self::Native(_), Self::Native(_)) => false,

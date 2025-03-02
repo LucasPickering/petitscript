@@ -1,13 +1,15 @@
 use crate::{
-    compile::FunctionId, error::ValueError, function::Function,
-    scope::Bindings, Array, Number, Object, Value,
+    error::ValueError,
+    function::{Function, FunctionId},
+    scope::Bindings,
+    Array, Number, Object, Value,
 };
 use indexmap::IndexMap;
 use serde::de::{
-    self, value::StrDeserializer, Deserializer as _, Error as _,
-    IntoDeserializer,
+    self, value::StrDeserializer, DeserializeSeed, Deserializer as _,
+    Error as _, IntoDeserializer,
 };
-use std::fmt::Display;
+use std::{fmt::Display, marker::PhantomData};
 
 impl de::Error for ValueError {
     fn custom<T: Display>(msg: T) -> Self {
@@ -383,7 +385,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         self.next_field += 1;
         match *field {
             Function::FIELD_ID => {
-                todo!()
+                PhantomData::<FunctionId>.deserialize(deserializer)
             }
             Function::FIELD_NAME => {
                 todo!()

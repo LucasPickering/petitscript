@@ -1,6 +1,6 @@
 use crate::{
-    compile::FunctionId, error::RuntimeError, scope::Bindings, value::Value,
-    FromJs, IntoJs, Process,
+    compile::FunctionDefinitionId, error::RuntimeError, execute::ProcessId,
+    scope::Bindings, value::Value, FromJs, IntoJs, Process,
 };
 use std::{
     fmt::{self, Debug, Display},
@@ -65,6 +65,13 @@ impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
     }
+}
+
+/// A unique ID for a function. TODO more info on uniqueness
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct FunctionId {
+    pub process_id: ProcessId,
+    pub definition_id: FunctionDefinitionId,
 }
 
 /// TODO

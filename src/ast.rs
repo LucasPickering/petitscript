@@ -9,7 +9,7 @@
 pub mod source;
 pub mod walk;
 
-use crate::{ast::source::Spanned, compile::FunctionId};
+use crate::{ast::source::Spanned, compile::FunctionDefinitionId};
 use std::{
     fmt::{self, Display},
     hash::Hash,
@@ -84,7 +84,7 @@ pub enum FunctionPointer {
     /// Function definition has been lifted to the top of the program, and this
     /// is just a pointer to the definition
     Lifted {
-        id: FunctionId,
+        id: FunctionDefinitionId,
         /// Retain the name from the declaration, if there was one, for
         /// convenience
         name: Option<Spanned<Identifier>>,

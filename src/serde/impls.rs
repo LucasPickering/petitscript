@@ -1,7 +1,12 @@
 //! Custom implementations of `Serialize` and `Deserialize`. This is in its own
 //! module so the implementations don't clutter the main value modules.
 
-use crate::{compile::FunctionId, function::Function, scope::Bindings};
+use crate::{
+    compile::FunctionDefinitionId,
+    execute::ProcessId,
+    function::{Function, FunctionId},
+    scope::Bindings,
+};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
@@ -96,6 +101,34 @@ impl<'de> Deserialize<'de> for Function {
                 captures: Field::new(Function::FIELD_CAPTURES),
             },
         )
+    }
+}
+
+impl Serialize for FunctionId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // We pack the two IDs together into a single u64 for serialization.
+        // It this a good idea? Who knows, but it's fun!
+        let packed =
+            ((self.process_id.0 as u64) << 32) | (self.definition_id.0 as u64);
+        packed.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for FunctionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let packed = u64::deserialize(deserializer)?;
+        let process_id = (packed >> 32) as u32; // Top 32 bits
+        let definition_id = (packed & 0xFFFF_FFFF) as u32; // Bottom 32 bits
+        Ok(Self {
+            process_id: ProcessId(process_id),
+            definition_id: FunctionDefinitionId(definition_id),
+        })
     }
 }
 

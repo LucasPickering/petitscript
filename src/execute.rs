@@ -15,12 +15,14 @@ use crate::{
 use std::{
     any::{self, Any, TypeId},
     collections::{hash_map::Entry, HashMap},
-    sync::Arc,
+    sync::{atomic::AtomicU32, Arc},
 };
 
 /// TODO
 #[derive(Clone, Debug)]
 pub struct Process {
+    /// TODO
+    id: ProcessId,
     /// The program we'll be executing
     program: Arc<Program>,
     /// Global values available to the program, such as the stdlib and native
@@ -36,11 +38,22 @@ static_assertions::assert_impl_all!(Process: Send, Sync);
 impl Process {
     /// TODO
     pub(super) fn new(globals: Scope, program: Program) -> Self {
+        // Within a single OS process, each process ID will be unique
+        static NEXT_ID: AtomicU32 = AtomicU32::new(0);
+        let id = ProcessId(
+            NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+        );
+
         Self {
+            id,
             program: program.into(),
             globals,
             app_data: AppData::default(),
         }
+    }
+
+    fn id(&self) -> ProcessId {
+        self.id
     }
 
     /// Get a piece of app data attached to the process, downcasted to a static
@@ -81,8 +94,8 @@ impl Process {
         function: &Function,
         args: &[Value],
     ) -> Result<Value, Error> {
-        if function.id().program_id() != self.program.id() {
-            todo!("error program ID mismatch")
+        if function.id().process_id != self.id {
+            todo!("error process ID mismatch")
         }
 
         // Exporting is NOT allowed here, because we're not in the root scope
@@ -93,6 +106,10 @@ impl Process {
             .map_err(|error| thread_state.qualify_error(error))
     }
 }
+
+/// TODO
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ProcessId(pub u32);
 
 /// Arbitrary data that a user can attach to a process. Multiple pieces of data
 /// can be attached, but data is retrieved by its type, meaning **only one entry

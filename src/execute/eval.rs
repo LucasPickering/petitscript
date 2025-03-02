@@ -14,7 +14,7 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::Function,
+    function::{Function, FunctionId},
     scope::Scope,
     value::{Array, Number, Object, Value, ValueType},
 };
@@ -182,10 +182,17 @@ impl Evaluate for FunctionPointer {
                 format!("Function definition {definition:?} was not lifted"),
             ))
             .spanned_err(definition.span),
-            FunctionPointer::Lifted { id, name } => {
+            FunctionPointer::Lifted {
+                id: definition_id,
+                name,
+            } => {
+                let id = FunctionId {
+                    process_id: state.process().id(),
+                    definition_id: *definition_id,
+                };
                 let name = name.as_ref().map(|name| name.data.to_string());
                 let scope = state.scope().clone();
-                Ok(Function::new(*id, name, scope.flatten()).into())
+                Ok(Function::new(id, name, scope.flatten()).into())
             }
         }
     }

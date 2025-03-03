@@ -1,15 +1,15 @@
 use crate::{
     error::ValueError,
-    function::{Function, FunctionId},
-    scope::Bindings,
+    function::{Captures, Function, FunctionId},
     Array, Number, Object, Value,
 };
 use indexmap::IndexMap;
 use serde::de::{
-    self, value::StrDeserializer, DeserializeSeed, Deserializer as _,
-    Error as _, IntoDeserializer,
+    self,
+    value::{StrDeserializer, StringDeserializer, U64Deserializer},
+    Deserializer as _, Error as _, IntoDeserializer,
 };
-use std::{fmt::Display, marker::PhantomData};
+use std::fmt::Display;
 
 impl de::Error for ValueError {
     fn custom<T: Display>(msg: T) -> Self {
@@ -59,7 +59,10 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             #[cfg(feature = "bytes")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
-            Value::Function(_) => todo!("error"),
+            Value::Function(function) => {
+                FunctionDeserializer::new(function, Function::ALL_FIELDS)
+                    .deserialize_newtype_struct(Function::SERDE_NAME, visitor)
+            }
             Value::Native(_) => todo!("not supported"),
         }
     }
@@ -336,7 +339,7 @@ struct FunctionDeserializer {
     // TODO explain options
     id: FunctionId,
     name: Option<String>,
-    captures: Option<Bindings>,
+    captures: Option<Captures>,
     /// TODO
     fields: &'static [&'static str],
     /// TODO
@@ -353,6 +356,39 @@ impl FunctionDeserializer {
             fields,
             next_field: 0,
         }
+    }
+}
+
+impl<'de> de::Deserializer<'de> for FunctionDeserializer {
+    type Error = ValueError;
+
+    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        todo!("error")
+    }
+
+    fn deserialize_newtype_struct<V>(
+        self,
+        name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        // TODO explain
+        if name == Function::SERDE_NAME {
+            visitor.visit_newtype_struct(self)
+        } else {
+            self.deserialize_any(visitor)
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
+        string bytes byte_buf identifier ignored_any unit_struct option seq map
+        tuple tuple_struct struct enum
     }
 }
 
@@ -385,12 +421,25 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         self.next_field += 1;
         match *field {
             Function::FIELD_ID => {
-                PhantomData::<FunctionId>.deserialize(deserializer)
+                // Pack the ID into a single u64
+                seed.deserialize(U64Deserializer::new(self.id.pack()))
             }
             Function::FIELD_NAME => {
-                todo!()
+                if let Some(name) = self.name.take() {
+                    seed.deserialize(StringDeserializer::new(name))
+                } else {
+                    // TODO this probably isn't right - we should serialize
+                    // None instead of ()
+                    seed.deserialize(().into_deserializer())
+                }
             }
-            Function::FIELD_CAPTURES => todo!(),
+            Function::FIELD_CAPTURES => {
+                if let Some(captures) = self.captures.take() {
+                    seed.deserialize(captures.into_deserializer())
+                } else {
+                    todo!("error!")
+                }
+            }
             _ => todo!(),
         }
     }

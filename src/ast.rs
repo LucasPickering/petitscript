@@ -4,6 +4,8 @@
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
 //! allocate more memory than needed.
 
+#![allow(unused)] // TODO remove
+
 // TODO comments on everything
 
 pub mod source;

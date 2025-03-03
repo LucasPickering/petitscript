@@ -8,6 +8,8 @@ use std::{
 
 /// TODO
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Object(Arc<IndexMap<String, Value>>);
 
 impl Object {
@@ -97,25 +99,5 @@ impl From<Object> for IndexMap<String, Value> {
 impl FromIterator<(String, Value)> for Object {
     fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
         Self(Arc::new(iter.into_iter().collect()))
-    }
-}
-
-#[cfg(feature = "serde")]
-impl serde::Serialize for Object {
-    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        todo!()
-    }
-}
-
-#[cfg(feature = "serde")]
-impl<'de> serde::Deserialize<'de> for Object {
-    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        todo!()
     }
 }

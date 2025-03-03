@@ -1,7 +1,8 @@
 use crate::{
     compile::FunctionDefinitionId, error::RuntimeError, execute::ProcessId,
-    scope::Bindings, value::Value, FromJs, IntoJs, Process,
+    value::Value, FromJs, IntoJs, Process,
 };
+use indexmap::IndexMap;
 use std::{
     fmt::{self, Debug, Display},
     sync::Arc,
@@ -18,12 +19,10 @@ pub struct Function {
     /// points to, but we duplicate it here for easy access during
     /// printing/debugging
     name: Option<String>,
-    /// The parent scope of the function body at the site where the function
-    /// was defined. This is a bit lazy, as it captures the entire environment,
-    /// rather than scanning the body and only capturing the names that are
-    /// actually referenced.
-    /// Boxed to reduce the type size
-    captures: Box<Bindings>,
+    /// All external bound values captured by this function. Functions _cannot_
+    /// mutate captured bindings, only read them. Therefore, we don't need
+    /// to capture the bindings, we can just take the contained value.
+    captures: Captures,
 }
 
 impl Function {
@@ -31,13 +30,9 @@ impl Function {
     pub(crate) fn new(
         id: FunctionId,
         name: Option<String>,
-        captures: Bindings,
+        captures: Captures,
     ) -> Self {
-        Self {
-            id,
-            name,
-            captures: captures.into(),
-        }
+        Self { id, name, captures }
     }
 
     /// TODO
@@ -51,13 +46,13 @@ impl Function {
     }
 
     /// TODO
-    pub fn captures(&self) -> &Bindings {
+    pub fn captures(&self) -> &Captures {
         &self.captures
     }
 
     /// TODO
-    pub(crate) fn into_parts(self) -> (FunctionId, Option<String>, Bindings) {
-        (self.id, self.name, *self.captures)
+    pub(crate) fn into_parts(self) -> (FunctionId, Option<String>, Captures) {
+        (self.id, self.name, self.captures)
     }
 }
 
@@ -73,6 +68,8 @@ pub(crate) struct FunctionId {
     pub process_id: ProcessId,
     pub definition_id: FunctionDefinitionId,
 }
+
+pub type Captures = IndexMap<String, Value>;
 
 /// TODO
 #[derive(Clone)]

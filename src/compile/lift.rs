@@ -39,7 +39,7 @@ impl FunctionTable {
         self.functions
             .get(function.id().definition_id.0 as usize)
             .ok_or_else(|| RuntimeError::UnknownFunction {
-                function: function.clone(),
+                function: function.clone().into(),
             })
     }
 }

@@ -13,6 +13,7 @@ use std::{
 /// makes this method very fast for most use cases.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Array(Arc<Vec<Value>>);
 
 impl Array {

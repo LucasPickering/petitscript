@@ -252,7 +252,7 @@ impl Walk for Literal {
 impl Walk for TemplateLiteral {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.visit_template(self);
-        todo!()
+        // TODO
     }
 }
 
@@ -309,7 +309,7 @@ impl Walk for FunctionCall {
 impl Walk for ImportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.visit_import(self);
-        todo!()
+        // TODO
     }
 }
 

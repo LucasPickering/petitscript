@@ -115,25 +115,6 @@ impl Scope {
             ast::Binding::Array(_) => todo!(),
         }
     }
-
-    /// TODO delete this once function capturing is smarter
-    pub fn flatten(&self) -> Bindings {
-        if let Some(parent) = self.parent.as_ref() {
-            let mut bindings = parent.flatten();
-            bindings.bindings.extend(self.bindings.bindings.clone());
-            bindings
-        } else {
-            self.bindings.clone()
-        }
-    }
-
-    /// TODO remove
-    pub fn from_bindings(bindings: Bindings) -> Self {
-        Self {
-            parent: None,
-            bindings,
-        }
-    }
 }
 
 /// A set of unique names, each bound to a value. This is a flat map, with no

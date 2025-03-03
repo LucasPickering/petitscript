@@ -28,34 +28,6 @@ pub fn from_value<'de, T: Deserialize<'de>>(
     T::deserialize(Deserializer::new(value))
 }
 
-impl Value {
-    /// Deserialize this value into an arbitrary type, using the type's
-    /// [Deserialize](serde::Deserialize) implementation
-    pub fn deserialize<'de, T: Deserialize<'de>>(
-        self,
-    ) -> Result<T, ValueError> {
-        from_value(self)
-    }
-}
-
-impl serde::Serialize for Value {
-    fn serialize<S>(&self, _: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        todo!()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for Value {
-    fn deserialize<D>(_: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        todo!()
-    }
-}
-
 /// Helper for converting a value to/from JS using its
 /// [Serialize](serde::Serialize) and/or [Deserialize](serde::Deserialize)
 /// implementations. This is useful when defining native functions that need

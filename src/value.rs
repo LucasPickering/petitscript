@@ -346,6 +346,7 @@ impl Display for ValueType {
 
 /// A reference-counted immutable string
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JsString(Arc<str>);
 
 impl Deref for JsString {

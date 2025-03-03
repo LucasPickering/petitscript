@@ -127,7 +127,10 @@ pub enum RuntimeError {
 
     /// TODO
     #[error("Unknown function {function}")]
-    UnknownFunction { function: Function },
+    UnknownFunction {
+        // Boxed to reduce enum size
+        function: Box<Function>,
+    },
 
     /// Error converting to/from JS values
     #[error(transparent)]

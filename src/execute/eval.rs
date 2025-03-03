@@ -14,8 +14,7 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::{Function, FunctionId},
-    scope::Scope,
+    function::{Captures, Function, FunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{iter, sync::Arc};
@@ -191,8 +190,8 @@ impl Evaluate for FunctionPointer {
                     definition_id: *definition_id,
                 };
                 let name = name.as_ref().map(|name| name.data.to_string());
-                let scope = state.scope().clone();
-                Ok(Function::new(id, name, scope.flatten()).into())
+                let captures = Captures::default(); // TODO
+                Ok(Function::new(id, name, captures).into())
             }
         }
     }
@@ -346,7 +345,12 @@ impl Function {
                 // TODO use a real span
                 .spanned_err(Span::default())?,
         );
-        let mut scope = Scope::from_bindings(self.captures().clone());
+        // Create a new scope based on the global namespace, with captured
+        // bindings applied
+        let mut scope = state.process().globals.clone().child();
+        for (name, value) in self.captures() {
+            scope.declare(name, value.clone(), false);
+        }
 
         // Add args to scope
         // If we got fewer args than the function has defined, we'll pad it out

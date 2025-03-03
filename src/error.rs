@@ -1,6 +1,6 @@
 use crate::{
     ast::source::{IntoSpanned, QualifiedSpan, Span, Spanned},
-    function::Function,
+    function::FunctionId,
     value::ValueType,
     Number,
 };
@@ -126,11 +126,8 @@ pub enum RuntimeError {
     Reference { name: String },
 
     /// TODO
-    #[error("Unknown function {function}")]
-    UnknownFunction {
-        // Boxed to reduce enum size
-        function: Box<Function>,
-    },
+    #[error("Unknown function {0:?}")]
+    UnknownFunction(FunctionId),
 
     /// Error converting to/from JS values
     #[error(transparent)]

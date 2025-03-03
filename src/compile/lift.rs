@@ -4,7 +4,7 @@ use crate::{
         Ast, FunctionDefinition, FunctionPointer,
     },
     error::RuntimeError,
-    function::Function,
+    function::FunctionId,
 };
 use std::{hash::Hash, mem, sync::Arc};
 
@@ -32,29 +32,23 @@ impl FunctionTable {
     /// an `Arc` so the lifetime can be detached from the program if necessary
     pub fn get(
         &self,
-        function: &Function,
+        id: FunctionId,
     ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
-        // At this point someone higher up should've verified this function
-        // came from this program, so an error here indicates a bug somewhere
         self.functions
-            .get(function.id().definition_id.0 as usize)
-            .ok_or_else(|| RuntimeError::UnknownFunction {
-                function: function.clone().into(),
-            })
+            .get(id.definition_id.0 as usize)
+            .ok_or_else(|| RuntimeError::UnknownFunction(id))
     }
 }
 
 impl AstVisitor for FunctionTable {
     fn visit_function_pointer(&mut self, function: &mut FunctionPointer) {
         match function {
-            FunctionPointer::Inline(definition) => {
+            FunctionPointer::Inline(_) => {
                 // The ID is just the next index in the vec
                 let id = FunctionDefinitionId(self.functions.len() as u32);
-                let name = definition.name.clone();
-                let FunctionPointer::Inline(mut definition) = mem::replace(
-                    function,
-                    FunctionPointer::Lifted { id, name },
-                ) else {
+                let FunctionPointer::Inline(mut definition) =
+                    mem::replace(function, FunctionPointer::Lifted(id))
+                else {
                     unreachable!()
                 };
                 // We have to manually continue the walk into the function
@@ -63,7 +57,7 @@ impl AstVisitor for FunctionTable {
                 definition.walk(self);
                 self.functions.push(Arc::new(definition.data));
             }
-            FunctionPointer::Lifted { id, .. } => {
+            FunctionPointer::Lifted(id) => {
                 // Compiler bug!
                 panic!("Function {id:?} has already been lifted!")
             }

@@ -186,7 +186,7 @@ impl Walk for FunctionPointer {
         visitor.visit_function_pointer(self);
         match self {
             Self::Inline(definition) => definition.walk(visitor),
-            Self::Lifted { id: _, name } => name.walk(visitor),
+            Self::Lifted(_) => {}
         }
     }
 }

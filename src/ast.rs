@@ -86,12 +86,7 @@ pub enum FunctionPointer {
     Inline(Spanned<FunctionDefinition>),
     /// Function definition has been lifted to the top of the program, and this
     /// is just a pointer to the definition
-    Lifted {
-        id: FunctionDefinitionId,
-        /// Retain the name from the declaration, if there was one, for
-        /// convenience
-        name: Option<Spanned<Identifier>>,
-    },
+    Lifted(FunctionDefinitionId),
 }
 
 /// TODO

@@ -192,15 +192,23 @@ impl Evaluate for FunctionPointer {
                 format!("Function definition {definition:?} was not lifted"),
             ))
             .spanned_err(definition.span),
-            FunctionPointer::Lifted {
-                id: definition_id,
-                name,
-            } => {
+            FunctionPointer::Lifted(definition_id) => {
                 let id = FunctionId {
                     process_id: state.process().id(),
                     definition_id: *definition_id,
                 };
-                let name = name.as_ref().map(|name| name.data.to_string());
+
+                // Copy the name from the definition so the function knows its
+                // own name easily, for printing and errors
+                let definition = state
+                    .process()
+                    .program
+                    .function_table()
+                    .get(id)
+                    // TODO use a real span
+                    .spanned_err(Span::default())?;
+                let name =
+                    definition.name.as_ref().map(|name| name.data.to_string());
                 let captures = Captures::default(); // TODO
                 Ok(Function::new(id, name, captures).into())
             }
@@ -352,7 +360,8 @@ impl Function {
         let definition = Arc::clone(
             state
                 .program()
-                .get_function_definition(self)
+                .function_table()
+                .get(self.id())
                 // TODO use a real span
                 .spanned_err(Span::default())?,
         );

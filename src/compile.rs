@@ -9,15 +9,12 @@ use crate::{
     ast::{
         source::Spanned,
         walk::{AstVisitor, Walk},
-        Ast, Binding, Expression, FunctionDefinition, FunctionPointer,
-        Identifier, ObjectProperty, PropertyName, Variable,
+        Ast, Binding, Expression, FunctionPointer, Identifier, ObjectProperty,
+        PropertyName, Variable,
     },
     compile::lift::FunctionTable,
-    error::RuntimeError,
-    function::Function,
     Error, Source,
 };
-use std::sync::Arc;
 
 /// Compile source code into an executable [Program]
 pub fn compile(source: impl Source) -> Result<Program, Error> {
@@ -50,13 +47,11 @@ impl Program {
         &self.ast
     }
 
-    /// Look up a function definition by its ID. This is analagous to
-    /// derefencing a function pointer into the .text section
-    pub fn get_function_definition(
-        &self,
-        function: &Function,
-    ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
-        self.function_table.get(function)
+    /// The function table stores the definition of each function, including
+    /// its parameters and bodies. This is similar to the .text section of a
+    /// binary
+    pub fn function_table(&self) -> &FunctionTable {
+        &self.function_table
     }
 }
 
@@ -77,8 +72,8 @@ impl FunctionLabel {
     fn set_name(identifier: &Spanned<Identifier>, expression: &mut Expression) {
         if let Expression::ArrowFunction(function) = expression {
             let FunctionPointer::Inline(definition) = &mut function.data else {
-                // This has to be run before function lifting, because lifting
-                // duplicates the names so it becomes harder to label
+                // This should be run before function lifting, because the name
+                // and expression are colocated so it's easier
                 unreachable!("Function labelling must run before lifting")
             };
             // It shouldn't be possible for this function to have a name already

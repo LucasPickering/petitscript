@@ -1,6 +1,10 @@
 #![allow(unused)] // TODO remove
 
-use crate::{error::ValueError, function::Function, IntoJs, Value};
+use crate::{
+    error::ValueError,
+    function::{Captures, Function, FunctionId},
+    IntoJs, Value,
+};
 use indexmap::IndexMap;
 use serde::ser;
 use std::fmt::Display;
@@ -42,7 +46,7 @@ impl serde::Serializer for &Serializer {
     type SerializeTupleStruct = SerializeSeq;
     type SerializeTupleVariant = Self;
     type SerializeMap = SerializeMap;
-    type SerializeStruct = SerializeMap;
+    type SerializeStruct = SerializeStruct;
     type SerializeStructVariant = Self;
 
     serialize_into!(serialize_bool, bool);
@@ -168,9 +172,13 @@ impl serde::Serializer for &Serializer {
     ) -> Result<Self::SerializeStruct, Self::Error> {
         // TODO explain
         if name == Function::STRUCT_NAME {
-            todo!()
+            Ok(SerializeStruct::Function {
+                id: None,
+                name: None,
+                captures: None,
+            })
         } else {
-            Ok(SerializeMap::new(Some(len)))
+            Ok(SerializeStruct::Map(SerializeMap::new(Some(len))))
         }
     }
 
@@ -322,28 +330,6 @@ impl ser::SerializeMap for SerializeMap {
     }
 }
 
-impl ser::SerializeStruct for SerializeMap {
-    type Ok = Value;
-    type Error = ValueError;
-
-    fn serialize_field<T>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
-    where
-        T: ?Sized + ser::Serialize,
-    {
-        let value = value.serialize(&Serializer)?;
-        self.map.insert(key.into(), value);
-        Ok(())
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(self.map.into())
-    }
-}
-
 impl ser::SerializeStructVariant for &Serializer {
     type Ok = Value;
     type Error = ValueError;
@@ -361,5 +347,50 @@ impl ser::SerializeStructVariant for &Serializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         todo!()
+    }
+}
+
+/// Serialize a struct. It could become a function or an object, depending on
+/// what name serialize_struct was called with
+pub enum SerializeStruct {
+    Function {
+        id: Option<FunctionId>,
+        name: Option<String>,
+        captures: Option<Captures>,
+    },
+    Map(SerializeMap),
+}
+
+impl ser::SerializeStruct for SerializeStruct {
+    type Ok = Value;
+    type Error = ValueError;
+
+    fn serialize_field<T>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        match self {
+            Self::Function { .. } => match key {
+                Function::FIELD_TYPE => todo!("ensure value is __JsFunction"),
+                Function::FIELD_ID => todo!("TODO"),
+                _ => todo!("unexpected key"),
+            },
+            Self::Map(map) => {
+                let value = value.serialize(&Serializer)?;
+                map.map.insert(key.into(), value);
+                Ok(())
+            }
+        }
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        match self {
+            Self::Function { .. } => todo!(),
+            Self::Map(map) => Ok(map.map.into()),
+        }
     }
 }

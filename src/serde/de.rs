@@ -58,13 +58,22 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             // the last copy of the wrapping Arc, but I can't find a way to do
             // that since str is unsized, so we have to clone all the data
             Value::String(string) => visitor.visit_str(&string),
-            Value::Array(_) => self.deserialize_seq(visitor),
-            Value::Object(_) => self.deserialize_map(visitor),
+            Value::Array(array) => {
+                visitor.visit_seq(&mut SeqDeserializer::new(array))
+            }
+            Value::Object(object) => {
+                visitor.visit_map(&mut MapDeserializer::new(object))
+            }
             #[cfg(feature = "bytes")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
-            Value::Function(function) => FunctionDeserializer::new(function)
-                .deserialize_newtype_struct(Function::SERDE_NAME, visitor),
+            // Functions are represented as a map of static fields, with a
+            // __type field set to a specific value, to distinguish this from an
+            // object. It's not perfect, but it's very unlikely to collide with
+            // a real object
+            Value::Function(function) => {
+                visitor.visit_map(&mut FunctionDeserializer::new(function))
+            }
             Value::Native(_) => todo!("not supported"),
         }
     }
@@ -77,15 +86,6 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Undefined | Value::Null => visitor.visit_none(),
             _ => visitor.visit_some(self),
         }
-    }
-
-    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        let array = self.value.try_into_array()?;
-        let mut deserializer = SeqDeserializer::new(array);
-        visitor.visit_seq(&mut deserializer)
     }
 
     fn deserialize_tuple<V>(
@@ -111,37 +111,6 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
         self.deserialize_seq(visitor)
     }
 
-    fn deserialize_map<V>(self, visitor: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        let object = self.value.try_into_object()?;
-        let mut deserializer = MapDeserializer::new(object);
-        visitor.visit_map(&mut deserializer)
-    }
-
-    fn deserialize_newtype_struct<V>(
-        self,
-        name: &'static str,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        println!("Deserializer::deserialize_newtype_struct");
-        if name == Function::SERDE_NAME {
-            // Caller has asked for a function, let's see if we have one
-            let function = self.value.try_into_function()?;
-            // We have a function. Serialize it as a map (a sequence of keys and
-            // values) and let the visitor recompose it back into a function
-            let deserializer = FunctionDeserializer::new(function);
-            visitor.visit_map(deserializer)
-        } else {
-            // User asked for an unknown struct type - treat it as a regular map
-            self.deserialize_map(visitor)
-        }
-    }
-
     fn deserialize_enum<V>(
         self,
         _name: &'static str,
@@ -165,7 +134,8 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
 
     serde::forward_to_deserialize_any! {
         unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
-        string bytes byte_buf identifier ignored_any unit_struct struct
+        string bytes byte_buf identifier ignored_any unit_struct newtype_struct
+        struct map seq
     }
 }
 
@@ -338,11 +308,13 @@ impl<'de> de::EnumAccess<'de> for EnumDeserializer {
 
 /// TODO
 struct FunctionDeserializer {
-    // TODO explain options
     id: FunctionId,
+    /// If this is None, it's because we started with no name OR we had one but
+    /// it's been emitted
     name: Option<String>,
+    /// This is an option because we hold it until it's emitted
     captures: Option<Captures>,
-    /// TODO
+    /// Index of the next field to emit in [Function::ALL_FIELDS]
     next_field: usize,
 }
 
@@ -355,40 +327,6 @@ impl FunctionDeserializer {
             captures: Some(captures),
             next_field: 0,
         }
-    }
-}
-
-impl<'de> de::Deserializer<'de> for FunctionDeserializer {
-    type Error = ValueError;
-
-    fn deserialize_any<V>(self, _: V) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        todo!("error")
-    }
-
-    fn deserialize_newtype_struct<V>(
-        self,
-        name: &'static str,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        println!("FunctionDeserializer::deserialize_newtype_struct");
-        // TODO explain
-        if name == Function::SERDE_NAME {
-            visitor.visit_map(self)
-        } else {
-            self.deserialize_any(visitor)
-        }
-    }
-
-    serde::forward_to_deserialize_any! {
-        unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
-        string bytes byte_buf identifier ignored_any unit_struct option seq map
-        tuple tuple_struct struct enum
     }
 }
 
@@ -419,6 +357,10 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
             .ok_or_else(|| ValueError::custom("TODO impossible"))?;
         self.next_field += 1;
         match *field {
+            Function::FIELD_TYPE => {
+                // Emit "__type": "__JsFunction"
+                seed.deserialize(StrDeserializer::new(Function::STRUCT_NAME))
+            }
             Function::FIELD_ID => {
                 // Pack the ID into a single u64
                 seed.deserialize(U64Deserializer::new(self.id.pack()))

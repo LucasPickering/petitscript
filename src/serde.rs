@@ -78,8 +78,10 @@ mod tests {
     use indexmap::indexmap;
     use test_case::test_case;
 
-    /// Deserializing a `Value` back into a `Value` should yield the same value
-    /// back
+    /// Serializing a `Value` to a `Value`, and deserializing back, should yield
+    /// the same value each time. This is for the case when someone is
+    /// serializing from or deserializing into a struct that stores a `Value`
+    /// somewhere within.
     #[test_case(Value::Undefined; "undefined")]
     #[test_case(Value::Null; "null")]
     #[test_case(true; "bool_true")]
@@ -102,11 +104,13 @@ mod tests {
             definition_id: FunctionDefinitionId(0),
         },
         None,
-        indexmap! {},
+        indexmap! {"cap".to_owned() => 32.into()},
     ); "function")]
     fn test_identity(value: impl Into<Value>) {
         let value = value.into();
         let deserialized: Value = from_value(value.clone()).unwrap();
-        assert_eq!(value, deserialized);
+        assert_eq!(deserialized, value, "Deserialization did not math");
+        let serialized = to_value(&value).unwrap();
+        assert_eq!(serialized, value, "Serialization did not match");
     }
 }

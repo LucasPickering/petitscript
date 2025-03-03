@@ -198,7 +198,9 @@ impl Value {
         match (self, key) {
             (Self::Array(_), Self::Number(_)) => todo!(),
             // TODO support number keys here?
-            (Self::Object(object), Self::String(key)) => Ok(object.get(key)),
+            (Self::Object(object), Self::String(key)) => {
+                Ok(object.get(key).clone())
+            }
             _ => todo!("error"),
         }
     }

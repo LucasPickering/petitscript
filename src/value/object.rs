@@ -14,12 +14,11 @@ pub struct Object(Arc<IndexMap<String, Value>>);
 
 impl Object {
     /// Get a value from the object by key, or undefined if not present
-    pub fn get(&self, key: &str) -> Value {
+    pub fn get(&self, key: &str) -> &Value {
         self.0
             .iter()
             .find_map(|(k, v)| if k == key { Some(v) } else { None })
-            .cloned()
-            .unwrap_or_default()
+            .unwrap_or(&Value::Undefined)
     }
 
     /// TODO

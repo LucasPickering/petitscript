@@ -13,22 +13,12 @@ use serde::{
     de::{
         self,
         value::{MapAccessDeserializer, SeqAccessDeserializer},
-        MapAccess, Visitor,
+        MapAccess, Unexpected, Visitor,
     },
     ser::SerializeStruct,
     Deserialize, Serialize,
 };
 use std::fmt;
-
-impl Function {
-    /// TODO
-    pub(super) const SERDE_NAME: &'static str = "__Function";
-    pub(super) const FIELD_ID: &'static str = "id";
-    pub(super) const FIELD_NAME: &'static str = "name";
-    pub(super) const FIELD_CAPTURES: &'static str = "captures";
-    pub(super) const ALL_FIELDS: &'static [&'static str] =
-        &[Self::FIELD_ID, Self::FIELD_NAME, Self::FIELD_CAPTURES];
-}
 
 impl Value {
     /// Deserialize this value into an arbitrary type, using the type's
@@ -159,19 +149,27 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 A: MapAccess<'de>,
             {
-                Object::deserialize(MapAccessDeserializer::new(map))
-                    .map(Value::Object)
-            }
+                #[derive(Deserialize)]
+                #[serde(untagged)]
+                enum FunctionOrObject {
+                    Function(Function),
+                    Object(Object),
+                }
 
-            fn visit_newtype_struct<D>(
-                self,
-                deserializer: D,
-            ) -> Result<Self::Value, D::Error>
-            where
-                D: de::Deserializer<'de>,
-            {
-                // TODO explain
-                Function::deserialize(deserializer).map(Value::Function)
+                // A map could hold a function OR an object. Try it as a
+                // function first because it's much more specific, then fall
+                // back to an object. We leverage serde's generated impl on the
+                // enum to buffer the deserialized object. This is potentially
+                // a bottleneck for deserializing objects; if so we can
+                // deserialize directly into an IndexMap, then check if it looks
+                // like a function
+                let deserialized = FunctionOrObject::deserialize(
+                    MapAccessDeserializer::new(map),
+                )?;
+                Ok(match deserialized {
+                    FunctionOrObject::Function(function) => function.into(),
+                    FunctionOrObject::Object(object) => object.into(),
+                })
             }
         }
 
@@ -201,13 +199,34 @@ impl<'de> Deserialize<'de> for Number {
     }
 }
 
+impl Function {
+    /// TODO
+    pub(super) const STRUCT_NAME: &'static str = "__JsFunction";
+    /// A marker field to indicate that a map is actually a function definition.
+    /// The value is always [Self::STRUCT_NAME]
+    pub(super) const FIELD_TYPE: &'static str = "__type";
+    pub(super) const FIELD_ID: &'static str = "id";
+    pub(super) const FIELD_NAME: &'static str = "name";
+    pub(super) const FIELD_CAPTURES: &'static str = "captures";
+    pub(super) const ALL_FIELDS: &'static [&'static str] = &[
+        Self::FIELD_TYPE,
+        Self::FIELD_ID,
+        Self::FIELD_NAME,
+        Self::FIELD_CAPTURES,
+    ];
+}
+
 impl Serialize for Function {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        // TODO explain
-        let mut strct = serializer.serialize_struct(Self::SERDE_NAME, 3)?;
+        // A function is serialized as a struct. In most formats this ends up
+        // being the same as a map. We'll distinguish it from an object during
+        // deserialization by the __type field
+        let mut strct = serializer
+            .serialize_struct(Self::STRUCT_NAME, Self::ALL_FIELDS.len())?;
+        strct.serialize_field(Self::FIELD_TYPE, Self::STRUCT_NAME)?;
         strct.serialize_field(Self::FIELD_ID, &self.id())?;
         strct.serialize_field(Self::FIELD_NAME, &self.name())?;
         strct.serialize_field(Self::FIELD_CAPTURES, self.captures())?;
@@ -221,6 +240,8 @@ impl<'de> Deserialize<'de> for Function {
         D: serde::Deserializer<'de>,
     {
         struct FunctionVisitor {
+            /// This should always be set to [Function::STRUCT_NAME]
+            type_: Field<String>,
             id: Field<FunctionId>,
             name: Field<Option<String>>,
             captures: Field<Captures>,
@@ -230,19 +251,7 @@ impl<'de> Deserialize<'de> for Function {
             type Value = Function;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-                write!(f, "struct with the fields {:?}", Function::ALL_FIELDS)
-            }
-
-            fn visit_newtype_struct<D>(
-                self,
-                deserializer: D,
-            ) -> Result<Self::Value, D::Error>
-            where
-                D: de::Deserializer<'v>,
-            {
-                println!("FunctionVisitor::visit_newtype_struct");
-                deserializer
-                    .deserialize_newtype_struct(Function::SERDE_NAME, self)
+                write!(f, "map with the fields {:?}", Function::ALL_FIELDS)
             }
 
             fn visit_map<A>(
@@ -252,14 +261,15 @@ impl<'de> Deserialize<'de> for Function {
             where
                 A: MapAccess<'v>,
             {
-                while let Some(key) = map.next_key()? {
-                    match key {
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        Function::FIELD_TYPE => self.type_.set(&mut map)?,
                         Function::FIELD_ID => self.id.set(&mut map)?,
                         Function::FIELD_NAME => self.name.set(&mut map)?,
                         Function::FIELD_CAPTURES => {
                             self.captures.set(&mut map)?
                         }
-                        _ => {
+                        key => {
                             return Err(de::Error::unknown_field(
                                 key,
                                 Function::ALL_FIELDS,
@@ -267,6 +277,24 @@ impl<'de> Deserialize<'de> for Function {
                         }
                     }
                 }
+
+                // Make sure it had the __type field, and it held our name
+                let type_ = self.type_.get()?;
+                if type_ != Function::STRUCT_NAME {
+                    return Err(de::Error::invalid_value(
+                        Unexpected::Other(&format!(
+                            "map with {} set to {type_}",
+                            Function::FIELD_TYPE,
+                        )),
+                        &format!(
+                            "map with {} set to {}",
+                            Function::FIELD_TYPE,
+                            Function::STRUCT_NAME
+                        )
+                        .as_str(),
+                    ));
+                }
+
                 // If any of the fields weren't specified, we'll fail here
                 Ok(Function::new(
                     self.id.get()?,
@@ -276,19 +304,14 @@ impl<'de> Deserialize<'de> for Function {
             }
         }
 
-        println!("Function::deserialize");
-        // Functions can only be deserialized directly from function values,
-        // since they need to be bound to an active process. Tell the
-        // deserializer we'll only accept an exact struct match
-        // TODO update comment about newtype structs ^
-        deserializer.deserialize_newtype_struct(
-            Self::SERDE_NAME,
-            FunctionVisitor {
-                id: Field::new(Function::FIELD_ID),
-                name: Field::new(Function::FIELD_NAME),
-                captures: Field::new(Function::FIELD_CAPTURES),
-            },
-        )
+        // We need to distinguish between a function and an object in serialized
+        // formats, TODO
+        deserializer.deserialize_map(FunctionVisitor {
+            type_: Field::new(Function::FIELD_NAME),
+            id: Field::new(Function::FIELD_ID),
+            name: Field::new(Function::FIELD_NAME),
+            captures: Field::new(Function::FIELD_CAPTURES),
+        })
     }
 }
 

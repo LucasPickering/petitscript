@@ -1,6 +1,6 @@
 #![allow(unused)] // TODO remove
 
-use crate::{error::ValueError, IntoJs, Value};
+use crate::{error::ValueError, function::Function, IntoJs, Value};
 use indexmap::IndexMap;
 use serde::ser;
 use std::fmt::Display;
@@ -163,11 +163,15 @@ impl serde::Serializer for &Serializer {
 
     fn serialize_struct(
         self,
-        _name: &'static str,
+        name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        // TODO add special case for function
-        Ok(SerializeMap::new(Some(len)))
+        // TODO explain
+        if name == Function::STRUCT_NAME {
+            todo!()
+        } else {
+            Ok(SerializeMap::new(Some(len)))
+        }
     }
 
     fn serialize_struct_variant(

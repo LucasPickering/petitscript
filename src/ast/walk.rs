@@ -53,7 +53,7 @@ impl Walk for Declaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.visit_declaration(self);
         match self {
-            Self::Lexical(declaration) => declaration.variables.walk(visitor),
+            Self::Lexical(declaration) => declaration.walk(visitor),
             Self::Function(declaration) => declaration.walk(visitor),
         }
     }

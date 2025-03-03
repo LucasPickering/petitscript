@@ -19,6 +19,16 @@ pub trait Source: 'static + Debug + Send + Sync {
     fn text(&self) -> Result<Cow<'_, str>, Error>;
 }
 
+impl Source for &'static str {
+    fn name(&self) -> Option<&str> {
+        None
+    }
+
+    fn text(&self) -> Result<Cow<'_, str>, Error> {
+        Ok(Cow::Borrowed(self))
+    }
+}
+
 impl Source for String {
     fn name(&self) -> Option<&str> {
         None
@@ -45,7 +55,7 @@ impl Source for PathBuf {
 ///
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Span {
     /// Byte offset for the beginning of this span (inclusize). Always <=
     /// end_span.
@@ -127,7 +137,7 @@ impl Display for QualifiedSpan {
 }
 
 /// TODO
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Spanned<T> {
     pub data: T,
     pub span: Span,

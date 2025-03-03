@@ -32,12 +32,16 @@ use std::{
 };
 
 /// TODO
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum Value {
     /// TODO
+    ///
+    /// This value serializes as the unit value: `()`
     #[default]
     Undefined,
     /// TODO
+    ///
+    /// This value serializes as `None`
     Null,
     /// `true` or `false`
     Boolean(bool),
@@ -240,24 +244,6 @@ impl Display for Value {
             Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
             Self::Native(function) => write!(f, "{function}"),
-        }
-    }
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
-            (Self::Number(l0), Self::Number(r0)) => l0 == r0,
-            (Self::String(l0), Self::String(r0)) => l0 == r0,
-            (Self::Array(l0), Self::Array(r0)) => l0 == r0,
-            (Self::Object(l0), Self::Object(r0)) => l0 == r0,
-            #[cfg(feature = "bytes")]
-            (Self::Buffer(l0), Self::Buffer(r0)) => l0 == r0,
-            // Functions are never equal
-            (Self::Function(_), Self::Function(_))
-            | (Self::Native(_), Self::Native(_)) => false,
-            _ => false,
         }
     }
 }

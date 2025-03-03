@@ -240,6 +240,7 @@ impl<'de> Deserialize<'de> for Function {
             where
                 D: de::Deserializer<'v>,
             {
+                println!("FunctionVisitor::visit_newtype_struct");
                 deserializer
                     .deserialize_newtype_struct(Function::SERDE_NAME, self)
             }
@@ -275,6 +276,7 @@ impl<'de> Deserialize<'de> for Function {
             }
         }
 
+        println!("Function::deserialize");
         // Functions can only be deserialized directly from function values,
         // since they need to be bound to an active process. Tell the
         // deserializer we'll only accept an exact struct match

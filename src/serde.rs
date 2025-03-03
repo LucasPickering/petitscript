@@ -66,3 +66,47 @@ impl<'de, T: Deserialize<'de>> FromJs for SerdeJs<T> {
         Ok(Self(from_value(value)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        compile::FunctionDefinitionId,
+        execute::ProcessId,
+        function::{Function, FunctionId},
+    };
+    use indexmap::indexmap;
+    use test_case::test_case;
+
+    /// Deserializing a `Value` back into a `Value` should yield the same value
+    /// back
+    #[test_case(Value::Undefined; "undefined")]
+    #[test_case(Value::Null; "null")]
+    #[test_case(true; "bool_true")]
+    #[test_case(false; "bool_false")]
+    #[test_case(32; "int")]
+    #[test_case(5.67; "float")]
+    #[test_case(Value::String("hello".into()); "string")]
+    #[test_case(
+        vec![Value::Null, Value::Undefined, 32.into(), false.into()]; "array"
+    )]
+    #[test_case(indexmap! {
+        "null".to_owned() => Value::Null,
+        "undefined".to_owned() => Value::Undefined,
+        "b".to_owned() => 32.into(),
+        "c".to_owned() => indexmap! {"d".to_owned() => true.into()}.into()
+    }; "object")]
+    #[test_case(Function::new(
+        FunctionId {
+            process_id: ProcessId(0),
+            definition_id: FunctionDefinitionId(0),
+        },
+        None,
+        indexmap! {},
+    ); "function")]
+    fn test_identity(value: impl Into<Value>) {
+        let value = value.into();
+        let deserialized: Value = from_value(value.clone()).unwrap();
+        assert_eq!(value, deserialized);
+    }
+}

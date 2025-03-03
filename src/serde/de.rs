@@ -45,8 +45,12 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
     where
         V: de::Visitor<'de>,
     {
+        // TODO either find a way to leverage owned values, or take a ref
+        // instead
         match self.value {
-            Value::Undefined | Value::Null => visitor.visit_unit(),
+            // Undefined => (), null => None
+            Value::Undefined => visitor.visit_unit(),
+            Value::Null => visitor.visit_none(),
             Value::Boolean(b) => visitor.visit_bool(b),
             Value::Number(Number::Int(i)) => visitor.visit_i64(i),
             Value::Number(Number::Float(f)) => visitor.visit_f64(f),
@@ -59,10 +63,8 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             #[cfg(feature = "bytes")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
-            Value::Function(function) => {
-                FunctionDeserializer::new(function, Function::ALL_FIELDS)
-                    .deserialize_newtype_struct(Function::SERDE_NAME, visitor)
-            }
+            Value::Function(function) => FunctionDeserializer::new(function)
+                .deserialize_newtype_struct(Function::SERDE_NAME, visitor),
             Value::Native(_) => todo!("not supported"),
         }
     }
@@ -118,21 +120,21 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
         visitor.visit_map(&mut deserializer)
     }
 
-    fn deserialize_struct<V>(
+    fn deserialize_newtype_struct<V>(
         self,
         name: &'static str,
-        fields: &'static [&'static str],
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
+        println!("Deserializer::deserialize_newtype_struct");
         if name == Function::SERDE_NAME {
             // Caller has asked for a function, let's see if we have one
             let function = self.value.try_into_function()?;
             // We have a function. Serialize it as a map (a sequence of keys and
             // values) and let the visitor recompose it back into a function
-            let deserializer = FunctionDeserializer::new(function, fields);
+            let deserializer = FunctionDeserializer::new(function);
             visitor.visit_map(deserializer)
         } else {
             // User asked for an unknown struct type - treat it as a regular map
@@ -163,7 +165,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
 
     serde::forward_to_deserialize_any! {
         unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
-        string bytes byte_buf identifier ignored_any unit_struct newtype_struct
+        string bytes byte_buf identifier ignored_any unit_struct struct
     }
 }
 
@@ -341,19 +343,16 @@ struct FunctionDeserializer {
     name: Option<String>,
     captures: Option<Captures>,
     /// TODO
-    fields: &'static [&'static str],
-    /// TODO
     next_field: usize,
 }
 
 impl FunctionDeserializer {
-    fn new(function: Function, fields: &'static [&'static str]) -> Self {
+    fn new(function: Function) -> Self {
         let (id, name, captures) = function.into_parts();
         Self {
             id,
             name,
             captures: Some(captures),
-            fields,
             next_field: 0,
         }
     }
@@ -377,9 +376,10 @@ impl<'de> de::Deserializer<'de> for FunctionDeserializer {
     where
         V: de::Visitor<'de>,
     {
+        println!("FunctionDeserializer::deserialize_newtype_struct");
         // TODO explain
         if name == Function::SERDE_NAME {
-            visitor.visit_newtype_struct(self)
+            visitor.visit_map(self)
         } else {
             self.deserialize_any(visitor)
         }
@@ -404,7 +404,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         K: de::DeserializeSeed<'de>,
     {
         // Emit the next field in the sequence
-        let Some(field) = self.fields.get(self.next_field) else {
+        let Some(field) = Function::ALL_FIELDS.get(self.next_field) else {
             return Ok(None);
         };
         seed.deserialize(StrDeserializer::new(field)).map(Some)
@@ -414,8 +414,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
     where
         V: de::DeserializeSeed<'de>,
     {
-        let field = self
-            .fields
+        let field = Function::ALL_FIELDS
             .get(self.next_field)
             .ok_or_else(|| ValueError::custom("TODO impossible"))?;
         self.next_field += 1;
@@ -445,6 +444,6 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
     }
 
     fn size_hint(&self) -> Option<usize> {
-        Some(self.fields.len() - self.next_field)
+        Some(Function::ALL_FIELDS.len() - self.next_field)
     }
 }

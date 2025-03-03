@@ -11,7 +11,7 @@ use std::{
 /// An executable function, bound to a specific program. All functions in
 /// PetitJS are closures, meaning they capture their environment when created,
 /// and references to outside variables may be used within the function body.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Function {
     /// TODO
     id: FunctionId,
@@ -125,6 +125,13 @@ impl Debug for NativeFunction {
         f.debug_struct("NativeFunction")
             .field("function", &"...")
             .finish()
+    }
+}
+
+impl PartialEq for NativeFunction {
+    fn eq(&self, other: &Self) -> bool {
+        // If we both point to the same function, we're the same
+        Arc::ptr_eq(&self.function, &other.function)
     }
 }
 

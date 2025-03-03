@@ -6,8 +6,8 @@ use crate::{
         ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
         BinaryOperation, BinaryOperator, Binding, Expression, FunctionCall,
         FunctionPointer, Literal, ObjectLiteral, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, TemplateLiteral,
-        UnaryOperation, UnaryOperator,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, TemplateChunk,
+        TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{ResultExt, RuntimeError, ValueError},
     execute::{
@@ -17,7 +17,7 @@ use crate::{
     function::{Captures, Function, FunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
-use std::{iter, sync::Arc};
+use std::{borrow::Cow, iter, sync::Arc};
 
 /// TODO
 pub trait Evaluate {
@@ -76,7 +76,7 @@ impl Evaluate for Literal {
             Self::Undefined => Ok(Value::Undefined),
             Self::Boolean(b) => Ok(Value::Boolean(*b)),
             Self::String(s) => Ok(Value::String(s.as_str().into())),
-            Self::Float(f) => Ok(Value::Number(Number::Float(f.0))),
+            Self::Float(f) => Ok(Value::Number(Number::Float(*f))),
             Self::Int(i) => Ok(Value::Number(Number::Int(*i))),
             Self::Array(array_literal) => array_literal.eval(state),
             Self::Object(object_literal) => object_literal.eval(state),
@@ -163,9 +163,20 @@ impl Evaluate for ObjectLiteral {
 impl Evaluate for TemplateLiteral {
     fn eval(
         &self,
-        _: &mut ThreadState<'_>,
+        state: &mut ThreadState<'_>,
     ) -> Result<Value, Spanned<RuntimeError>> {
-        todo!()
+        self.chunks
+            .iter()
+            .map(|chunk| match &chunk.data {
+                TemplateChunk::Literal(literal) => {
+                    Ok(Cow::Borrowed(literal.data.as_str()))
+                }
+                TemplateChunk::Expression(expression) => {
+                    Ok(Cow::Owned(expression.eval(state)?.to_string()))
+                }
+            })
+            .collect::<Result<String, _>>()
+            .map(Value::from)
     }
 }
 

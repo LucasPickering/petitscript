@@ -49,9 +49,9 @@ impl Source for PathBuf {
 pub struct Span {
     /// Byte offset for the beginning of this span (inclusize). Always <=
     /// end_span.
-    start_offset: usize,
+    pub start_offset: usize,
     /// Byte offset for the end of this span (inclusive). Always >= start_span.
-    end_offset: usize,
+    pub end_offset: usize,
 }
 
 impl Span {

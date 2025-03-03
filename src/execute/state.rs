@@ -7,7 +7,7 @@ use crate::{
     value::{Exports, Value},
     Error, Process, RuntimeError,
 };
-use std::collections::hash_map::Entry;
+use indexmap::map::Entry;
 
 /// TODO
 #[derive(Debug)]

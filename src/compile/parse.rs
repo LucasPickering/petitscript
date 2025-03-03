@@ -8,9 +8,9 @@ use crate::{
         BinaryOperation, BinaryOperator, Binding, Block, Declaration,
         DoWhileLoop, ExportDeclaration, Expression, ForLoop, FunctionCall,
         FunctionDeclaration, FunctionDefinition, FunctionParameter,
-        FunctionPointer, HashableF64, Identifier, If, ImportDeclaration,
-        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
-        ObjectProperty, PropertyAccess, PropertyName, Statement,
+        FunctionPointer, Identifier, If, ImportDeclaration, LexicalDeclaration,
+        Literal, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+        PropertyAccess, PropertyName, Statement, TemplateChunk,
         TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
@@ -567,7 +567,7 @@ impl Transform for ext::Literal {
             // TODO undefined literal?
             ext::LiteralKind::Null => Literal::Null,
             ext::LiteralKind::Bool(b) => Literal::Boolean(b),
-            ext::LiteralKind::Number(f) => Literal::Float(HashableF64(f)),
+            ext::LiteralKind::Number(f) => Literal::Float(f),
             ext::LiteralKind::BigInt(int) => {
                 Literal::Int(int.try_into().or(unsupported("TODO", "TODO"))?)
             }
@@ -584,7 +584,37 @@ impl Transform for ext::Template {
     type Output = TemplateLiteral;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        Ok(TemplateLiteral {})
+        // rslint provides the quasis (literal chunks) and elements (expression
+        // chunks) separately. We're responsible for piecing them back together
+        // in order. Collect them all into one sequence, then sort by their
+        // source position
+        let mut chunks: Vec<Spanned<TemplateChunk>> = self
+            .quasis()
+            .map(|quasi| {
+                let span = quasi.text_range().into();
+                Spanned {
+                    data: TemplateChunk::Literal(Spanned {
+                        data: quasi.text().to_string(),
+                        span,
+                    }),
+                    span,
+                }
+            })
+            .chain(self.elements().transform_all()?)
+            .collect();
+        chunks.sort_by_key(|chunk| chunk.span.start_offset);
+        Ok(TemplateLiteral {
+            chunks: chunks.into(),
+        })
+    }
+}
+
+impl Transform for ext::TemplateElement {
+    type Output = TemplateChunk;
+
+    fn transform(self) -> Result<Self::Output, TransformError> {
+        let expression = self.expr().present()?.transform_spanned()?;
+        Ok(TemplateChunk::Expression(expression))
     }
 }
 

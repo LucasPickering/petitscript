@@ -111,8 +111,12 @@ impl Scope {
                 self.declare(name.clone(), value, mutable);
                 Ok(vec![name])
             }
-            ast::Binding::Object(_) => todo!(),
-            ast::Binding::Array(_) => todo!(),
+            ast::Binding::Object(_) => {
+                Err(RuntimeError::internal("TODO object bindings"))
+            }
+            ast::Binding::Array(_) => {
+                Err(RuntimeError::internal("TODO array bindings"))
+            }
         }
     }
 }

@@ -24,7 +24,6 @@ use crate::{
 };
 use indexmap::IndexMap;
 use std::{
-    collections::HashMap,
     fmt::{self, Display},
     ops::{Add, Deref, Div, Mul, Rem, Sub},
     path::PathBuf,
@@ -384,7 +383,7 @@ pub struct Exports {
     /// Default exported value
     pub default: Option<Value>,
     /// Named exported values
-    pub named: HashMap<String, Value>,
+    pub named: IndexMap<String, Value>,
 }
 
 impl Display for Exports {

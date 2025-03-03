@@ -19,12 +19,12 @@ use std::{
 
 /// The root AST node. This is the outcome of parsing a program, but is not yet
 /// ready for execution.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Ast {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Statement {
     Empty,
     Block(Spanned<Block>),
@@ -49,36 +49,36 @@ pub enum Statement {
 /// A collection of statements, delineated by {}. This denotes a new
 /// lexical scope.
 /// TODO kill this and inline into the enum variant?
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Block {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Declaration {
     Lexical(Spanned<LexicalDeclaration>),
     Function(Spanned<FunctionDeclaration>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct LexicalDeclaration {
     pub variables: Box<[Spanned<Variable>]>,
     pub mutable: bool,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     pub binding: Binding,
     pub init: Option<Box<Spanned<Expression>>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct FunctionDeclaration {
     pub pointer: FunctionPointer,
 }
 
 /// TODO rename this
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
@@ -94,7 +94,7 @@ pub enum FunctionPointer {
 }
 
 /// TODO
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct FunctionDefinition {
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
@@ -105,13 +105,13 @@ pub struct FunctionDefinition {
 }
 
 /// One parameter in a function definition
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct FunctionParameter {
     pub variable: Spanned<Variable>,
     pub varargs: bool,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct If {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
@@ -119,7 +119,7 @@ pub struct If {
     pub else_body: Option<Box<Spanned<Statement>>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct ForLoop {
     pub initializer: Box<Spanned<Statement>>,
     pub condition: Spanned<Expression>,
@@ -127,31 +127,31 @@ pub struct ForLoop {
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct WhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct DoWhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct ImportDeclaration {
     // TODO
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum ExportDeclaration {
     Reexport {
         // TODO
@@ -161,7 +161,7 @@ pub enum ExportDeclaration {
     DefaultExpression(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Expression {
     Parenthesized(Box<Spanned<Expression>>),
     /// Primitive and complex type literals
@@ -183,7 +183,7 @@ pub enum Expression {
     // TODO update operations (++, --)
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Identifier(String);
 
 impl Identifier {
@@ -203,48 +203,50 @@ impl Display for Identifier {
 }
 
 /// TODO document why no spans
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Literal {
     Null,
     Undefined,
     Boolean(bool),
-    Float(HashableF64),
+    Float(f64),
     Int(i64),
     String(String),
     Array(ArrayLiteral),
     Object(ObjectLiteral),
 }
 
-/// TODO remove this
+/// TODO
 #[derive(Clone, Debug)]
-pub struct HashableF64(pub f64);
-
-impl Hash for HashableF64 {
-    fn hash<H: std::hash::Hasher>(&self, _state: &mut H) {}
-}
-
-#[derive(Clone, Debug, Hash)]
 pub struct TemplateLiteral {
-    // TODO
+    /// A set of contiguous chunks that comprise the template. These will be
+    /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
+    pub chunks: Box<[Spanned<TemplateChunk>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+/// One piece in a template. Either a static string or an expression
+#[derive(Clone, Debug)]
+pub enum TemplateChunk {
+    Literal(Spanned<String>),
+    Expression(Spanned<Expression>),
+}
+
+#[derive(Clone, Debug)]
 pub struct ArrayLiteral {
     pub elements: Box<[Spanned<ArrayElement>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum ArrayElement {
     Expression(Spanned<Expression>),
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct ObjectLiteral {
     pub properties: Box<[Spanned<ObjectProperty>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
@@ -257,31 +259,31 @@ pub enum ObjectProperty {
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct FunctionCall {
     pub function: Box<Spanned<Expression>>,
     pub arguments: Box<[Spanned<Expression>]>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct PropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct OptionalPropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
     pub expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum UnaryOperator {
     /// `!`
     BooleanNot,
@@ -290,14 +292,14 @@ pub enum UnaryOperator {
     // TODO bitwise operations
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
     pub lhs: Box<Spanned<Expression>>,
     pub rhs: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -334,21 +336,21 @@ pub enum BinaryOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct TernaryConditional {
     pub condition: Box<Spanned<Expression>>,
     pub true_expression: Box<Spanned<Expression>>,
     pub false_expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct AssignOperation {
     pub operator: AssignOperator,
     pub lhs: Spanned<Binding>,
     pub rhs: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum AssignOperator {
     /// `x = y`
     Assign,
@@ -371,7 +373,7 @@ pub enum AssignOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Spanned<Identifier>),
@@ -379,7 +381,7 @@ pub enum PropertyName {
     Expression(Box<Spanned<Expression>>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum Binding {
     /// `const x = 3`
     Identifier(Spanned<Identifier>),
@@ -389,7 +391,7 @@ pub enum Binding {
     Array(Box<[Spanned<ArrayPatternElement>]>),
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
@@ -409,7 +411,7 @@ pub enum ObjectPatternElement {
     },
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub enum ArrayPatternElement {
     // TODO
 }

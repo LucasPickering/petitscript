@@ -98,6 +98,11 @@ pub struct FunctionDefinition {
     /// scope when entering. Function calls have special logic to create a new
     /// scope already.
     pub body: Box<[Spanned<Statement>]>,
+    /// A list of all the identifiers this function captures from its parent
+    /// scope. These aren't necessarily present in the outside scope; they just
+    /// are the identifiers used in the function body before being declared
+    /// there.
+    pub captures: Vec<Identifier>,
 }
 
 /// One parameter in a function definition

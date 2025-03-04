@@ -22,7 +22,7 @@ use rslint_parser::{
 };
 
 /// Parse source code into an Abstract Syntax Tree
-pub fn parse(source: &impl Source) -> Result<Ast, Error> {
+pub fn parse(source: &dyn Source) -> Result<Ast, Error> {
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()
@@ -375,6 +375,7 @@ impl Transform for ext::FnDecl {
                 name,
                 parameters,
                 body,
+                captures: Vec::new(), // Will be filled out later
             }
             .into_spanned(self.range().into()),
         );
@@ -422,6 +423,7 @@ impl Transform for ext::ArrowExpr {
                 name: None,
                 parameters,
                 body,
+                captures: Vec::new(), // Will be filled out later
             }
             .into_spanned(self.range().into()),
         ))

@@ -7,13 +7,18 @@ pub use function::FunctionDefinitionId;
 
 use crate::{
     ast::{walk::Walk, Ast},
-    compile::function::{FunctionTable, LabelFunctions},
+    compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
 };
 
 /// Compile source code into an executable [Program]
 pub fn compile(source: impl Source) -> Result<Program, Error> {
-    let program = Compiler::new(source).parse()?.label().lift().end();
+    let program = Compiler::new(source)
+        .parse()?
+        .label()
+        .capture()
+        .lift()
+        .end();
     Ok(program)
 }
 
@@ -53,12 +58,14 @@ struct Compiler<T> {
     program: T,
 }
 
-/// Typestate wrapper for an AST that has been parsed, but not yet transformed
-/// in anyway
+/// AST that has been parsed, but had no transformations applied
 struct ParsedAst(Ast);
 
-/// An AST after function labelling
+/// AST after function labelling
 struct LabelledAst(Ast);
+
+/// AST after function capture
+struct CapturedAst(Ast);
 
 /// A program after function lifting
 struct Lifted {
@@ -99,6 +106,17 @@ impl Compiler<ParsedAst> {
 }
 
 impl Compiler<LabelledAst> {
+    fn capture(self) -> Compiler<CapturedAst> {
+        let mut ast = self.program.0;
+        ast.walk(&mut CaptureFunctions);
+        Compiler {
+            source: self.source,
+            program: CapturedAst(ast),
+        }
+    }
+}
+
+impl Compiler<CapturedAst> {
     /// Lift functions into a separate table, replacing their bodies with
     /// references
     fn lift(self) -> Compiler<Lifted> {
@@ -121,5 +139,19 @@ impl Compiler<Lifted> {
             ast: self.program.ast,
             function_table: self.program.function_table,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_function_label() {
+        todo!()
+    }
+
+    #[test]
+    fn test_function_capture() {
+        todo!()
     }
 }

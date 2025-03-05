@@ -385,6 +385,7 @@ impl Function {
                 value
             } else if let Some(init) = &parameter.variable.init {
                 // If the arg wasn't given, fall back to the init expression
+                // TODO make sure previous args are available here
                 init.eval(state)?
             } else {
                 // No init expression, use undefined

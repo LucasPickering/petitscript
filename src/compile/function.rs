@@ -4,13 +4,13 @@ use crate::{
     ast::{
         source::Spanned,
         walk::{AstVisitor, Walk as _},
-        Ast, Binding, Expression, FunctionDefinition, FunctionPointer,
-        Identifier, ObjectProperty, PropertyName, Variable,
+        Ast, Binding, Declaration, Expression, FunctionDefinition,
+        FunctionPointer, Identifier, ObjectProperty, PropertyName, Variable,
     },
     error::RuntimeError,
     function::FunctionId,
 };
-use std::{hash::Hash, mem, sync::Arc};
+use std::{collections::HashSet, hash::Hash, mem, sync::Arc};
 
 /// A convenience compiler step to apply a name to functions that aren't
 /// declared using the syntax of `function f() {}`. The function name is
@@ -68,6 +68,91 @@ impl AstVisitor for LabelFunctions {
         } = property
         {
             Self::set_name(identifier, expression);
+        }
+    }
+}
+
+/// For each function in the AST, determine which identifiers it uses in it body
+/// that must be captured from the parent scope. This doesn't capture *values*,
+/// just identifiers. The runtime will use this list to determine which values
+/// to capture.
+pub struct CaptureFunctions;
+
+impl AstVisitor for CaptureFunctions {
+    fn visit_function_definition(
+        &mut self,
+        definition: &mut FunctionDefinition,
+    ) {
+        // For each function definition, add its captures to the AST node
+        let mut captured = CaptureFunction {
+            captured: HashSet::new(),
+            declared: HashSet::new(),
+        };
+        // Start on the body of the function. We can't let it walk the function
+        // definition itself because that will trigger infinite mutual recursion
+        // TODO handle param init expressions as well
+        definition.body.walk(&mut captured);
+        definition.captures = captured.captured.into_iter().collect();
+    }
+}
+
+/// Helper to capture identifiers for a single function body. This should never
+/// walk the full AST, just a single function body.
+struct CaptureFunction {
+    captured: HashSet<Identifier>,
+    declared: HashSet<Identifier>,
+}
+
+impl CaptureFunction {
+    /// If the identifier isn't in the declared list, capture it from parent
+    /// scope
+    fn add(&mut self, identifier: &Identifier) {
+        if !self.declared.contains(identifier) {
+            self.captured.insert(identifier.clone());
+        }
+    }
+}
+
+impl AstVisitor for CaptureFunction {
+    // This is predicated on the AST walking in execution order, meaning an
+    // identifier encountered before its declaration must be captured. E.g.:
+    // ```
+    // function f() {
+    //   console.log(x);
+    //   const x = 3;
+    // }
+    // ```
+
+    fn visit_function_definition(
+        &mut self,
+        definition: &mut FunctionDefinition,
+    ) {
+        // Recursion! Of the mutual variety! If we encounter a nested function
+        // definition, we need to figure out what it wants to capture as well
+        definition.walk(&mut CaptureFunctions)
+    }
+
+    fn visit_declaration(&mut self, declaration: &mut Declaration) {
+        // Add to the declaration list
+        match declaration {
+            Declaration::Lexical(declaration) => {}
+            Declaration::Function(declaration) => todo!(),
+        }
+    }
+
+    // Check all the ways an identifier can be used to reference a bound value.
+    // We can't just use visit_identifier, because that's also called for
+    // identifiers in declarations
+
+    fn visit_expression(&mut self, expression: &mut Expression) {
+        if let Expression::Identifier(identifier) = expression {
+            self.add(identifier);
+        }
+    }
+
+    fn visit_object_property(&mut self, property: &mut ObjectProperty) {
+        if let ObjectProperty::Identifier(identifier) = property {
+            self.add(identifier);
         }
     }
 }

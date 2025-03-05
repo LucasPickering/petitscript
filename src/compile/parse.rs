@@ -366,20 +366,20 @@ impl Transform for ext::FnDecl {
     type Output = FunctionDeclaration;
 
     fn transform(self) -> Result<Self::Output, TransformError> {
-        // Name is optional: both `function f()` and `function()` are valid
-        let name = self.name().transform_spanned_opt()?;
+        // `function f()` is the only supported form; `function()` in invalid
+        let name = self.name().present()?.transform_spanned()?;
         let parameters = self.parameters().present()?.transform()?;
         let body = self.body().present()?.transform()?.statements;
         let pointer = FunctionPointer::Inline(
             FunctionDefinition {
-                name,
+                name: Some(name.clone()),
                 parameters,
                 body,
                 captures: Vec::new(), // Will be filled out later
             }
             .into_spanned(self.range().into()),
         );
-        Ok(FunctionDeclaration { pointer })
+        Ok(FunctionDeclaration { name, pointer })
     }
 }
 

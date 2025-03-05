@@ -54,13 +54,14 @@ pub struct Block {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
+/// TODO eliminate this and just use lexical/fn decls directly?
 #[derive(Clone, Debug, PartialEq)]
 pub enum Declaration {
     Lexical(Spanned<LexicalDeclaration>),
     Function(Spanned<FunctionDeclaration>),
 }
 
-/// TODO
+/// `const x = 3` or `let x = 3`
 #[derive(Clone, Debug, PartialEq)]
 pub struct LexicalDeclaration {
     pub variables: Box<[Spanned<Variable>]>,
@@ -75,6 +76,7 @@ pub struct Variable {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDeclaration {
+    pub name: Spanned<Identifier>,
     pub pointer: FunctionPointer,
 }
 
@@ -92,6 +94,9 @@ pub enum FunctionPointer {
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDefinition {
+    /// A label for this function, to be passed onto the function value. This
+    /// is **not necessarily** the name the function is bound to; that is
+    /// defined in the parent [FunctionDeclaration].
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
     /// We don't use [Block] here because we don't need this to create a new
@@ -184,7 +189,7 @@ pub enum Expression {
     // TODO update operations (++, --)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Identifier(String);
 
 impl Identifier {

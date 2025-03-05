@@ -3,11 +3,10 @@
 use crate::{
     ast::{
         source::{Span, Spanned},
-        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator,
-        BinaryOperation, BinaryOperator, Binding, Expression, FunctionCall,
-        FunctionPointer, Literal, ObjectLiteral, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, TemplateChunk,
-        TemplateLiteral, UnaryOperation, UnaryOperator,
+        ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
+        Expression, FunctionCall, FunctionPointer, Literal, ObjectLiteral,
+        ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+        TemplateChunk, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{ResultExt, RuntimeError, ValueError},
     execute::{
@@ -51,9 +50,7 @@ impl Evaluate for Expression {
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
             Expression::OptionalProperty(access) => access.eval(state),
-            Expression::Assign(assign) => assign.eval(state),
             Expression::Unary(unary) => unary.eval(state),
-            // Expression::Update(update) => update.eval(state),
             Expression::Binary(binary) => binary.eval(state),
             Expression::Ternary(conditional) => {
                 if conditional.condition.eval(state)?.to_bool() {
@@ -277,38 +274,6 @@ impl Evaluate for OptionalPropertyAccess {
     }
 }
 
-impl Evaluate for Spanned<AssignOperation> {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
-        let name = match &self.lhs.data {
-            Binding::Identifier(identifier) => identifier.as_str(),
-            Binding::Object(_) => todo!(),
-            Binding::Array(_) => todo!(),
-        };
-        let value = self.rhs.eval(state)?;
-        match self.operator {
-            AssignOperator::Assign => {
-                state
-                    .scope()
-                    .set(name, value.clone())
-                    .spanned_err(self.span)?;
-                // Return assigned value
-                Ok(value)
-            }
-            AssignOperator::Add => todo!(),
-            AssignOperator::Sub => todo!(),
-            AssignOperator::Mul => todo!(),
-            AssignOperator::Div => todo!(),
-            AssignOperator::Mod => todo!(),
-            AssignOperator::NullishCoalesce => todo!(),
-            AssignOperator::BooleanAnd => todo!(),
-            AssignOperator::BooleanOr => todo!(),
-        }
-    }
-}
-
 impl Evaluate for UnaryOperation {
     fn eval(
         &self,
@@ -369,7 +334,7 @@ impl Function {
         // bindings applied
         let mut scope = state.process().globals.clone().child();
         for (name, value) in self.captures() {
-            scope.declare(name, value.clone(), false);
+            scope.declare(name, value.clone());
         }
 
         // Add args to scope
@@ -392,7 +357,7 @@ impl Function {
                 Value::Undefined
             };
             scope
-                .bind(&parameter.variable.binding, value, false)
+                .bind(&parameter.variable.binding, value)
                 .spanned_err(parameter.variable.span)?;
         }
 

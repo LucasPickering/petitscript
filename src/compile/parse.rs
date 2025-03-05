@@ -4,13 +4,12 @@
 use crate::{
     ast::{
         source::{IntoSpanned, Span, Spanned},
-        ArrayElement, ArrayLiteral, AssignOperation, AssignOperator, Ast,
-        BinaryOperation, BinaryOperator, Binding, Block, Declaration,
-        DoWhileLoop, ExportDeclaration, Expression, ForLoop, FunctionCall,
-        FunctionDeclaration, FunctionDefinition, FunctionParameter,
-        FunctionPointer, Identifier, If, ImportDeclaration, LexicalDeclaration,
-        Literal, ObjectLiteral, ObjectPatternElement, ObjectProperty,
-        PropertyAccess, PropertyName, Statement, TemplateChunk,
+        ArrayElement, ArrayLiteral, Ast, BinaryOperation, BinaryOperator,
+        Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
+        Expression, FunctionCall, FunctionDeclaration, FunctionDefinition,
+        FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
+        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
+        ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateChunk,
         TemplateLiteral, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
@@ -132,9 +131,7 @@ impl Transform for ext::Stmt {
             Self::WhileStmt(while_stmt) => {
                 while_stmt.transform_spanned().map(Statement::WhileLoop)
             }
-            Self::ForStmt(for_stmt) => {
-                for_stmt.transform_spanned().map(Statement::ForLoop)
-            }
+            Self::ForStmt(_) => unsupported("TODO", "TODO"),
             // TODO for..of loop?
             Self::ForInStmt(_) => todo!(),
             // TODO error if labels are present
@@ -204,14 +201,6 @@ impl Transform for ext::WhileStmt {
     }
 }
 
-impl Transform for ext::ForStmt {
-    type Output = ForLoop;
-
-    fn transform(self) -> Result<Self::Output, TransformError> {
-        todo!()
-    }
-}
-
 impl Transform for ext::Decl {
     type Output = Declaration;
 
@@ -240,11 +229,17 @@ impl Transform for ext::VarDecl {
 
     fn transform(self) -> Result<Self::Output, TransformError> {
         if self.is_var() {
-            return unsupported("`var`", "Use `const` or `let` instead");
+            return unsupported("`var`", "Use `const` instead");
         }
-        let mutable = self.is_let();
+        if self.is_let() {
+            // TODO add link to docs explaining immutability
+            return unsupported(
+                "`let`",
+                "Mutable bindings are not supported; use `const` instead",
+            );
+        }
         let variables = self.declared().transform_all()?;
-        Ok(LexicalDeclaration { variables, mutable })
+        Ok(LexicalDeclaration { variables })
     }
 }
 
@@ -521,9 +516,7 @@ impl Transform for ext::Expr {
                 bin_expr.transform_spanned().map(Expression::Binary)
             }
             Self::CondExpr(_) => todo!(),
-            Self::AssignExpr(assign_expr) => {
-                assign_expr.transform_spanned().map(Expression::Assign)
-            }
+            Self::AssignExpr(_) => unsupported("TODO", "TODO"),
             Self::SequenceExpr(_) => todo!(),
             Self::ArrowExpr(arrow_expr) => arrow_expr
                 .transform_spanned()
@@ -768,48 +761,6 @@ impl Transform for ext::BinExpr {
             lhs: lhs.into(),
             rhs: rhs.into(),
         })
-    }
-}
-
-impl Transform for ext::AssignExpr {
-    type Output = AssignOperation;
-
-    fn transform(self) -> Result<Self::Output, TransformError> {
-        let operator = self.op().present()?.transform()?;
-        let lhs = self.lhs().present()?.transform_spanned()?;
-        let rhs = self.rhs().present()?.transform_spanned()?;
-        Ok(AssignOperation {
-            operator,
-            lhs,
-            rhs: rhs.into(),
-        })
-    }
-}
-
-impl Transform for ext::AssignOp {
-    type Output = AssignOperator;
-
-    fn transform(self) -> Result<Self::Output, TransformError> {
-        let operator = match self {
-            Self::Assign => AssignOperator::Assign,
-            Self::AddAssign => AssignOperator::Add,
-            Self::SubtractAssign => AssignOperator::Sub,
-            Self::TimesAssign => AssignOperator::Mul,
-            // TODO: there's no /= ??
-            Self::RemainderAssign => AssignOperator::Mod,
-            Self::LogicalAndAssign => AssignOperator::BooleanAnd,
-            Self::LogicalOrAssign => AssignOperator::BooleanOr,
-            Self::NullishCoalescingAssign => AssignOperator::NullishCoalesce,
-
-            Self::ExponentAssign => todo!(),
-            Self::LeftShiftAssign => todo!(),
-            Self::RightShiftAssign => todo!(),
-            Self::UnsignedRightShiftAssign => todo!(),
-            Self::BitwiseAndAssign => todo!(),
-            Self::BitwiseOrAssign => todo!(),
-            Self::BitwiseXorAssign => todo!(),
-        };
-        Ok(operator)
     }
 }
 

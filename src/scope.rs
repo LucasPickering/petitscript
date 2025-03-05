@@ -1,9 +1,10 @@
-use crate::{ast, value::Value, RuntimeError};
-use indexmap::IndexMap;
-use std::{
-    mem,
-    sync::{Arc, RwLock},
+use crate::{
+    ast::{self, Binding},
+    value::Value,
+    RuntimeError,
 };
+use indexmap::IndexMap;
+use std::{mem, sync::Arc};
 
 /// TODO
 #[derive(Clone, Debug, Default)]
@@ -51,13 +52,8 @@ impl Scope {
     }
 
     /// Declare a single name in scope, and bind it to a variable
-    pub fn declare(
-        &mut self,
-        name: impl ToString,
-        value: Value,
-        mutable: bool,
-    ) {
-        self.bindings.declare(name.to_string(), value, mutable);
+    pub fn declare(&mut self, name: impl ToString, value: Value) {
+        self.bindings.declare(name.to_string(), value);
     }
 
     /// Get the value of a binding. Return an error if the binding doesn't exist
@@ -77,44 +73,24 @@ impl Scope {
         }
     }
 
-    /// Set the value of an existing binding. Return an error if the binding
-    /// doesn't existing in scope or isn't mutable.
-    pub fn set(&self, name: &str, value: Value) -> Result<(), RuntimeError> {
-        match self.bindings.set(name, value) {
-            SetOutcome::NotDefined(value) => {
-                if let Some(parent) = self.parent.as_ref() {
-                    parent.set(name, value)
-                } else {
-                    // Var isn't defined anywhere
-                    Err(RuntimeError::Reference {
-                        name: name.to_string(),
-                    })
-                }
-            }
-            SetOutcome::Ok => Ok(()),
-            SetOutcome::Err(error) => Err(error),
-        }
-    }
-
     /// Declare a new binding in this scope. The binding can be a single
     /// identifier, or a structured identifier, in which case multiple names
     /// may be bound.
     pub fn bind(
         &mut self,
-        binding: &ast::Binding,
+        binding: &Binding,
         value: Value,
-        mutable: bool,
     ) -> Result<Vec<String>, RuntimeError> {
         match binding {
-            ast::Binding::Identifier(identifier) => {
+            Binding::Identifier(identifier) => {
                 let name = identifier.as_str().to_owned();
-                self.declare(name.clone(), value, mutable);
+                self.declare(name.clone(), value);
                 Ok(vec![name])
             }
-            ast::Binding::Object(_) => {
+            Binding::Object(_) => {
                 Err(RuntimeError::internal("TODO object bindings"))
             }
-            ast::Binding::Array(_) => {
+            Binding::Array(_) => {
                 Err(RuntimeError::internal("TODO array bindings"))
             }
         }
@@ -126,69 +102,17 @@ impl Scope {
 /// TODO rename to not overlap with AST Binding type
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Bindings {
-    /// TODO
-    #[cfg_attr(feature = "serde", serde(flatten))]
-    bindings: IndexMap<String, Binding>,
-}
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct Bindings(IndexMap<String, Value>);
 
 impl Bindings {
     /// TODO
-    fn declare(&mut self, name: String, value: Value, mutable: bool) {
-        let binding = if mutable {
-            Binding::Mutable(Arc::new(RwLock::new(value)))
-        } else {
-            Binding::Immutable(value)
-        };
-        self.bindings.insert(name, binding);
+    fn declare(&mut self, name: String, value: Value) {
+        self.0.insert(name, value);
     }
 
     /// TODO
     fn get(&self, name: &str) -> Option<Value> {
-        self.bindings.get(name).map(|binding| binding.value())
+        self.0.get(name).cloned()
     }
-
-    /// TODO
-    fn set(&self, name: &str, value: Value) -> SetOutcome {
-        match self.bindings.get(name) {
-            Some(Binding::Mutable(binding)) => {
-                *binding.write().expect("TODO") = value;
-                SetOutcome::Ok
-            }
-            Some(Binding::Immutable(_)) => {
-                SetOutcome::Err(RuntimeError::ImmutableAssign {
-                    name: name.to_string(),
-                })
-            }
-            None => SetOutcome::NotDefined(value),
-        }
-    }
-}
-
-/// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-enum Binding {
-    Immutable(Value),
-    Mutable(Arc<RwLock<Value>>),
-}
-
-impl Binding {
-    /// Get a (refcounted) clone of the contained value
-    fn value(&self) -> Value {
-        match self {
-            Self::Immutable(value) => value.clone(),
-            Self::Mutable(value) => Value::clone(&*value.read().expect("TODO")),
-        }
-    }
-}
-
-enum SetOutcome {
-    /// Value isn't defined in this scope. Hand the value back so the caller
-    /// can walk up the scope tree
-    NotDefined(Value),
-    /// Value was set
-    Ok,
-    /// Fatal error setting the value
-    Err(RuntimeError),
 }

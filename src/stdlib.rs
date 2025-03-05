@@ -9,7 +9,7 @@ use crate::{
 /// recreated for every execution
 pub fn stdlib() -> Scope {
     let mut scope = Scope::new();
-    scope.declare("console", console().into(), false);
+    scope.declare("console", console().into());
     scope
 }
 

@@ -53,7 +53,7 @@ impl Engine {
     /// objects. To register functions, use [register_fn](Self::register_fn)
     /// instead.
     pub fn register_global(&mut self, name: impl ToString, value: Value) {
-        self.globals.declare(name, value, false);
+        self.globals.declare(name, value);
     }
 
     /// Register a Rust function as a global, allowing it to be used within
@@ -69,7 +69,7 @@ impl Engine {
         Err: Into<RuntimeError>,
     {
         self.globals
-            .declare(name, NativeFunction::new(function).into(), false);
+            .declare(name, NativeFunction::new(function).into());
     }
 
     /// Compile some source code into a loaded program. The returned [Process]

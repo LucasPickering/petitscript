@@ -32,7 +32,6 @@ pub enum Statement {
     Declaration(Spanned<Declaration>),
 
     If(Spanned<If>),
-    ForLoop(Spanned<ForLoop>),
     ForOfLoop(Spanned<ForOfLoop>),
     WhileLoop(Spanned<WhileLoop>),
     DoWhileLoop(Spanned<DoWhileLoop>),
@@ -61,11 +60,10 @@ pub enum Declaration {
     Function(Spanned<FunctionDeclaration>),
 }
 
-/// `const x = 3` or `let x = 3`
+/// `const x = 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug, PartialEq)]
 pub struct LexicalDeclaration {
     pub variables: Box<[Spanned<Variable>]>,
-    pub mutable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -126,14 +124,6 @@ pub struct If {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct ForLoop {
-    pub initializer: Box<Spanned<Statement>>,
-    pub condition: Spanned<Expression>,
-    pub update: Box<Spanned<Statement>>,
-    pub body: Box<Spanned<Statement>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Spanned<Expression>,
@@ -185,8 +175,6 @@ pub enum Expression {
     Unary(Spanned<UnaryOperation>),
     Binary(Spanned<BinaryOperation>),
     Ternary(Spanned<TernaryConditional>),
-    Assign(Spanned<AssignOperation>),
-    // TODO update operations (++, --)
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -347,36 +335,6 @@ pub struct TernaryConditional {
     pub condition: Box<Spanned<Expression>>,
     pub true_expression: Box<Spanned<Expression>>,
     pub false_expression: Box<Spanned<Expression>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct AssignOperation {
-    pub operator: AssignOperator,
-    pub lhs: Spanned<Binding>,
-    pub rhs: Box<Spanned<Expression>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum AssignOperator {
-    /// `x = y`
-    Assign,
-    /// `x += y`
-    Add,
-    /// `x -= y`
-    Sub,
-    /// `x *= y`
-    Mul,
-    /// `x /= y`
-    Div,
-    /// `x %= y`
-    Mod,
-    /// `x &&= y`
-    BooleanAnd,
-    /// `x ||= y`
-    BooleanOr,
-    /// `x ??= y`
-    NullishCoalesce,
-    // TODO bitwise operations, exponent
 }
 
 #[derive(Clone, Debug, PartialEq)]

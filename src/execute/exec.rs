@@ -3,7 +3,7 @@
 use crate::{
     ast::{
         source::Spanned, Ast, Block, Declaration, DoWhileLoop,
-        ExportDeclaration, ForLoop, ForOfLoop, FunctionDeclaration, If,
+        ExportDeclaration, ForOfLoop, FunctionDeclaration, If,
         ImportDeclaration, LexicalDeclaration, Statement, WhileLoop,
     },
     error::{ResultExt, RuntimeError},
@@ -85,7 +85,6 @@ impl Execute for Spanned<Statement> {
             Statement::If(if_statement) => if_statement.exec(state),
             Statement::DoWhileLoop(do_while_loop) => do_while_loop.exec(state),
             Statement::WhileLoop(while_loop) => while_loop.exec(state),
-            Statement::ForLoop(for_loop) => for_loop.exec(state),
             Statement::ForOfLoop(for_of_loop) => for_of_loop.exec(state),
 
             Statement::Continue => Ok(Some(Terminate::Continue)),
@@ -240,17 +239,6 @@ impl Execute for WhileLoop {
     }
 }
 
-impl Execute for ForLoop {
-    type Output = Option<Terminate>;
-
-    fn exec(
-        &self,
-        _state: &mut ThreadState,
-    ) -> Result<Self::Output, Spanned<RuntimeError>> {
-        todo!()
-    }
-}
-
 impl Execute for ForOfLoop {
     type Output = Option<Terminate>;
 
@@ -280,7 +268,7 @@ impl Execute for Spanned<LexicalDeclaration> {
             };
             let names = state
                 .scope_mut()
-                .bind(&variable.binding, value, self.mutable)
+                .bind(&variable.binding, value)
                 .spanned_err(self.span)?;
             declared.extend(names);
         }
@@ -306,9 +294,7 @@ impl Execute for Spanned<FunctionDeclaration> {
 
         // Bind the name to the function pointer
         if let Some(name) = &name {
-            state
-                .scope_mut()
-                .declare(name.as_str(), function.into(), false);
+            state.scope_mut().declare(name.as_str(), function.into());
         }
         Ok(name)
     }

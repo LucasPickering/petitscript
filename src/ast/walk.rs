@@ -1,12 +1,12 @@
 use crate::ast::{
-    ArrayElement, ArrayLiteral, ArrayPatternElement, AssignOperation, Ast,
-    BinaryOperation, Binding, Declaration, DoWhileLoop, ExportDeclaration,
-    Expression, ForLoop, ForOfLoop, FunctionCall, FunctionDeclaration,
-    FunctionDefinition, FunctionParameter, FunctionPointer, Identifier, If,
-    ImportDeclaration, LexicalDeclaration, Literal, ObjectLiteral,
-    ObjectPatternElement, ObjectProperty, OptionalPropertyAccess,
-    PropertyAccess, PropertyName, Spanned, Statement, TemplateLiteral,
-    TernaryConditional, UnaryOperation, Variable, WhileLoop,
+    ArrayElement, ArrayLiteral, ArrayPatternElement, Ast, BinaryOperation,
+    Binding, Declaration, DoWhileLoop, ExportDeclaration, Expression,
+    ForOfLoop, FunctionCall, FunctionDeclaration, FunctionDefinition,
+    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
+    LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    Spanned, Statement, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -37,7 +37,6 @@ impl Walk for Statement {
             Self::Expression(expression) => expression.walk(visitor),
             Self::Block(block) => block.statements.walk(visitor),
             Self::If(if_statement) => if_statement.walk(visitor),
-            Self::ForLoop(for_loop) => for_loop.walk(visitor),
             Self::ForOfLoop(for_of_loop) => for_of_loop.walk(visitor),
             Self::WhileLoop(while_loop) => while_loop.walk(visitor),
             Self::DoWhileLoop(do_while_loop) => do_while_loop.walk(visitor),
@@ -88,7 +87,6 @@ impl Walk for Expression {
             Self::Unary(unary) => unary.walk(visitor),
             Self::Binary(binary) => binary.walk(visitor),
             Self::Ternary(ternary) => ternary.walk(visitor),
-            Self::Assign(assign) => assign.walk(visitor),
         }
     }
 }
@@ -145,16 +143,6 @@ impl Walk for If {
         self.condition.walk(visitor);
         self.body.walk(visitor);
         self.else_body.walk(visitor);
-    }
-}
-
-impl Walk for ForLoop {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.visit_for_loop(self);
-        self.initializer.walk(visitor);
-        self.condition.walk(visitor);
-        self.update.walk(visitor);
-        self.body.walk(visitor);
     }
 }
 
@@ -351,14 +339,6 @@ impl Walk for TernaryConditional {
     }
 }
 
-impl Walk for AssignOperation {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.visit_assign(self);
-        self.lhs.walk(visitor);
-        self.rhs.walk(visitor);
-    }
-}
-
 impl<T: Walk> Walk for Box<T> {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         self.deref_mut().walk(visitor);
@@ -400,8 +380,6 @@ pub trait AstVisitor {
 
     fn visit_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
 
-    fn visit_assign(&mut self, _: &mut AssignOperation) {}
-
     fn visit_ast(&mut self, _: &mut Ast) {}
 
     fn visit_binary(&mut self, _: &mut BinaryOperation) {}
@@ -417,8 +395,6 @@ pub trait AstVisitor {
     fn visit_export(&mut self, _: &mut ExportDeclaration) {}
 
     fn visit_expression(&mut self, _: &mut Expression) {}
-
-    fn visit_for_loop(&mut self, _: &mut ForLoop) {}
 
     fn visit_for_of_loop(&mut self, _: &mut ForOfLoop) {}
 

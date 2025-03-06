@@ -29,9 +29,9 @@ pub fn from_value<'de, T: Deserialize<'de>>(
 }
 
 /// Helper for converting a value to/from JS using its
-/// [Serialize](serde::Serialize) and/or [Deserialize](serde::Deserialize)
-/// implementations. This is useful when defining native functions that need
-/// to convert their args and/or return value using `serde`.
+/// [Serialize] and/or [Deserialize] implementations. This is useful when
+/// defining native functions that need to convert their args and/or return
+/// value using `serde`.
 pub struct SerdeJs<T>(pub T);
 
 impl<T> SerdeJs<T> {

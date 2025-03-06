@@ -141,17 +141,3 @@ impl Compiler<Lifted> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_function_label() {
-        todo!()
-    }
-
-    #[test]
-    fn test_function_capture() {
-        todo!()
-    }
-}

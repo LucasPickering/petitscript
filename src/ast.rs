@@ -19,12 +19,14 @@ use std::{
 
 /// The root AST node. This is the outcome of parsing a program, but is not yet
 /// ready for execution.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Ast {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Statement {
     Empty,
     Block(Spanned<Block>),
@@ -48,38 +50,44 @@ pub enum Statement {
 /// A collection of statements, delineated by {}. This denotes a new
 /// lexical scope.
 /// TODO kill this and inline into the enum variant?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Block {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
 /// TODO eliminate this and just use lexical/fn decls directly?
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Declaration {
     Lexical(Spanned<LexicalDeclaration>),
     Function(Spanned<FunctionDeclaration>),
 }
 
 /// `const x = 3;` or `const x = 3, y = 4, z = 5;`
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct LexicalDeclaration {
     pub variables: Box<[Spanned<Variable>]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Variable {
     pub binding: Binding,
     pub init: Option<Box<Spanned<Expression>>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDeclaration {
     pub name: Spanned<Identifier>,
     pub pointer: FunctionPointer,
 }
 
 /// TODO rename this
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
@@ -90,7 +98,8 @@ pub enum FunctionPointer {
 }
 
 /// TODO
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value. This
     /// is **not necessarily** the name the function is bound to; that is
@@ -109,13 +118,15 @@ pub struct FunctionDefinition {
 }
 
 /// One parameter in a function definition
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionParameter {
     pub variable: Spanned<Variable>,
     pub varargs: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct If {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
@@ -123,31 +134,36 @@ pub struct If {
     pub else_body: Option<Box<Spanned<Statement>>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct WhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct DoWhileLoop {
     pub condition: Spanned<Expression>,
     pub body: Box<Spanned<Statement>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ImportDeclaration {
     // TODO
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ExportDeclaration {
     Reexport {
         // TODO
@@ -157,7 +173,8 @@ pub enum ExportDeclaration {
     DefaultExpression(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Expression {
     Parenthesized(Box<Spanned<Expression>>),
     /// Primitive and complex type literals
@@ -181,8 +198,8 @@ pub enum Expression {
 pub struct Identifier(String);
 
 impl Identifier {
-    pub fn new(s: String) -> Self {
-        Self(s)
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
     }
 
     pub fn as_str(&self) -> &str {
@@ -197,7 +214,8 @@ impl Display for Identifier {
 }
 
 /// TODO document why no spans
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Literal {
     Null,
     Undefined,
@@ -210,7 +228,8 @@ pub enum Literal {
 }
 
 /// TODO
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct TemplateLiteral {
     /// A set of contiguous chunks that comprise the template. These will be
     /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
@@ -218,29 +237,34 @@ pub struct TemplateLiteral {
 }
 
 /// One piece in a template. Either a static string or an expression
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateChunk {
     Literal(Spanned<String>),
     Expression(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ArrayLiteral {
     pub elements: Box<[Spanned<ArrayElement>]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayElement {
     Expression(Spanned<Expression>),
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct ObjectLiteral {
     pub properties: Box<[Spanned<ObjectProperty>]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
@@ -253,31 +277,36 @@ pub enum ObjectProperty {
     Spread(Spanned<Expression>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionCall {
     pub function: Box<Spanned<Expression>>,
     pub arguments: Box<[Spanned<Expression>]>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct PropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct OptionalPropertyAccess {
     pub expression: Box<Spanned<Expression>>,
     pub property: Spanned<PropertyName>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
     pub expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum UnaryOperator {
     /// `!`
     BooleanNot,
@@ -286,14 +315,16 @@ pub enum UnaryOperator {
     // TODO bitwise operations
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
     pub lhs: Box<Spanned<Expression>>,
     pub rhs: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -330,14 +361,16 @@ pub enum BinaryOperator {
     // TODO bitwise operations, exponent
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct TernaryConditional {
     pub condition: Box<Spanned<Expression>>,
     pub true_expression: Box<Spanned<Expression>>,
     pub false_expression: Box<Spanned<Expression>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Spanned<Identifier>),
@@ -345,7 +378,8 @@ pub enum PropertyName {
     Expression(Box<Spanned<Expression>>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum Binding {
     /// `const x = 3`
     Identifier(Spanned<Identifier>),
@@ -355,7 +389,8 @@ pub enum Binding {
     Array(Box<[Spanned<ArrayPatternElement>]>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
@@ -375,7 +410,8 @@ pub enum ObjectPatternElement {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayPatternElement {
     // TODO
 }

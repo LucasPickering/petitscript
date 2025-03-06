@@ -1,6 +1,6 @@
 //! Macros for implementing traits on various types
 
-/// Implement a numeric binary operator for [Value]
+/// Implement a numeric binary operator for `Value`
 macro_rules! impl_value_numeric_binary_op {
     ($trait:ident, $func:ident, $op:tt) => {
         impl $trait for Value {

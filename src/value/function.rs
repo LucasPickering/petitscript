@@ -51,6 +51,7 @@ impl Function {
     }
 
     /// TODO
+    #[cfg(feature = "serde")]
     pub(crate) fn into_parts(self) -> (FunctionId, Option<String>, Captures) {
         (self.id, self.name, self.captures)
     }

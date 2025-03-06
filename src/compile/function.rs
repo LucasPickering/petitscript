@@ -1,5 +1,8 @@
 //! Compiler steps related to functions
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
     ast::{
         source::Spanned,
@@ -8,7 +11,6 @@ use crate::{
         FunctionPointer, Identifier, ObjectProperty, PropertyName, Variable,
     },
     error::RuntimeError,
-    function::FunctionId,
 };
 use std::{collections::HashSet, hash::Hash, mem, sync::Arc};
 
@@ -184,10 +186,10 @@ impl FunctionTable {
     /// an `Arc` so the lifetime can be detached from the program if necessary
     pub fn get(
         &self,
-        id: FunctionId,
+        id: FunctionDefinitionId,
     ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
         self.functions
-            .get(id.definition_id.0 as usize)
+            .get(id.0 as usize)
             .ok_or_else(|| RuntimeError::UnknownFunction(id))
     }
 }
@@ -195,18 +197,19 @@ impl FunctionTable {
 impl AstVisitor for FunctionTable {
     fn visit_function_pointer(&mut self, function: &mut FunctionPointer) {
         match function {
-            FunctionPointer::Inline(_) => {
+            FunctionPointer::Inline(definition) => {
+                // Lift all children in the params/body of the function *before*
+                // this function. Once we've lifted this one, we can't mutate it
+                // anymore.
+                definition.walk(self);
+
                 // The ID is just the next index in the vec
                 let id = FunctionDefinitionId(self.functions.len() as u32);
-                let FunctionPointer::Inline(mut definition) =
+                let FunctionPointer::Inline(definition) =
                     mem::replace(function, FunctionPointer::Lifted(id))
                 else {
                     unreachable!()
                 };
-                // We have to manually continue the walk into the function
-                // definition, because once we move it into the table, it's
-                // no longer part of the primary AST walk
-                definition.walk(self);
                 self.functions.push(Arc::new(definition.data));
             }
             FunctionPointer::Lifted(id) => {
@@ -225,3 +228,10 @@ impl AstVisitor for FunctionTable {
 /// word
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FunctionDefinitionId(pub u32);
+
+#[cfg(test)]
+impl From<u32> for FunctionDefinitionId {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}

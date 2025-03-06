@@ -215,7 +215,7 @@ impl Value {
     }
 
     /// Apply nullish coalescing (??)
-    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing>
     pub fn coalesce(self, other: Self) -> Self {
         match self {
             Self::Undefined | Self::Null => other,

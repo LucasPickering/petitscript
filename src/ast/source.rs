@@ -55,7 +55,7 @@ impl Source for PathBuf {
 ///
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Span {
     /// Byte offset for the beginning of this span (inclusize). Always <=
     /// end_span.
@@ -111,6 +111,28 @@ impl Span {
     }
 }
 
+#[cfg(test)]
+impl Span {
+    /// A span that matches any other span. Useful for tests where you need
+    /// to compare two spanned AST nodes, but don't care about the actual spans
+    pub const ANY: Span = Span {
+        start_offset: usize::MAX,
+        end_offset: usize::MAX,
+    };
+}
+
+#[cfg(test)]
+impl PartialEq for Span {
+    fn eq(&self, other: &Self) -> bool {
+        (self.start_offset == other.start_offset
+            && self.end_offset == other.end_offset)
+            || (self.start_offset == Self::ANY.start_offset
+                && self.end_offset == Self::ANY.end_offset)
+            || (other.start_offset == Self::ANY.start_offset
+                && other.end_offset == Self::ANY.end_offset)
+    }
+}
+
 /// A range of source code, mapped to lines/columns. This format is suitable
 /// for error printing.
 ///
@@ -136,11 +158,22 @@ impl Display for QualifiedSpan {
     }
 }
 
-/// TODO
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// Some data, with a source span attached. This is used to attach source
+/// mappings to AST nodes, so error messages can point back to the originating
+/// source code.
+#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
 pub struct Spanned<T> {
     pub data: T,
     pub span: Span,
+}
+
+/// A transparent Debug implementation. This makes AST debug printing much
+/// easier to read. Generally the spans are not useful.
+impl<T: Debug> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.data.fmt(f)
+    }
 }
 
 impl<T> Deref for Spanned<T> {
@@ -168,11 +201,42 @@ impl<T: Hash> Hash for Spanned<T> {
 
 /// TODO
 pub trait IntoSpanned: Sized {
+    /// TODO
     fn into_spanned(self, span: Span) -> Spanned<Self>;
+
+    /// Wrap an AST node in a [Spanned], with a wildcard span that will
+    /// match anything in quality checking. For AST comparisons
+    /// where you don't care about source spans
+    #[cfg(test)]
+    fn s(self) -> Spanned<Self>;
 }
 
 impl<T> IntoSpanned for T {
     fn into_spanned(self, span: Span) -> Spanned<Self> {
         Spanned { data: self, span }
+    }
+
+    #[cfg(test)]
+    fn s(self) -> Spanned<Self> {
+        Spanned {
+            data: self,
+            span: Span::ANY,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_span_any() {
+        assert_eq!(
+            Span {
+                start_offset: 0,
+                end_offset: 0
+            },
+            Span::ANY
+        );
     }
 }

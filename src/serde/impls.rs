@@ -22,7 +22,7 @@ use std::fmt;
 
 impl Value {
     /// Deserialize this value into an arbitrary type, using the type's
-    /// [Deserialize](serde::Deserialize) implementation
+    /// [Deserialize] implementation
     pub fn deserialize<'de, T: Deserialize<'de>>(
         self,
     ) -> Result<T, ValueError> {

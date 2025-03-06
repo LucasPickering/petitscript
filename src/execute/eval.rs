@@ -201,7 +201,7 @@ impl Evaluate for FunctionPointer {
                     .process()
                     .program
                     .function_table()
-                    .get(id)
+                    .get(id.definition_id)
                     // TODO use a real span
                     .spanned_err(Span::default())?;
                 let name =
@@ -326,7 +326,7 @@ impl Function {
             state
                 .program()
                 .function_table()
-                .get(self.id())
+                .get(self.id().definition_id)
                 // TODO use a real span
                 .spanned_err(Span::default())?,
         );

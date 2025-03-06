@@ -1,6 +1,6 @@
 use crate::{
     ast::source::{IntoSpanned, QualifiedSpan, Span, Spanned},
-    function::FunctionId,
+    compile::FunctionDefinitionId,
     value::ValueType,
     Number,
 };
@@ -32,8 +32,13 @@ pub enum Error {
     /// An error that occurs while transforming a parsed program from
     /// ECMAScript to the PetitJS abstract syntax tree. This indicates the
     /// source is valid JavaScript syntax, but is illegal in PetitJS.
-    #[error(transparent)]
-    Transform(#[from] TransformError),
+    #[error("Error transforming AST at {span}: {error}")]
+    Transform {
+        #[source]
+        error: TransformError,
+        /// The source location of the code that failed to transform
+        span: QualifiedSpan,
+    },
 
     /// An error that occurs while executing a program. All runtime errors have
     /// an attached source span, indicating the point in the program where the
@@ -42,6 +47,7 @@ pub enum Error {
     Runtime {
         #[source]
         error: RuntimeError,
+        /// The source location of the code that failed
         span: QualifiedSpan,
     },
 
@@ -85,8 +91,14 @@ pub enum TransformError {
         help: &'static str,
     },
     /// AST is missing a node that should be present
-    #[error("TODO")]
-    Missing,
+    /// TODO improve error message - this is probably invalid syntax
+    #[error(
+        "Expected AST node of type {expected_type}, but it was not present"
+    )]
+    Missing {
+        /// Name of the type of node that was expected
+        expected_type: &'static str,
+    },
 }
 
 /// Any error that can occur during the execution of a program
@@ -126,8 +138,8 @@ pub enum RuntimeError {
     Reference { name: String },
 
     /// TODO
-    #[error("Unknown function {0:?}")]
-    UnknownFunction(FunctionId),
+    #[error("Unknown function with definition ID {0:?}")]
+    UnknownFunction(FunctionDefinitionId),
 
     /// Error converting to/from JS values
     #[error(transparent)]
@@ -170,7 +182,7 @@ pub enum ValueError {
 
     /// An operation required a specific type (or types), but received a value
     /// of an unsupported type. This commonly occurs during type downcasting,
-    /// e.g. [Value] to [Number].
+    /// e.g. [Value](crate::Value) to [Number].
     #[error("Type error: expected {expected}, received {actual}")]
     Type {
         expected: ValueType,

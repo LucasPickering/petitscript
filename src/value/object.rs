@@ -83,9 +83,11 @@ impl Display for Object {
     }
 }
 
-impl From<IndexMap<String, Value>> for Object {
-    fn from(map: IndexMap<String, Value>) -> Self {
-        Self(map.into())
+impl<T: Into<Value>> From<IndexMap<String, T>> for Object {
+    fn from(map: IndexMap<String, T>) -> Self {
+        Self(Arc::new(
+            map.into_iter().map(|(k, v)| (k, v.into())).collect(),
+        ))
     }
 }
 

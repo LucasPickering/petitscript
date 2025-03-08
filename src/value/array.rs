@@ -67,9 +67,9 @@ impl Deref for Array {
     }
 }
 
-impl From<Vec<Value>> for Array {
-    fn from(value: Vec<Value>) -> Self {
-        Self(value.into())
+impl<T: Into<Value>> From<Vec<T>> for Array {
+    fn from(value: Vec<T>) -> Self {
+        value.into_iter().map(T::into).collect()
     }
 }
 
@@ -97,5 +97,14 @@ impl Display for Array {
 impl FromIterator<Value> for Array {
     fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
         Self(Arc::new(iter.into_iter().collect()))
+    }
+}
+
+impl IntoIterator for Array {
+    type Item = Value;
+    type IntoIter = <Vec<Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Arc::unwrap_or_clone(self.0).into_iter()
     }
 }

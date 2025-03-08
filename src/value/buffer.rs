@@ -26,15 +26,17 @@ impl Display for Buffer {
         // Print up to the first 8 bytes
         const MAX: usize = 8;
         write!(f, "[")?;
-        for (i, byte) in self.0[..MAX].iter().enumerate() {
-            write!(f, "{byte:x}")?;
+        let len = self.len().min(MAX);
+        for (i, byte) in self.0[..len].iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
+            write!(f, "{byte:x}")?;
         }
         if self.len() > MAX {
-            write!(f, "..]")?;
+            write!(f, "..")?;
         }
+        write!(f, "]")?;
         Ok(())
     }
 }
@@ -73,6 +75,9 @@ impl From<Buffer> for Vec<u8> {
 // a feature gate on each one
 impl_value_conversions!(Buffer, Buffer);
 impl_value_conversions!(Bytes, Buffer);
-impl_value_conversions!(Vec<u8>, Buffer);
-// One-way conversion, because we can't convert back to a ref
-impl_value_from!(&[u8], Buffer);
+// One-way conversions
+impl_value_from!(&[u8], Buffer); // Can't convert back to ref
+
+// `FromJs for Vec<u8>` conflicts with the blanket impl `From<Vec<T>>` impl.
+// Since this is a special feature, users will have to use Bytes for FromJs
+impl_value_from!(Vec<u8>, Buffer);

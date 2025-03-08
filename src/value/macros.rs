@@ -55,7 +55,8 @@ macro_rules! ensure_type {
     };
 }
 
-/// TODO
+/// Implement `FromJs` for `T`, where `T` is convertible from the value in one
+/// variant of `Value`.
 macro_rules! impl_from_js {
     ($type:ty, $variant:ident, infallible) => {
         impl $crate::FromJs for $type {

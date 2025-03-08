@@ -284,7 +284,6 @@ impl_value_conversions!(f32, Number, to_js: infallible, from_js: fallible);
 impl_value_conversions!(f64, Number, to_js: infallible, from_js: fallible);
 impl_value_conversions!(String, String);
 impl_value_conversions!(Array, Array);
-impl_value_conversions!(Vec<Value>, Array);
 impl_value_conversions!(Object, Object);
 impl_value_conversions!(IndexMap<String, Value>, Object);
 impl_value_conversions!(Function, Function);
@@ -293,6 +292,7 @@ impl_value_conversions!(Function, Function);
 impl_value_from!(NativeFunction, Native);
 impl_value_from!(&str, String);
 impl_value_from!(char, String);
+impl_value_from!(Vec<Value>, Array);
 
 // Needed because this uses a different variant of ValueType for the error msg
 impl FromJs for NativeFunction {
@@ -439,5 +439,12 @@ impl FromJs for PathBuf {
     fn from_js(value: Value) -> Result<Self, ValueError> {
         let string: String = value.into_todo()?;
         Ok(string.into())
+    }
+}
+
+impl<T: FromJs> FromJs for Vec<T> {
+    fn from_js(value: Value) -> Result<Self, ValueError> {
+        let array = ensure_type!(value, Array, Array);
+        array.into_iter().map(T::from_js).collect()
     }
 }

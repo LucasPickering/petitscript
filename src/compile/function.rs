@@ -7,12 +7,14 @@ use crate::{
     ast::{
         source::Spanned,
         walk::{AstVisitor, Walk as _},
-        Ast, Binding, Declaration, Expression, FunctionDefinition,
-        FunctionPointer, Identifier, ObjectProperty, PropertyName, Variable,
+        Ast, Binding, Block, Expression, FunctionDeclaration,
+        FunctionDefinition, FunctionPointer, Identifier, ObjectProperty,
+        PropertyName, Variable,
     },
     error::RuntimeError,
 };
-use std::{collections::HashSet, hash::Hash, mem, sync::Arc};
+use indexmap::IndexSet;
+use std::{hash::Hash, mem, sync::Arc};
 
 /// A convenience compiler step to apply a name to functions that aren't
 /// declared using the syntax of `function f() {}`. The function name is
@@ -46,7 +48,7 @@ impl LabelFunctions {
 }
 
 impl AstVisitor for LabelFunctions {
-    fn visit_variable(&mut self, variable: &mut Variable) {
+    fn enter_variable(&mut self, variable: &mut Variable) {
         // Look for `const f = () => {}` or `function(f = () => {}) {}`
         // The second case is rare, but it's easier to support it than to not
         if let Variable {
@@ -58,7 +60,7 @@ impl AstVisitor for LabelFunctions {
         }
     }
 
-    fn visit_object_property(&mut self, property: &mut ObjectProperty) {
+    fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         // Look for `{f: () => {}}`
         if let ObjectProperty::Property {
             property:
@@ -78,83 +80,143 @@ impl AstVisitor for LabelFunctions {
 /// that must be captured from the parent scope. This doesn't capture *values*,
 /// just identifiers. The runtime will use this list to determine which values
 /// to capture.
-pub struct CaptureFunctions;
+///
+/// TODO explain how it works
+#[derive(Debug)]
+pub struct CaptureFunctions {
+    /// TODO
+    /// Invariant: Never empty
+    scope_stack: Vec<IndexSet<Identifier>>,
+    /// TODO
+    /// Invariant: empty iff we are not inside a function definition
+    function_stack: Vec<Frame>,
+}
+
+/// TODO rename
+#[derive(Debug)]
+struct Frame {
+    /// TODO
+    captures: IndexSet<Identifier>,
+    /// A pointer into the scope stack for the top-level scope within this
+    /// function. The scope includes all functions further up (higher index in)
+    /// the stack as well
+    scope_index: usize,
+}
+
+impl CaptureFunctions {
+    pub fn new() -> Self {
+        Self {
+            scope_stack: vec![IndexSet::new()], // Always start with root scope
+            function_stack: vec![],
+        }
+    }
+
+    /// Add a declaration to the outermost scope
+    fn declare(&mut self, identifier: Identifier) {
+        let scope = self.scope_stack.last_mut().expect("Scope stack is empty");
+        scope.insert(identifier);
+    }
+
+    /// Track a reference to an identifier. We'll decide if it's accesible in
+    /// the current scope or needs to be captured
+    fn refer(&mut self, identifier: Identifier) {
+        // Find the innermost (last) scope that provides this name
+        let Some(providing_scope_index) = self
+            .scope_stack
+            .iter()
+            .rev()
+            .position(|scope| scope.contains(&identifier))
+            // Found index is from the _end_ - we need to flip it around
+            .map(|index| self.scope_stack.len() - 1 - index)
+        else {
+            // The name doesn't exist anywhere; let's assume it's in the global
+            // scope and therefore doesn't need to be captured. Otherwise, this
+            // reference will trigger an error at runtime
+            return;
+        };
+
+        // When capturing a name, we can't just capture it in the innermost
+        // function. Every function between its declaration and usage has to
+        // capture it.
+        self.function_stack
+            .iter_mut()
+            .rev()
+            // If the providing scope is lower on the stack than the function's
+            // outermost scope, we have to capture
+            .filter(|frame| providing_scope_index < frame.scope_index)
+            .for_each(|frame| {
+                frame.captures.insert(identifier.clone());
+            });
+    }
+}
 
 impl AstVisitor for CaptureFunctions {
-    fn visit_function_definition(
+    fn enter_block(&mut self, _: &mut Block) {
+        // A block defines a new lexical scope. Blocks are *not* used for
+        // functions, so we're not pushing two scopes here.
+        self.scope_stack.push(IndexSet::new());
+    }
+
+    fn exit_block(&mut self, _: &mut Block) {
+        // Exit the current lexical scope. this can only come after a push in
+        // the enter_ fn above
+        self.scope_stack.pop().expect("Scope stack is empty");
+    }
+
+    fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {
+        // A function definition defines a new function (obviously) as well as
+        // a new scope. Create the scope first, then let a function frame that
+        // points to that scope
+        self.scope_stack.push(IndexSet::new());
+        self.function_stack.push(Frame {
+            captures: IndexSet::new(),
+            scope_index: self.scope_stack.len() - 1,
+        });
+    }
+
+    fn exit_function_definition(
         &mut self,
         definition: &mut FunctionDefinition,
     ) {
-        // For each function definition, add its captures to the AST node
-        let mut captured = CaptureFunction {
-            captured: HashSet::new(),
-            declared: HashSet::new(),
-        };
-        // Start on the body of the function. We can't let it walk the function
-        // definition itself because that will trigger infinite mutual recursion
-        // TODO handle param init expressions as well
-        definition.body.walk(&mut captured);
-        definition.captures = captured.captured.into_iter().collect();
+        // We're done with this function - pop it off the stack and set its
+        // captures. This must be called after enter, therefore the stack can't
+        // be empty.
+        let frame = self.function_stack.pop().expect("Function stack is empty");
+        definition.captures = frame.captures.into_iter().collect();
     }
-}
 
-/// Helper to capture identifiers for a single function body. This should never
-/// walk the full AST, just a single function body.
-struct CaptureFunction {
-    captured: HashSet<Identifier>,
-    declared: HashSet<Identifier>,
-}
-
-impl CaptureFunction {
-    /// If the identifier isn't in the declared list, capture it from parent
-    /// scope
-    fn add(&mut self, identifier: &Identifier) {
-        if !self.declared.contains(identifier) {
-            self.captured.insert(identifier.clone());
+    fn enter_variable(&mut self, variable: &mut Variable) {
+        // Lexical declaration could have any number of names
+        match &variable.binding {
+            Binding::Identifier(identifier) => {
+                self.declare(identifier.data.clone())
+            }
+            Binding::Object(_) => todo!(),
+            Binding::Array(_) => todo!(),
         }
     }
-}
 
-impl AstVisitor for CaptureFunction {
-    // This is predicated on the AST walking in execution order, meaning an
-    // identifier encountered before its declaration must be captured. E.g.:
-    // ```
-    // function f() {
-    //   console.log(x);
-    //   const x = 3;
-    // }
-    // ```
-
-    fn visit_function_definition(
+    fn enter_function_declaration(
         &mut self,
-        definition: &mut FunctionDefinition,
+        declaration: &mut FunctionDeclaration,
     ) {
-        // Recursion! Of the mutual variety! If we encounter a nested function
-        // definition, we need to figure out what it wants to capture as well
-        definition.walk(&mut CaptureFunctions)
+        // Function declarations are simple: just one name
+        self.declare(declaration.name.data.clone());
     }
 
-    fn visit_declaration(&mut self, declaration: &mut Declaration) {
-        // Add to the declaration list
-        match declaration {
-            Declaration::Lexical(declaration) => {}
-            Declaration::Function(declaration) => todo!(),
-        }
-    }
-
-    // Check all the ways an identifier can be used to reference a bound value.
-    // We can't just use visit_identifier, because that's also called for
+    // Check all the ways an identifier can be used to reference its value. We
+    // can't just use visit_identifier, because that's also called for
     // identifiers in declarations
 
-    fn visit_expression(&mut self, expression: &mut Expression) {
+    fn enter_expression(&mut self, expression: &mut Expression) {
         if let Expression::Identifier(identifier) = expression {
-            self.add(identifier);
+            self.refer(identifier.data.clone());
         }
     }
 
-    fn visit_object_property(&mut self, property: &mut ObjectProperty) {
+    fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         if let ObjectProperty::Identifier(identifier) = property {
-            self.add(identifier);
+            self.refer(identifier.data.clone());
         }
     }
 }
@@ -195,28 +257,19 @@ impl FunctionTable {
 }
 
 impl AstVisitor for FunctionTable {
-    fn visit_function_pointer(&mut self, function: &mut FunctionPointer) {
-        match function {
-            FunctionPointer::Inline(definition) => {
-                // Lift all children in the params/body of the function *before*
-                // this function. Once we've lifted this one, we can't mutate it
-                // anymore.
-                definition.walk(self);
+    fn exit_function_pointer(&mut self, function: &mut FunctionPointer) {
+        // Lift functions on _exit_, so we can do it inside-out. For each
+        // function, we know its params and body have already been lifted.
 
-                // The ID is just the next index in the vec
-                let id = FunctionDefinitionId(self.functions.len() as u32);
-                let FunctionPointer::Inline(definition) =
-                    mem::replace(function, FunctionPointer::Lifted(id))
-                else {
-                    unreachable!()
-                };
-                self.functions.push(Arc::new(definition.data));
-            }
-            FunctionPointer::Lifted(id) => {
-                // Compiler bug!
-                panic!("Function {id:?} has already been lifted!")
-            }
-        }
+        // The ID is just the next index in the vec
+        let id = FunctionDefinitionId(self.functions.len() as u32);
+        let FunctionPointer::Inline(definition) =
+            mem::replace(function, FunctionPointer::Lifted(id))
+        else {
+            // Compiler bug!
+            panic!("Function {id:?} has already been lifted!")
+        };
+        self.functions.push(Arc::new(definition.data));
     }
 }
 

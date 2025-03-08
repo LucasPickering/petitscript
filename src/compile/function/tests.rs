@@ -1,11 +1,11 @@
 use crate::{
     ast::{
-        source::IntoSpanned, Ast, Binding, Declaration, Expression,
-        FunctionDeclaration, FunctionDefinition, FunctionPointer, Identifier,
-        LexicalDeclaration, Literal, ObjectLiteral, ObjectProperty,
-        PropertyName, Statement, Variable,
+        source::IntoSpanned, Ast, BinaryOperator, Binding, Declaration,
+        Expression, FunctionDeclaration, FunctionDefinition, FunctionParameter,
+        FunctionPointer, Identifier, LexicalDeclaration, Literal,
+        ObjectLiteral, ObjectProperty, PropertyName, Statement, Variable,
     },
-    compile::{Compiler, LabelledAst, Lifted},
+    compile::{CapturedAst, Compiler, LabelledAst, Lifted},
 };
 
 /// Test that functions declared with an obvious associated name get
@@ -24,34 +24,9 @@ fn test_function_label() {
     .unwrap()
     .label()
     .program;
-    let expected_statement_1 = Statement::Declaration(
-        Declaration::Lexical(
-            LexicalDeclaration {
-                variables: [Variable {
-                    binding: Binding::Identifier(Identifier::new("f").s()),
-                    init: Some(
-                        Expression::ArrowFunction(
-                            FunctionPointer::Inline(
-                                FunctionDefinition {
-                                    name: Some(Identifier::new("f").s()),
-                                    parameters: [].into(),
-                                    body: [].into(),
-                                    captures: [].into(),
-                                }
-                                .s(),
-                            )
-                            .s(),
-                        )
-                        .s()
-                        .into(),
-                    ),
-                }
-                .s()]
-                .into(),
-            }
-            .s(),
-        )
-        .s(),
+    let expected_statement_1 = Statement::const_assign(
+        "f",
+        Expression::function(Some("f"), vec![], vec![], vec![]),
     );
     let expected_statement_2 = Statement::Declaration(
         Declaration::Lexical(
@@ -67,21 +42,12 @@ fn test_function_label() {
                                     )
                                     .s(),
 
-                                    expression: Expression::ArrowFunction(
-                                        FunctionPointer::Inline(
-                                            FunctionDefinition {
-                                                name: Some(
-                                                    Identifier::new("g").s(),
-                                                ),
-                                                parameters: [].into(),
-                                                body: [].into(),
-                                                captures: [].into(),
-                                            }
-                                            .s(),
-                                        )
-                                        .s(),
-                                    )
-                                    .s(),
+                                    expression: Expression::function(
+                                        Some("g"),
+                                        vec![],
+                                        vec![],
+                                        vec![],
+                                    ),
                                 }
                                 .s()]
                                 .into(),
@@ -98,14 +64,85 @@ fn test_function_label() {
             .s(),
         )
         .s(),
-    );
+    )
+    .s();
 
     assert_eq!(
         ast,
         Ast {
-            statements: [expected_statement_1.s(), expected_statement_2.s()]
-                .into(),
+            statements: [expected_statement_1, expected_statement_2].into(),
         }
+    );
+}
+
+/// Test closure capturing
+#[test]
+fn test_function_capture() {
+    let CapturedAst(ast) = Compiler::new(
+        "
+        function log(e) {
+            console.log(e);
+        }
+
+        const x = 2;
+        function f() {
+            const y = 3;
+            return (z) => {
+                log(x + y + z)
+            };
+        }
+        ",
+    )
+    .parse()
+    .unwrap()
+    .label()
+    .capture()
+    .program;
+
+    assert_eq!(
+        ast,
+        Ast::new(vec![
+            Statement::function(
+                "log",
+                vec![FunctionParameter::identifier("e")],
+                vec![Statement::Expression(Expression::call(
+                    Expression::identifier("console").property("log"),
+                    vec![Expression::identifier("e")]
+                ))
+                .s()],
+                vec![]
+            ),
+            Statement::const_assign("x", Expression::int(2)),
+            Statement::function(
+                "f",
+                vec![],
+                vec![
+                    Statement::const_assign("y", Expression::int(3)),
+                    Statement::Return(Some(Expression::function(
+                        None,
+                        vec![FunctionParameter::identifier("z")],
+                        vec![Statement::Expression(Expression::call(
+                            Expression::identifier("log"),
+                            vec![Expression::binary(
+                                BinaryOperator::Add,
+                                Expression::binary(
+                                    BinaryOperator::Add,
+                                    Expression::identifier("x"),
+                                    Expression::identifier("y")
+                                ),
+                                Expression::identifier("z")
+                            )]
+                        ))
+                        .s()],
+                        // `console` isn't captured because it isn't declared
+                        // in any parent scope
+                        vec!["log", "x", "y"]
+                    )))
+                    .s()
+                ],
+                vec!["log", "x"]
+            )
+        ])
     );
 }
 

@@ -19,9 +19,14 @@ pub struct Function {
     /// points to, but we duplicate it here for easy access during
     /// printing/debugging
     name: Option<String>,
-    /// All external bound values captured by this function. Functions _cannot_
-    /// mutate captured bindings, only read them. Therefore, we don't need
-    /// to capture the bindings, we can just take the contained value.
+    /// All external bound values captured by this function. It would be much
+    /// easier to just store a pointer to the parent's scope, but we need
+    /// functions to be serializable so we have to store the raw values
+    /// instead. This does not necessarily have to contain an entry for each
+    /// identifier captured in the function definition; if an entry is missing
+    /// and its referencing expression is reached, we'll throw a runtime error
+    /// as normal. Deferring the error to use time rather than capture time
+    /// should make it more intuitive.
     captures: Captures,
 }
 

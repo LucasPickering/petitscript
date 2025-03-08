@@ -194,6 +194,7 @@ impl<'de> Deserialize<'de> for Number {
     where
         D: serde::Deserializer<'de>,
     {
+        // TODO deserialize as int first if possible
         let number = f64::deserialize(deserializer)?;
         Ok(Number::Float(number))
     }

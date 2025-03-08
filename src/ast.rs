@@ -106,15 +106,16 @@ pub struct FunctionDefinition {
     /// defined in the parent [FunctionDeclaration].
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
-    /// We don't use [Block] here because we don't need this to create a new
-    /// scope when entering. Function calls have special logic to create a new
-    /// scope already.
+    /// We don't use [Block] here because a function's body shares a scope with
+    /// its parameters.
     pub body: Box<[Spanned<Statement>]>,
     /// A list of all the identifiers this function captures from its parent
-    /// scope. These aren't necessarily present in the outside scope; they just
-    /// are the identifiers used in the function body before being declared
-    /// there.
-    pub captures: Vec<Identifier>,
+    /// scope. This only includes identifiers that are actually present in the
+    /// parent scope. References in the function parameters/body that don't
+    /// existing anywhere in scope can't be captured and therefore won't appear
+    /// here. They will either be provided by the global scope or trigger a
+    /// runtime error.
+    pub captures: Box<[Identifier]>,
 }
 
 /// One parameter in a function definition
@@ -414,4 +415,189 @@ pub enum ObjectPatternElement {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayPatternElement {
     // TODO
+}
+
+/// Helpers for constructing AST nodes in tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::source::IntoSpanned;
+
+    // These helpers all take `Vec<T>` instead of `impl IntoIterator<Item = T>`
+    // to cut down on compile time/code dupe
+
+    impl Ast {
+        pub fn new(statements: Vec<Spanned<Statement>>) -> Self {
+            Self {
+                statements: statements.into_iter().collect(),
+            }
+        }
+    }
+
+    impl Statement {
+        /// Create a lexical declaration statement: `const x = <expression>`
+        pub fn const_assign(
+            name: &str,
+            expression: Spanned<Expression>,
+        ) -> Spanned<Self> {
+            Statement::Declaration(
+                Declaration::Lexical(
+                    LexicalDeclaration {
+                        variables: [Variable::identifier(
+                            name,
+                            Some(expression),
+                        )]
+                        .into(),
+                    }
+                    .s(),
+                )
+                .s(),
+            )
+            .s()
+        }
+
+        /// Create a function declaration: `function f() {}`
+        pub fn function(
+            name: &str,
+            parameters: Vec<Spanned<FunctionParameter>>,
+            body: Vec<Spanned<Statement>>,
+            captures: Vec<&str>,
+        ) -> Spanned<Self> {
+            Statement::Declaration(
+                Declaration::Function(
+                    FunctionDeclaration {
+                        name: Identifier::new(name).s(),
+                        pointer: FunctionPointer::Inline(
+                            FunctionDefinition {
+                                name: Some(Identifier::new(name).s()),
+                                parameters: parameters.into(),
+                                body: body.into(),
+                                captures: captures
+                                    .into_iter()
+                                    .map(Identifier::new)
+                                    .collect(),
+                            }
+                            .s(),
+                        ),
+                    }
+                    .s(),
+                )
+                .s(),
+            )
+            .s()
+        }
+    }
+
+    impl Expression {
+        /// Create a simple identifier expression: `x`
+        pub fn identifier(name: &str) -> Spanned<Self> {
+            Self::Identifier(Identifier::new(name).s()).s()
+        }
+
+        /// Create an integer literal
+        pub fn int(i: i64) -> Spanned<Self> {
+            Self::Literal(Literal::Int(i).s()).s()
+        }
+
+        /// Create a lambda expression
+        pub fn function(
+            name: Option<&str>,
+            parameters: Vec<Spanned<FunctionParameter>>,
+            body: Vec<Spanned<Statement>>,
+            captures: Vec<&str>,
+        ) -> Spanned<Self> {
+            Self::ArrowFunction(
+                FunctionPointer::Inline(
+                    FunctionDefinition {
+                        name: name.map(|name| Identifier::new(name).s()),
+                        parameters: parameters.into(),
+                        body: body.into(),
+                        captures: captures
+                            .into_iter()
+                            .map(Identifier::new)
+                            .collect(),
+                    }
+                    .s(),
+                )
+                .s(),
+            )
+            .s()
+        }
+
+        /// Create a function call expression
+        pub fn call(
+            function: Spanned<Self>,
+            arguments: Vec<Spanned<Self>>,
+        ) -> Spanned<Self> {
+            Self::Call(
+                FunctionCall {
+                    function: function.into(),
+                    arguments: arguments.into(),
+                }
+                .s(),
+            )
+            .s()
+        }
+
+        pub fn binary(
+            operator: BinaryOperator,
+            lhs: Spanned<Self>,
+            rhs: Spanned<Self>,
+        ) -> Spanned<Self> {
+            Self::Binary(
+                BinaryOperation {
+                    operator,
+                    lhs: lhs.into(),
+                    rhs: rhs.into(),
+                }
+                .s(),
+            )
+            .s()
+        }
+    }
+
+    impl Spanned<Expression> {
+        /// Get a property of this expression: `self.y`
+        pub fn property(self, property: &str) -> Self {
+            Expression::Property(
+                PropertyAccess {
+                    expression: self.into(),
+                    property: PropertyName::literal(property),
+                }
+                .s(),
+            )
+            .s()
+        }
+    }
+
+    impl Variable {
+        /// Create a simple identifier variable
+        pub fn identifier(
+            name: &str,
+            init: Option<Spanned<Expression>>,
+        ) -> Spanned<Self> {
+            Self {
+                binding: Binding::Identifier(Identifier::new(name).s()),
+                init: init.map(Box::new),
+            }
+            .s()
+        }
+    }
+
+    impl PropertyName {
+        pub fn literal(name: &str) -> Spanned<Self> {
+            Self::Literal(Identifier::new(name).s()).s()
+        }
+    }
+
+    impl FunctionParameter {
+        /// A simple single-identifier parameter, with no default expression
+        pub fn identifier(name: &str) -> Spanned<Self> {
+            Self {
+                variable: Variable::identifier(name, None),
+                varargs: false,
+            }
+            .s()
+        }
+    }
 }

@@ -78,13 +78,14 @@ impl Process {
 
     /// Execute the loaded program and return its exported values
     pub fn execute(&self) -> Result<Exports, Error> {
-        // Exporting is available here because we're in the root scope
-        let mut thread_state =
-            ThreadState::new(self.globals.clone(), self, true);
+        let mut scope = self.globals.clone();
+        scope.subscope();
+        let mut thread_state = ThreadState::new(scope, self, true);
         self.program
             .ast()
             .exec(&mut thread_state)
             .map_err(|error| thread_state.qualify_error(error))?;
+        // Exporting is available here because we're in the root scope
         Ok(thread_state.into_exports().unwrap())
     }
 

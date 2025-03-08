@@ -198,3 +198,21 @@ impl_try_from_number!(u128, int);
 impl_try_from_number!(i128, int);
 impl_try_from_number!(f32, float);
 impl_try_from_number!(f64, float);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_case::test_case;
+
+    #[test_case(3i64, 7i64, 10i64; "int int")]
+    #[test_case(3i64, 7.0f64, 10.0f64; "int float")]
+    #[test_case(3.0f64, 7i64, 10.0f64; "float int")]
+    #[test_case(3.0f64, 7.0f64, 10.0f64; "float float")]
+    fn test_add(
+        a: impl Into<Number>,
+        b: impl Into<Number>,
+        expected: impl Into<Number>,
+    ) {
+        assert_eq!(a.into() + b.into(), expected.into());
+    }
+}

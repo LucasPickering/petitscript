@@ -390,7 +390,7 @@ impl Transform for ext::FnDecl {
                 name: Some(name.clone()),
                 parameters,
                 body,
-                captures: Vec::new(), // Will be filled out later
+                captures: [].into(), // Will be filled out later
             }
             .into_spanned(self.range().into()),
         );
@@ -438,7 +438,7 @@ impl Transform for ext::ArrowExpr {
                 name: None,
                 parameters,
                 body,
-                captures: Vec::new(), // Will be filled out later
+                captures: [].into(), // Will be filled out later
             }
             .into_spanned(self.range().into()),
         ))
@@ -456,7 +456,7 @@ impl Transform for ext::ParameterList {
             pattern: ext::Pattern,
         ) -> Result<Spanned<FunctionParameter>, Spanned<TransformError>>
         {
-            match dbg!(pattern) {
+            match pattern {
                 ext::Pattern::RestPattern(rest_pattern) => {
                     let pattern =
                         rest_pattern.pat().required(rest_pattern.range())?;
@@ -598,7 +598,16 @@ impl Transform for ext::Literal {
             // TODO undefined literal?
             ext::LiteralKind::Null => Literal::Null,
             ext::LiteralKind::Bool(b) => Literal::Boolean(b),
-            ext::LiteralKind::Number(f) => Literal::Float(f),
+            ext::LiteralKind::Number(f) => {
+                // rslint reports all numbers as floats. We want to convert
+                // anything without a '.' back to ints
+                if self.syntax().text().contains_char('.') {
+                    Literal::Float(f)
+                } else {
+                    // TODO handle floats that are too big
+                    Literal::Int(f as i64)
+                }
+            }
             ext::LiteralKind::BigInt(int) => Literal::Int(
                 int.try_into()
                     .or(unsupported(self.range(), "TODO", "TODO"))?,
@@ -721,8 +730,9 @@ impl Transform for ext::ObjectProp {
                     .transform_spanned()?;
                 Ok(ObjectProperty::Spread(expression))
             }
+            Self::Method(_) => todo!(),
             Self::InitializedProp(_) => todo!("what is this?"),
-            Self::Getter(_) | Self::Setter(_) | Self::Method(_) => {
+            Self::Getter(_) | Self::Setter(_) => {
                 todo!("not allowed")
             }
         }

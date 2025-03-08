@@ -378,7 +378,7 @@ impl From<JsString> for String {
 }
 
 /// Values exported from a module. This is the output of loading a module.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Exports {
     /// Default exported value
     pub default: Option<Value>,

@@ -108,7 +108,7 @@ impl Compiler<ParsedAst> {
 impl Compiler<LabelledAst> {
     fn capture(self) -> Compiler<CapturedAst> {
         let mut ast = self.program.0;
-        ast.walk(&mut CaptureFunctions);
+        ast.walk(&mut CaptureFunctions::new());
         Compiler {
             source: self.source,
             program: CapturedAst(ast),

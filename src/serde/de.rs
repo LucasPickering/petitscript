@@ -74,7 +74,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Function(function) => {
                 visitor.visit_map(&mut FunctionDeserializer::new(function))
             }
-            Value::Native(_) => todo!("not supported"),
+            Value::Native(_) => Err(ValueError::custom("TODO")),
         }
     }
 

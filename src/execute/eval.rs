@@ -13,7 +13,7 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::{Captures, Function, FunctionId},
+    function::{Function, FunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, iter, sync::Arc};
@@ -206,7 +206,13 @@ impl Evaluate for FunctionPointer {
                     .spanned_err(Span::default())?;
                 let name =
                     definition.name.as_ref().map(|name| name.data.to_string());
-                let captures = Captures::default(); // TODO
+
+                let scope = state.scope();
+                let captures = scope
+                    .captures(&definition.captures)
+                    // TODO use a real span
+                    .spanned_err(Span::default())?;
+
                 Ok(Function::new(id, name, captures).into())
             }
         }

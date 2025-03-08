@@ -1,5 +1,6 @@
 use crate::{
-    ast::{self, Binding},
+    ast::{Binding, Identifier},
+    function::Captures,
     value::Value,
     RuntimeError,
 };
@@ -16,8 +17,8 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// Create a new empty scope
-    pub fn new() -> Self {
+    /// Create a new empty global scope
+    pub fn global() -> Self {
         Self::default()
     }
 
@@ -60,7 +61,7 @@ impl Scope {
     /// in scope.
     pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
         match self.bindings.get(name) {
-            Some(value) => Ok(value),
+            Some(value) => Ok(value.clone()),
             None => {
                 if let Some(parent) = self.parent.as_ref() {
                     parent.get(name)
@@ -95,6 +96,34 @@ impl Scope {
             }
         }
     }
+
+    /// Capture values for a closure. For each given identifier that the closure
+    /// needs, grab its value. If the value is part of the global scope (either
+    /// the standard library or a native function), it will _not_ be captured.
+    /// The function must be executed in this same process, and therefore the
+    /// same global scope will be available.
+    ///
+    /// If an identifier is needed but not available, return an error. This
+    /// indicates a compiler bug. The compiler should ensure that any captured
+    /// names are available in a parent scope. An invalid reference here means
+    /// the compiler messed up.
+    pub fn captures(
+        &self,
+        identifiers: &[Identifier],
+    ) -> Result<Captures, RuntimeError> {
+        identifiers
+            .iter()
+            .map(|identifier| {
+                let name = identifier.as_str();
+                let value = self.get(name).map_err(|_| {
+                    RuntimeError::internal(format!(
+                        "Captured variable `{name}` not available in scope"
+                    ))
+                })?;
+                Ok((name.to_owned(), value))
+            })
+            .collect()
+    }
 }
 
 /// A set of unique names, each bound to a value. This is a flat map, with no
@@ -112,7 +141,7 @@ impl Bindings {
     }
 
     /// TODO
-    fn get(&self, name: &str) -> Option<Value> {
-        self.0.get(name).cloned()
+    fn get(&self, name: &str) -> Option<&Value> {
+        self.0.get(name)
     }
 }

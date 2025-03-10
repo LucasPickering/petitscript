@@ -5,7 +5,7 @@ use crate::{
     compile::FunctionDefinitionId,
     error::ValueError,
     execute::ProcessId,
-    function::{Captures, Function, FunctionId},
+    function::{Captures, Function, FunctionInner, UserFunctionId},
     serde::from_value,
     Array, IntoJs, Number, Object, Value,
 };
@@ -46,7 +46,6 @@ impl serde::Serialize for Value {
             Value::Object(object) => object.serialize(serializer),
             Value::Buffer(buffer) => buffer.serialize(serializer),
             Value::Function(function) => function.serialize(serializer),
-            Value::Native(_) => todo!("not supported?"),
         }
     }
 }
@@ -201,20 +200,24 @@ impl<'de> Deserialize<'de> for Number {
 }
 
 impl Function {
-    /// TODO
-    pub(super) const STRUCT_NAME: &'static str = "__JsFunction";
+    /// Value to use for the type field for user functions
+    pub(super) const TYPE_USER: &'static str = "__UserFunction";
+    /// Value to use for the type field for native functions
+    pub(super) const TYPE_NATIVE: &'static str = "__NativeFunction";
     /// A marker field to indicate that a map is actually a function definition.
     /// The value is always [Self::STRUCT_NAME]
     pub(super) const FIELD_TYPE: &'static str = "__type";
     pub(super) const FIELD_ID: &'static str = "id";
     pub(super) const FIELD_NAME: &'static str = "name";
     pub(super) const FIELD_CAPTURES: &'static str = "captures";
-    pub(super) const ALL_FIELDS: &'static [&'static str] = &[
+    pub(super) const USER_FIELDS: &'static [&'static str] = &[
         Self::FIELD_TYPE,
         Self::FIELD_ID,
         Self::FIELD_NAME,
         Self::FIELD_CAPTURES,
     ];
+    pub(super) const NATIVE_FIELDS: &'static [&'static str] =
+        &[Self::FIELD_TYPE, Self::FIELD_NAME];
 }
 
 impl Serialize for Function {
@@ -225,13 +228,28 @@ impl Serialize for Function {
         // A function is serialized as a struct. In most formats this ends up
         // being the same as a map. We'll distinguish it from an object during
         // deserialization by the __type field
-        let mut strct = serializer
-            .serialize_struct(Self::STRUCT_NAME, Self::ALL_FIELDS.len())?;
-        strct.serialize_field(Self::FIELD_TYPE, Self::STRUCT_NAME)?;
-        strct.serialize_field(Self::FIELD_ID, &self.id())?;
-        strct.serialize_field(Self::FIELD_NAME, &self.name())?;
-        strct.serialize_field(Self::FIELD_CAPTURES, self.captures())?;
-        strct.end()
+        match &self.0 {
+            FunctionInner::User { id, name, captures } => {
+                let mut strct = serializer.serialize_struct(
+                    Self::TYPE_USER,
+                    Self::USER_FIELDS.len(),
+                )?;
+                strct.serialize_field(Self::FIELD_TYPE, Self::TYPE_USER)?;
+                strct.serialize_field(Self::FIELD_ID, id)?;
+                strct.serialize_field(Self::FIELD_NAME, name)?;
+                strct.serialize_field(Self::FIELD_CAPTURES, captures)?;
+                strct.end()
+            }
+            FunctionInner::Native { name, .. } => {
+                let mut strct = serializer.serialize_struct(
+                    Self::TYPE_USER,
+                    Self::NATIVE_FIELDS.len(),
+                )?;
+                strct.serialize_field(Self::FIELD_TYPE, Self::TYPE_NATIVE)?;
+                strct.serialize_field(Self::FIELD_NAME, name)?;
+                strct.end()
+            }
+        }
     }
 }
 
@@ -243,7 +261,7 @@ impl<'de> Deserialize<'de> for Function {
         struct FunctionVisitor {
             /// This should always be set to [Function::STRUCT_NAME]
             type_: Field<String>,
-            id: Field<FunctionId>,
+            id: Field<UserFunctionId>,
             name: Field<Option<String>>,
             captures: Field<Captures>,
         }
@@ -252,7 +270,7 @@ impl<'de> Deserialize<'de> for Function {
             type Value = Function;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-                write!(f, "map with the fields {:?}", Function::ALL_FIELDS)
+                write!(f, "map with the fields {:?}", Function::USER_FIELDS)
             }
 
             fn visit_map<A>(
@@ -273,16 +291,22 @@ impl<'de> Deserialize<'de> for Function {
                         key => {
                             return Err(de::Error::unknown_field(
                                 key,
-                                Function::ALL_FIELDS,
+                                Function::USER_FIELDS,
                             ));
                         }
                     }
                 }
 
-                // Make sure it had the __type field, and it held our name
-                let type_ = self.type_.get()?;
-                if type_ != Function::STRUCT_NAME {
-                    return Err(de::Error::invalid_value(
+                // Make sure it had a valid __type field
+                match self.type_.get()?.as_str() {
+                    // If any of the fields weren't specified, fail here
+                    Function::TYPE_USER => Ok(Function::user(
+                        self.id.get()?,
+                        self.name.get()?,
+                        self.captures.get()?,
+                    )),
+                    Function::TYPE_NATIVE => todo!(),
+                    type_ => Err(de::Error::invalid_value(
                         Unexpected::Other(&format!(
                             "map with {} set to {type_}",
                             Function::FIELD_TYPE,
@@ -290,18 +314,11 @@ impl<'de> Deserialize<'de> for Function {
                         &format!(
                             "map with {} set to {}",
                             Function::FIELD_TYPE,
-                            Function::STRUCT_NAME
+                            Function::TYPE_USER
                         )
                         .as_str(),
-                    ));
+                    )),
                 }
-
-                // If any of the fields weren't specified, we'll fail here
-                Ok(Function::new(
-                    self.id.get()?,
-                    self.name.get()?,
-                    self.captures.get()?,
-                ))
             }
         }
 
@@ -316,7 +333,7 @@ impl<'de> Deserialize<'de> for Function {
     }
 }
 
-impl FunctionId {
+impl UserFunctionId {
     /// Pack this compound ID into a single u64 for serialization. The top 32
     /// bits are the process ID, bottom 32 bits are the function definition ID.
     /// It this a good idea? Who knows, but it's fun!
@@ -335,7 +352,7 @@ impl FunctionId {
     }
 }
 
-impl Serialize for FunctionId {
+impl Serialize for UserFunctionId {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -344,7 +361,7 @@ impl Serialize for FunctionId {
     }
 }
 
-impl<'de> Deserialize<'de> for FunctionId {
+impl<'de> Deserialize<'de> for UserFunctionId {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

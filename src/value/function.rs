@@ -12,86 +12,152 @@ use std::{
 /// PetitJS are closures, meaning they capture their environment when created,
 /// and references to outside variables may be used within the function body.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Function {
-    /// TODO
-    id: FunctionId,
-    /// The name is also contained in the function definition that the ID
-    /// points to, but we duplicate it here for easy access during
-    /// printing/debugging
-    name: Option<String>,
-    /// All external bound values captured by this function. It would be much
-    /// easier to just store a pointer to the parent's scope, but we need
-    /// functions to be serializable so we have to store the raw values
-    /// instead. This does not necessarily have to contain an entry for each
-    /// identifier captured in the function definition; if an entry is missing
-    /// and its referencing expression is reached, we'll throw a runtime error
-    /// as normal. Deferring the error to use time rather than capture time
-    /// should make it more intuitive.
-    captures: Captures,
-}
+pub struct Function(pub(crate) FunctionInner);
 
 impl Function {
-    /// TODO
-    pub(crate) fn new(
-        id: FunctionId,
+    /// Create a new function. A "user" function is a function defined in
+    /// PetitJS, as opposed to a "native" function that's defined in Rust.
+    pub(crate) fn user(
+        id: UserFunctionId,
         name: Option<String>,
         captures: Captures,
     ) -> Self {
-        Self { id, name, captures }
+        Self(FunctionInner::User { id, name, captures })
     }
 
-    /// TODO
-    pub(crate) fn id(&self) -> FunctionId {
-        self.id
+    /// Create a new native function. The function must have been predefined in
+    /// the engine. This is just a "pointer" to the function definition.
+    pub(crate) fn native(id: NativeFunctionId) -> Self {
+        Self(FunctionInner::Native { id, name: None })
     }
 
     /// TODO
     pub fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        match &self.0 {
+            FunctionInner::User { name, .. } => name.as_deref(),
+            FunctionInner::Native { name, .. } => name.as_deref(),
+        }
     }
 
-    /// TODO
-    pub fn captures(&self) -> &Captures {
-        &self.captures
-    }
-
-    /// TODO
-    #[cfg(feature = "serde")]
-    pub(crate) fn into_parts(self) -> (FunctionId, Option<String>, Captures) {
-        (self.id, self.name, self.captures)
+    pub fn set_name(&mut self, name: String) {
+        match &mut self.0 {
+            FunctionInner::User { name: n, .. } => *n = Some(name),
+            FunctionInner::Native { name: n, .. } => *n = Some(name),
+        }
     }
 }
 
 impl Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Function: {}]", self.name().unwrap_or("(anonymous)"))
+        let kind = match &self.0 {
+            FunctionInner::User { .. } => "user",
+            FunctionInner::Native { .. } => "native",
+        };
+        write!(
+            f,
+            "[Function: {} ({kind})]",
+            self.name().unwrap_or("(anonymous)")
+        )
     }
 }
 
-/// A unique ID for a function. TODO more info on uniqueness
+/// The implementation of a function, which is hidden from the external API
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum FunctionInner {
+    /// A function defined in PetitJS. User functions must be defined in code
+    /// and their definnitions interned at the program level during the
+    /// compilation process. Once a function _value_ is created, that function
+    /// can only be called within the process in which it was created.
+    User {
+        /// TODO
+        id: UserFunctionId,
+        /// The name is also contained in the function definition that the ID
+        /// points to, but we duplicate it here for easy access during
+        /// printing/debugging
+        name: Option<String>,
+        /// All external bound values captured by this function. It would be
+        /// much easier to just store a pointer to the parent's scope, but we
+        /// need functions to be serializable so we have to store the raw
+        /// values instead. This must contain a reference to every captured
+        /// identifier in the function definition; if an identifier is
+        /// referenced in the function but not available in the parent
+        /// scope, it won't be captured in either the definition or here. In
+        /// that case, it must either be provided by the global scope or we'll
+        /// hit a reference error.
+        captures: Captures,
+    },
+    /// A function defined in Rust. Native function definitions are interned at
+    /// the engine level. A native function _value_ can be called within any
+    /// process owned by the engine that contains the native function.
+    Native {
+        /// TODO
+        id: NativeFunctionId,
+        /// Display name for this function. This may not be available when the
+        /// function is created, but it should be set once the function is
+        /// bound to a value. This is for labelling purposes only; it does not
+        /// affect program behavior beyond its `toString()` output.
+        name: Option<String>,
+    },
+}
+
+/// A unique ID for a user function. This is unique only within the process that
+/// the function is defined and executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct FunctionId {
+pub(crate) struct UserFunctionId {
     pub process_id: ProcessId,
     pub definition_id: FunctionDefinitionId,
 }
 
-pub type Captures = IndexMap<String, Value>;
+/// A set of captured values for a closure
+pub(crate) type Captures = IndexMap<String, Value>;
+
+/// A pool of interned native function definitions. Each engine gets one pool.
+/// When a process is spawned, the pool is cloned so that subsequent additions
+/// to the pool are _not_ reflected in existing processes. The function
+/// definitions are wrapped
+#[derive(Clone, Debug, Default)]
+pub(crate) struct NativeFunctionTable(Vec<NativeFunctionDefinition>);
+
+impl NativeFunctionTable {
+    /// Look up a function definition by its ID. This is analagous to
+    /// derefencing a function pointer into the .text section
+    pub fn get(
+        &self,
+        id: NativeFunctionId,
+    ) -> Result<&NativeFunctionDefinition, RuntimeError> {
+        self.0.get(id.0 as usize).ok_or_else(|| todo!())
+    }
+
+    /// Add a new native function definition to the pool
+    pub fn register(
+        &mut self,
+        function: NativeFunctionDefinition,
+    ) -> NativeFunctionId {
+        let id = NativeFunctionId(self.0.len() as u64);
+        self.0.push(function);
+        id
+    }
+}
+
+/// TODO
+/// TODO namespace this by engine
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct NativeFunctionId(pub u64);
 
 /// TODO
 #[derive(Clone)]
-pub struct NativeFunction {
-    // TODO track name
+pub(crate) struct NativeFunctionDefinition(
     #[allow(clippy::type_complexity)]
-    function: Arc<
+    Arc<
         dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
             + Send
             + Sync,
     >,
-}
+);
 
-impl NativeFunction {
+impl NativeFunctionDefinition {
     /// TODO
-    pub(crate) fn new<F, Args, Out, Err>(f: F) -> Self
+    pub fn new<F, Args, Out, Err>(f: F) -> Self
     where
         F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
         Args: FromJsArgs,
@@ -105,9 +171,7 @@ impl NativeFunction {
             let output = f(process, args).map_err(Err::into)?;
             output.into_js().map_err(RuntimeError::Value)
         };
-        Self {
-            function: Arc::new(function),
-        }
+        Self(Arc::new(function))
     }
 
     /// Call this function
@@ -116,28 +180,20 @@ impl NativeFunction {
         process: &Process,
         args: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        (self.function)(process, args)
+        (self.0)(process, args)
     }
 }
 
-impl Display for NativeFunction {
+impl Debug for NativeFunctionDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[NativeFunction]")
+        f.debug_tuple("NativeFunction").field(&"..").finish()
     }
 }
 
-impl Debug for NativeFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("NativeFunction")
-            .field("function", &"...")
-            .finish()
-    }
-}
-
-impl PartialEq for NativeFunction {
+impl PartialEq for NativeFunctionDefinition {
     fn eq(&self, other: &Self) -> bool {
-        // If we both point to the same function, we're the same
-        Arc::ptr_eq(&self.function, &other.function)
+        // If we point to the same function, we're the same
+        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 

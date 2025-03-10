@@ -221,7 +221,7 @@ impl AstVisitor for CaptureFunctions {
     }
 }
 
-/// A table of all function definitions in a program. The definitions are
+/// A table of all user function definitions in a program. The definitions are
 /// moved to a single data struct in a process known as "lifting". This enables
 /// us to return function values to the user without having to copy or move the
 /// function's entire parameter and body definition.
@@ -252,7 +252,7 @@ impl FunctionTable {
     ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
         self.functions
             .get(id.0 as usize)
-            .ok_or_else(|| RuntimeError::UnknownFunction(id))
+            .ok_or_else(|| RuntimeError::UnknownUserFunction(id))
     }
 }
 

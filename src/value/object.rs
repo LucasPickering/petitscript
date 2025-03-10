@@ -22,9 +22,13 @@ impl Object {
     }
 
     /// TODO
-    pub fn insert(self, name: impl Into<String>, value: Value) -> Self {
+    pub fn insert(
+        self,
+        name: impl Into<String>,
+        value: impl Into<Value>,
+    ) -> Self {
         self.with_inner(|map| {
-            map.insert(name.into(), value);
+            map.insert(name.into(), value.into());
         })
     }
 

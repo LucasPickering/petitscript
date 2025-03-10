@@ -138,8 +138,8 @@ pub enum RuntimeError {
     Reference { name: String },
 
     /// TODO
-    #[error("Unknown function with definition ID {0:?}")]
-    UnknownFunction(FunctionDefinitionId),
+    #[error("Unknown user function with definition ID {0:?}")]
+    UnknownUserFunction(FunctionDefinitionId),
 
     /// Error converting to/from JS values
     #[error(transparent)]

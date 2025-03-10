@@ -43,12 +43,12 @@ macro_rules! impl_into_js {
 
 /// TODO
 macro_rules! ensure_type {
-    ($value:expr, $variant:ident, $type_variant:ident) => {
+    ($value:expr, $variant:ident) => {
         if let $crate::Value::$variant(value) = $value {
             value
         } else {
             return Err($crate::error::ValueError::Type {
-                expected: $crate::ValueType::$type_variant,
+                expected: $crate::ValueType::$variant,
                 actual: $value.type_(),
             });
         }
@@ -63,9 +63,8 @@ macro_rules! impl_from_js {
             fn from_js(
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {
-                let value = $crate::value::macros::ensure_type!(
-                    value, $variant, $variant
-                );
+                let value =
+                    $crate::value::macros::ensure_type!(value, $variant);
                 Ok(value.into())
             }
         }
@@ -76,9 +75,8 @@ macro_rules! impl_from_js {
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {
                 // Fallible in two ways: wrong type, or value conversion fails
-                let value = $crate::value::macros::ensure_type!(
-                    value, $variant, $variant
-                );
+                let value =
+                    $crate::value::macros::ensure_type!(value, $variant);
                 value.try_into()
             }
         }

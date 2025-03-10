@@ -13,7 +13,7 @@ use crate::{
         exec::{Execute, Terminate},
         ThreadState,
     },
-    function::{Function, FunctionId},
+    function::{Function, FunctionInner, UserFunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, iter, sync::Arc};
@@ -190,7 +190,7 @@ impl Evaluate for FunctionPointer {
             ))
             .spanned_err(definition.span),
             FunctionPointer::Lifted(definition_id) => {
-                let id = FunctionId {
+                let id = UserFunctionId {
                     process_id: state.process().id(),
                     definition_id: *definition_id,
                 };
@@ -213,7 +213,7 @@ impl Evaluate for FunctionPointer {
                     // TODO use a real span
                     .spanned_err(Span::default())?;
 
-                Ok(Function::new(id, name, captures).into())
+                Ok(Function::user(id, name, captures).into())
             }
         }
     }
@@ -233,9 +233,6 @@ impl Evaluate for Spanned<FunctionCall> {
 
         match function {
             Value::Function(function) => function.call(state, &arguments),
-            Value::Native(function) => function
-                .call(state.process(), arguments)
-                .spanned_err(self.span),
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
@@ -272,8 +269,7 @@ impl Evaluate for OptionalPropertyAccess {
             | Value::String(_)
             | Value::Array(_)
             | Value::Object(_)
-            | Value::Function(_)
-            | Value::Native(_) => todo!(),
+            | Value::Function(_) => todo!(),
             #[cfg(feature = "bytes")]
             Value::Buffer(_) => todo!(),
         }
@@ -328,51 +324,74 @@ impl Function {
         state: &mut ThreadState<'_>,
         arguments: &[Value],
     ) -> Result<Value, Spanned<RuntimeError>> {
-        let definition = Arc::clone(
-            state
-                .program()
-                .function_table()
-                .get(self.id().definition_id)
-                // TODO use a real span
-                .spanned_err(Span::default())?,
-        );
-        // Create a new scope based on the global namespace, with captured
-        // bindings applied
-        let mut scope = state.process().globals.clone().child();
-        for (name, value) in self.captures() {
-            scope.declare(name, value.clone());
-        }
+        match &self.0 {
+            FunctionInner::User { id, captures, .. } => {
+                let definition = Arc::clone(
+                    state
+                        .program()
+                        .function_table()
+                        .get(id.definition_id)
+                        // TODO use a real span
+                        .spanned_err(Span::default())?,
+                );
+                // Create a new scope based on the global namespace, with
+                // captured bindings applied
+                let mut scope = state.process().globals.clone().child();
+                for (name, value) in captures {
+                    scope.declare(name, value.clone());
+                }
 
-        // Add args to scope
-        // If we got fewer args than the function has defined, we'll pad it out
-        // with undefineds (or use the init expression defined in the func)
-        let args_iter = arguments
-            .iter()
-            .cloned()
-            .map(Some)
-            .chain(iter::repeat(None));
-        for (parameter, value) in definition.parameters.iter().zip(args_iter) {
-            let value = if let Some(value) = value {
-                value
-            } else if let Some(init) = &parameter.variable.init {
-                // If the arg wasn't given, fall back to the init expression
-                // TODO make sure previous args are available here
-                init.eval(state)?
-            } else {
-                // No init expression, use undefined
-                Value::Undefined
-            };
-            scope
-                .bind(&parameter.variable.binding, value)
-                .spanned_err(parameter.variable.span)?;
-        }
+                // Add args to scope
+                // If we got fewer args than the function has defined, we'll pad
+                // it out with undefineds (or use the init
+                // expression defined in the func)
+                let args_iter = arguments
+                    .iter()
+                    .cloned()
+                    .map(Some)
+                    .chain(iter::repeat(None));
+                for (parameter, value) in
+                    definition.parameters.iter().zip(args_iter)
+                {
+                    let value = if let Some(value) = value {
+                        value
+                    } else if let Some(init) = &parameter.variable.init {
+                        // If the arg wasn't given, fall back to the init
+                        // expression TODO make sure
+                        // previous args are available here
+                        init.eval(state)?
+                    } else {
+                        // No init expression, use undefined
+                        Value::Undefined
+                    };
+                    scope
+                        .bind(&parameter.variable.binding, value)
+                        .spanned_err(parameter.variable.span)?;
+                }
 
-        // Push the new frame onto the stack and execute the function body
-        state.with_frame(scope, |state| match definition.body.exec(state)? {
-            Some(Terminate::Return {
-                return_value: Some(return_value),
-            }) => Ok(return_value),
-            _ => Ok(Value::Undefined),
-        })
+                // Push the new frame onto the stack and execute the function
+                // body
+                state.with_frame(scope, |state| {
+                    match definition.body.exec(state)? {
+                        Some(Terminate::Return {
+                            return_value: Some(return_value),
+                        }) => Ok(return_value),
+                        _ => Ok(Value::Undefined),
+                    }
+                })
+            }
+            FunctionInner::Native { id, .. } => {
+                let definition = state
+                    .process()
+                    .native_functions
+                    .get(*id)
+                    // TODO correct span
+                    .spanned_err(Span::default())?;
+                definition
+                    // TODO pass slice
+                    .call(state.process(), arguments.to_owned())
+                    .spanned_err(Span::default()) // TODO span
+            }
+        }
     }
 }

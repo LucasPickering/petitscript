@@ -2,7 +2,7 @@
 
 use crate::{
     error::ValueError,
-    function::{Captures, Function, FunctionId},
+    function::{Captures, Function, UserFunctionId},
     IntoJs, Value,
 };
 use indexmap::IndexMap;
@@ -171,7 +171,7 @@ impl serde::Serializer for &Serializer {
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         // TODO explain
-        if name == Function::STRUCT_NAME {
+        if name == Function::TYPE_USER {
             Ok(SerializeStruct::Function {
                 id: None,
                 name: None,
@@ -354,7 +354,7 @@ impl ser::SerializeStructVariant for &Serializer {
 /// what name serialize_struct was called with
 pub enum SerializeStruct {
     Function {
-        id: Option<FunctionId>,
+        id: Option<UserFunctionId>,
         name: Option<String>,
         captures: Option<Captures>,
     },

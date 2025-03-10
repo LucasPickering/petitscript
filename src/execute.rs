@@ -7,10 +7,10 @@ mod state;
 use crate::{
     compile::Program,
     execute::{exec::Execute, state::ThreadState},
-    function::Function,
+    function::{Function, FunctionInner},
     scope::Scope,
     value::{Exports, Value},
-    Error,
+    Error, NativeFunctionTable,
 };
 use std::{
     any::{self, Any, TypeId},
@@ -25,6 +25,11 @@ pub struct Process {
     id: ProcessId,
     /// The program we'll be executing
     program: Arc<Program>,
+    /// Intern pool of native function definitions. This is read-only; native
+    /// functions can only be registered in the engine. Once a process is
+    /// spawned, new native functions cannot be added to it. Anything added to
+    /// the engine after spawning will not be reflected here.
+    native_functions: NativeFunctionTable,
     /// Global values available to the program, such as the stdlib and native
     /// functions provided by the user
     globals: Scope,
@@ -37,7 +42,11 @@ static_assertions::assert_impl_all!(Process: Send, Sync);
 
 impl Process {
     /// TODO
-    pub(super) fn new(globals: Scope, program: Program) -> Self {
+    pub(super) fn new(
+        native_functions: NativeFunctionTable,
+        globals: Scope,
+        program: Program,
+    ) -> Self {
         // Within a single OS process, each process ID will be unique
         static NEXT_ID: AtomicU32 = AtomicU32::new(0);
         let id = ProcessId(
@@ -47,6 +56,7 @@ impl Process {
         Self {
             id,
             program: program.into(),
+            native_functions,
             globals,
             app_data: AppData::default(),
         }
@@ -93,17 +103,21 @@ impl Process {
     pub fn call(
         &self,
         function: &Function,
-        args: &[Value],
+        arguments: &[Value],
     ) -> Result<Value, Error> {
-        if function.id().process_id != self.id {
-            todo!("error process ID mismatch")
+        // If this is a user function, make sure it belongs to this process.
+        // Native functions don't capture any values so they don't need this
+        if let Function(FunctionInner::User { id, .. }) = function {
+            if id.process_id != self.id {
+                todo!("error process ID mismatch")
+            }
         }
 
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
         function
-            .call(&mut thread_state, args)
+            .call(&mut thread_state, arguments)
             .map_err(|error| thread_state.qualify_error(error))
     }
 }

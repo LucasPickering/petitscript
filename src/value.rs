@@ -11,12 +11,12 @@ mod object;
 pub use array::Array;
 #[cfg(feature = "bytes")]
 pub use buffer::Buffer;
+pub use function::Function;
 pub use number::Number;
 pub use object::Object;
 
 use crate::{
     error::{RuntimeError, ValueError},
-    function::{Function, NativeFunction},
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
         impl_value_numeric_binary_op,
@@ -55,10 +55,8 @@ pub enum Value {
     /// An immutable byte buffer
     #[cfg(feature = "bytes")]
     Buffer(Buffer),
-    /// A function defined in PetitJS
+    /// TODO
     Function(Function),
-    /// A synchronous function defined in Rust
-    Native(NativeFunction),
 }
 
 #[cfg(test)]
@@ -73,10 +71,7 @@ impl Value {
             Self::Boolean(b) => *b,
             Self::Number(number) => number.to_bool(),
             Self::String(s) => !s.is_empty(),
-            Self::Array(_)
-            | Self::Object(_)
-            | Self::Function(_)
-            | Self::Native(_) => true,
+            Self::Array(_) | Self::Object(_) | Self::Function(_) => true,
             #[cfg(feature = "bytes")]
             Self::Buffer(_) => true,
         }
@@ -103,8 +98,7 @@ impl Value {
             Self::String(_)
             | Self::Array(_)
             | Self::Object(_)
-            | Self::Function(_)
-            | Self::Native(_) => None,
+            | Self::Function(_) => None,
             #[cfg(feature = "bytes")]
             Self::Buffer(_) => None,
         }
@@ -188,7 +182,7 @@ impl Value {
             Self::Object(_) => ValueType::Object,
             #[cfg(feature = "bytes")]
             Self::Buffer(_) => ValueType::Buffer,
-            Self::Function(_) | Self::Native(_) => ValueType::Function,
+            Self::Function(_) => ValueType::Function,
         }
     }
 
@@ -244,7 +238,6 @@ impl Display for Value {
             #[cfg(feature = "bytes")]
             Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
-            Self::Native(function) => write!(f, "{function}"),
         }
     }
 }
@@ -289,17 +282,9 @@ impl_value_conversions!(IndexMap<String, Value>, Object);
 impl_value_conversions!(Function, Function);
 
 // One-way conversions: `From<T> for Value`
-impl_value_from!(NativeFunction, Native);
 impl_value_from!(&str, String);
 impl_value_from!(char, String);
 impl_value_from!(Vec<Value>, Array);
-
-// Needed because this uses a different variant of ValueType for the error msg
-impl FromJs for NativeFunction {
-    fn from_js(value: Value) -> Result<Self, ValueError> {
-        Ok(ensure_type!(value, Native, Function))
-    }
-}
 
 /// Possible types for a value
 #[derive(Copy, Clone, Debug)]
@@ -444,7 +429,7 @@ impl FromJs for PathBuf {
 
 impl<T: FromJs> FromJs for Vec<T> {
     fn from_js(value: Value) -> Result<Self, ValueError> {
-        let array = ensure_type!(value, Array, Array);
+        let array = ensure_type!(value, Array);
         array.into_iter().map(T::from_js).collect()
     }
 }

@@ -2,22 +2,22 @@
 
 use crate::{
     error::RuntimeError, function::Varargs, scope::Scope, value::Object,
-    NativeFunction, Process,
+    Engine, Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
 /// recreated for every execution
-pub fn stdlib() -> Scope {
+pub fn stdlib(engine: &mut Engine) -> Scope {
     let mut scope = Scope::global();
-    scope.declare("console", console().into());
+    scope.declare("console", console(engine).into());
     scope
 }
 
 /// `console` module
-fn console() -> Object {
+fn console(engine: &mut Engine) -> Object {
     Object::default()
-        .insert("debug", NativeFunction::new(console_debug).into())
-        .insert("log", NativeFunction::new(console_log).into())
+        .insert("debug", engine.create_fn(console_debug))
+        .insert("log", engine.create_fn(console_log))
 }
 
 /// Log values to stdout

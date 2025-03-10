@@ -1,6 +1,6 @@
 use crate::{
     error::ValueError,
-    function::{Captures, Function, FunctionId},
+    function::{Function, FunctionInner},
     Array, Number, Object, Value,
 };
 use indexmap::IndexMap;
@@ -9,7 +9,7 @@ use serde::de::{
     value::{StrDeserializer, StringDeserializer, U64Deserializer},
     Deserializer as _, Error as _, IntoDeserializer,
 };
-use std::fmt::Display;
+use std::{fmt::Display, mem};
 
 impl de::Error for ValueError {
     fn custom<T: Display>(msg: T) -> Self {
@@ -74,7 +74,6 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Function(function) => {
                 visitor.visit_map(&mut FunctionDeserializer::new(function))
             }
-            Value::Native(_) => Err(ValueError::custom("TODO")),
         }
     }
 
@@ -306,25 +305,26 @@ impl<'de> de::EnumAccess<'de> for EnumDeserializer {
     }
 }
 
-/// TODO
+/// Deserialize a [Function]. It will be converted into a serde map. Generally
+/// this is only useful if deserializing back into the [Function] type on the
+/// other side.
 struct FunctionDeserializer {
-    id: FunctionId,
-    /// If this is None, it's because we started with no name OR we had one but
-    /// it's been emitted
-    name: Option<String>,
-    /// This is an option because we hold it until it's emitted
-    captures: Option<Captures>,
-    /// Index of the next field to emit in [Function::ALL_FIELDS]
+    fields: &'static [&'static str],
+    /// TODO
+    function: FunctionInner,
+    /// Index of the next field to emit in `fields`
     next_field: usize,
 }
 
 impl FunctionDeserializer {
     fn new(function: Function) -> Self {
-        let (id, name, captures) = function.into_parts();
+        let fields = match &function.0 {
+            FunctionInner::User { .. } => Function::USER_FIELDS,
+            FunctionInner::Native { .. } => Function::NATIVE_FIELDS,
+        };
         Self {
-            id,
-            name,
-            captures: Some(captures),
+            fields,
+            function: function.0,
             next_field: 0,
         }
     }
@@ -342,7 +342,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         K: de::DeserializeSeed<'de>,
     {
         // Emit the next field in the sequence
-        let Some(field) = Function::ALL_FIELDS.get(self.next_field) else {
+        let Some(field) = self.fields.get(self.next_field) else {
             return Ok(None);
         };
         seed.deserialize(StrDeserializer::new(field)).map(Some)
@@ -352,21 +352,34 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
     where
         V: de::DeserializeSeed<'de>,
     {
-        let field = Function::ALL_FIELDS
+        let field = self
+            .fields
             .get(self.next_field)
             .ok_or_else(|| ValueError::custom("TODO impossible"))?;
         self.next_field += 1;
         match *field {
             Function::FIELD_TYPE => {
                 // Emit "__type": "__JsFunction"
-                seed.deserialize(StrDeserializer::new(Function::STRUCT_NAME))
+                let type_ = match &self.function {
+                    FunctionInner::User { .. } => Function::TYPE_USER,
+                    FunctionInner::Native { .. } => Function::TYPE_NATIVE,
+                };
+                seed.deserialize(StrDeserializer::new(type_))
             }
             Function::FIELD_ID => {
-                // Pack the ID into a single u64
-                seed.deserialize(U64Deserializer::new(self.id.pack()))
+                // Pack ID as a u64
+                let id = match &self.function {
+                    FunctionInner::User { id, .. } => id.pack(),
+                    FunctionInner::Native { id, .. } => id.0,
+                };
+                seed.deserialize(U64Deserializer::new(id))
             }
             Function::FIELD_NAME => {
-                if let Some(name) = self.name.take() {
+                let name = match &mut self.function {
+                    FunctionInner::User { name, .. }
+                    | FunctionInner::Native { name, .. } => name.take(),
+                };
+                if let Some(name) = name {
                     seed.deserialize(StringDeserializer::new(name))
                 } else {
                     // TODO this probably isn't right - we should serialize
@@ -375,10 +388,14 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
                 }
             }
             Function::FIELD_CAPTURES => {
-                if let Some(captures) = self.captures.take() {
-                    seed.deserialize(captures.into_deserializer())
-                } else {
-                    todo!("error!")
+                // We shouldn't ever hit this case for a native fn
+                match &mut self.function {
+                    FunctionInner::User { captures, .. } => {
+                        let captures = mem::take(captures);
+                        seed.deserialize(captures.into_deserializer())
+                    }
+                    // We should never emit this field for a native fn
+                    FunctionInner::Native { .. } => todo!("error!"),
                 }
             }
             _ => todo!(),
@@ -386,6 +403,6 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
     }
 
     fn size_hint(&self) -> Option<usize> {
-        Some(Function::ALL_FIELDS.len() - self.next_field)
+        Some(Function::USER_FIELDS.len() - self.next_field)
     }
 }

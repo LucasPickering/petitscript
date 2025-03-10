@@ -73,7 +73,7 @@ mod tests {
     use crate::{
         compile::FunctionDefinitionId,
         execute::ProcessId,
-        function::{Function, FunctionId},
+        function::{Function, UserFunctionId},
     };
     use indexmap::indexmap;
     use test_case::test_case;
@@ -98,8 +98,8 @@ mod tests {
         "b".to_owned() => 32.into(),
         "c".to_owned() => indexmap! {"d".to_owned() => true.into()}.into()
     }; "object")]
-    #[test_case(Function::new(
-        FunctionId {
+    #[test_case(Function::user(
+        UserFunctionId {
             process_id: ProcessId(0),
             definition_id: FunctionDefinitionId(0),
         },

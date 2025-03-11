@@ -21,6 +21,17 @@ impl Object {
             .unwrap_or(&Value::Undefined)
     }
 
+    /// Get the number of entries in this object
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if this object has any entries
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// TODO
     pub fn insert(
         self,

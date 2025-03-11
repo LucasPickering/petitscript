@@ -259,7 +259,7 @@ impl<'de> Deserialize<'de> for Function {
         D: serde::Deserializer<'de>,
     {
         struct FunctionVisitor {
-            /// This should always be set to [Function::STRUCT_NAME]
+            /// [Function::TYPE_USER] or [Function::TYPE_NATIVE]
             type_: Field<String>,
             id: Field<UserFunctionId>,
             name: Field<Option<String>>,

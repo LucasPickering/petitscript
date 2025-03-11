@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use serde::de::{
     self,
     value::{StrDeserializer, StringDeserializer, U64Deserializer},
-    Deserializer as _, Error as _, IntoDeserializer,
+    Deserializer as _, Error as _, IntoDeserializer, Unexpected,
 };
 use std::{fmt::Display, mem};
 
@@ -120,14 +120,31 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
         V: de::Visitor<'de>,
     {
         match self.value {
-            Value::Undefined | Value::Null => {
-                todo!("deserialize unit enum")
-            }
             Value::Object(object) => {
                 // Deserialize an externally tagged enum
-                visitor.visit_enum(EnumDeserializer::new(object))
+                let mut map: IndexMap<_, _> = object.into();
+                // We expect a map with exactly one entry: {key: value}
+                if map.len() != 1 {
+                    return Err(de::Error::invalid_length(
+                        map.len(),
+                        &"map of length 1 for an externally tagged enum",
+                    ));
+                }
+                let (variant, value) = map.swap_remove_index(0).unwrap();
+                visitor.visit_enum(EnumDeserializer {
+                    variant,
+                    value: Some(value),
+                })
             }
-            _ => todo!("expected enum"),
+            Value::String(variant) => visitor.visit_enum(EnumDeserializer {
+                variant: variant.into(),
+                value: None,
+            }),
+            _ => Err(de::Error::invalid_type(
+                // TODO break this out into different variants of Unexpected
+                Unexpected::Other("TODO"),
+                &"string or object",
+            )),
         }
     }
 
@@ -272,36 +289,98 @@ impl<'de> de::MapAccess<'de> for MapDeserializer {
     }
 }
 
+/// Deserialize an enum
 struct EnumDeserializer {
-    map: IndexMap<String, Value>,
-}
-
-impl EnumDeserializer {
-    fn new(object: Object) -> Self {
-        Self { map: object.into() }
-    }
+    variant: String,
+    value: Option<Value>,
 }
 
 impl<'de> de::EnumAccess<'de> for EnumDeserializer {
     type Error = ValueError;
-    type Variant = Deserializer;
+    type Variant = VariantDeserializer;
 
     fn variant_seed<V>(
-        mut self,
+        self,
         seed: V,
     ) -> Result<(V::Value, Self::Variant), Self::Error>
     where
         V: de::DeserializeSeed<'de>,
     {
-        // Enums should be externally tagged values in an object, like:
-        // {key: value}
-        // So grab the first key in the object, and deserialize its value
-        let (key, value) = self
-            .map
-            .swap_remove_index(0)
-            .ok_or_else(|| ValueError::custom("TODO"))?;
-        let key = seed.deserialize(Value::from(key).into_deserializer())?;
-        Ok((key, value.into_deserializer()))
+        let key =
+            seed.deserialize(Value::from(self.variant).into_deserializer())?;
+        Ok((key, VariantDeserializer { value: self.value }))
+    }
+}
+
+/// Deserialize an enum variant value
+struct VariantDeserializer {
+    value: Option<Value>,
+}
+
+impl<'de> de::VariantAccess<'de> for VariantDeserializer {
+    type Error = ValueError;
+
+    fn unit_variant(self) -> Result<(), Self::Error> {
+        match self.value {
+            Some(_) => Err(de::Error::invalid_type(
+                de::Unexpected::NewtypeVariant,
+                &"unit variant",
+            )),
+            None => Ok(()),
+        }
+    }
+
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        match self.value {
+            Some(value) => seed.deserialize(value.into_deserializer()),
+            None => Err(de::Error::invalid_type(
+                de::Unexpected::UnitVariant,
+                &"newtype variant",
+            )),
+        }
+    }
+
+    fn tuple_variant<V>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        match self.value {
+            Some(value) => serde::Deserializer::deserialize_seq(
+                value.into_deserializer(),
+                visitor,
+            ),
+            None => Err(de::Error::invalid_type(
+                de::Unexpected::UnitVariant,
+                &"tuple variant",
+            )),
+        }
+    }
+
+    fn struct_variant<V>(
+        self,
+        _fields: &'static [&'static str],
+        visitor: V,
+    ) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        match self.value {
+            Some(value) => serde::Deserializer::deserialize_map(
+                value.into_deserializer(),
+                visitor,
+            ),
+            None => Err(de::Error::invalid_type(
+                de::Unexpected::UnitVariant,
+                &"struct variant",
+            )),
+        }
     }
 }
 

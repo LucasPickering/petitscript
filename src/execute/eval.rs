@@ -388,8 +388,7 @@ impl Function {
                     // TODO correct span
                     .spanned_err(Span::default())?;
                 definition
-                    // TODO pass slice
-                    .call(state.process(), arguments.to_owned())
+                    .call(state.process(), arguments)
                     .spanned_err(Span::default()) // TODO span
             }
         }

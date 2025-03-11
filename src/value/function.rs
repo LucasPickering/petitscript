@@ -149,9 +149,7 @@ pub(crate) struct NativeFunctionId(pub u64);
 pub(crate) struct NativeFunctionDefinition(
     #[allow(clippy::type_complexity)]
     Arc<
-        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
-            + Send
-            + Sync,
+        dyn Fn(&Process, &[Value]) -> Result<Value, RuntimeError> + Send + Sync,
     >,
 );
 
@@ -165,9 +163,9 @@ impl NativeFunctionDefinition {
         Err: Into<RuntimeError>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        // TODO take &'a [Value] instead?
-        let function = move |process: &Process, args: Vec<Value>| {
-            let args = Args::from_js_args(&args)?;
+        let function = move |process: &Process, args: &[Value]| {
+            // TODO add error context
+            let args = Args::from_js_args(args)?;
             let output = f(process, args).map_err(Err::into)?;
             output.into_js().map_err(RuntimeError::Value)
         };
@@ -178,7 +176,7 @@ impl NativeFunctionDefinition {
     pub(crate) fn call(
         &self,
         process: &Process,
-        args: Vec<Value>,
+        args: &[Value],
     ) -> Result<Value, RuntimeError> {
         (self.0)(process, args)
     }

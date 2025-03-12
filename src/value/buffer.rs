@@ -6,7 +6,7 @@ use std::{
 };
 
 /// A reference-counted immutable byte buffer. This type _cannot_ be constructed
-/// from PetitJS code; it must originate in native code. This uses
+/// from PetitScript code; it must originate in native code. This uses
 /// [bytes::Bytes] for the internal storage type, because it enables fast and
 /// efficient sharing of bytes, and is commonly used throughout the Rust
 /// ecosystem.
@@ -78,6 +78,6 @@ impl_value_conversions!(Bytes, Buffer);
 // One-way conversions
 impl_value_from!(&[u8], Buffer); // Can't convert back to ref
 
-// `FromJs for Vec<u8>` conflicts with the blanket impl `From<Vec<T>>` impl.
-// Since this is a special feature, users will have to use Bytes for FromJs
+// `FromPs for Vec<u8>` conflicts with the blanket impl `From<Vec<T>>` impl.
+// Since this is a special feature, users will have to use Bytes for FromPs
 impl_value_from!(Vec<u8>, Buffer);

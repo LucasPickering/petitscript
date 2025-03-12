@@ -47,7 +47,7 @@ pub enum Value {
     /// A float or integer
     Number(Number),
     /// A string of UTF-8 characters
-    String(JsString),
+    String(PsString),
     /// An ordered list
     Array(Array),
     /// An ordered key-value mapping
@@ -106,7 +106,7 @@ impl Value {
 
     /// If this value is a string, get the inner string. Otherwise return a type
     /// error.
-    pub fn try_into_string(self) -> Result<JsString, ValueError> {
+    pub fn try_into_string(self) -> Result<PsString, ValueError> {
         if let Self::String(string) = self {
             Ok(string)
         } else {
@@ -217,10 +217,10 @@ impl Value {
         }
     }
 
-    /// Convert this value into an arbitrary type, using the type's [FromJs]
+    /// Convert this value into an arbitrary type, using the type's [FromPs]
     /// implementation
-    pub fn into_todo<T: FromJs>(self) -> Result<T, ValueError> {
-        T::from_js(self)
+    pub fn into_todo<T: FromPs>(self) -> Result<T, ValueError> {
+        T::from_ps(self)
     }
 }
 
@@ -260,21 +260,21 @@ impl_value_numeric_binary_op!(Mul, mul, *);
 impl_value_numeric_binary_op!(Div, div, /);
 impl_value_numeric_binary_op!(Rem, rem, %);
 
-// Two-way conversions: `From<T> for Value` and `FromJs for T``
+// Two-way conversions: `From<T> for Value` and `FromPs for T``
 impl_value_conversions!(bool, Boolean);
 impl_value_conversions!(Number, Number);
-impl_value_conversions!(i8, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(u8, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(i16, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(u16, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(i32, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(u32, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(i64, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(u64, Number, to_js: fallible, from_js: fallible);
-impl_value_conversions!(i128, Number, to_js: fallible, from_js: fallible);
-impl_value_conversions!(u128, Number, to_js: fallible, from_js: fallible);
-impl_value_conversions!(f32, Number, to_js: infallible, from_js: fallible);
-impl_value_conversions!(f64, Number, to_js: infallible, from_js: fallible);
+impl_value_conversions!(i8, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(u8, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(i16, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(u16, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(i32, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(u32, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(i64, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(u64, Number, to_ps: fallible, from_ps: fallible);
+impl_value_conversions!(i128, Number, to_ps: fallible, from_ps: fallible);
+impl_value_conversions!(u128, Number, to_ps: fallible, from_ps: fallible);
+impl_value_conversions!(f32, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(f64, Number, to_ps: infallible, from_ps: fallible);
 impl_value_conversions!(String, String);
 impl_value_conversions!(Array, Array);
 impl_value_conversions!(Object, Object);
@@ -319,9 +319,9 @@ impl Display for ValueType {
 /// A reference-counted immutable string
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct JsString(Arc<str>);
+pub struct PsString(Arc<str>);
 
-impl Deref for JsString {
+impl Deref for PsString {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -329,32 +329,32 @@ impl Deref for JsString {
     }
 }
 
-impl Display for JsString {
+impl Display for PsString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl From<char> for JsString {
+impl From<char> for PsString {
     fn from(value: char) -> Self {
         Self(value.to_string().into())
     }
 }
 
-impl From<&str> for JsString {
+impl From<&str> for PsString {
     fn from(value: &str) -> Self {
         Self(value.into())
     }
 }
 
-impl From<String> for JsString {
+impl From<String> for PsString {
     fn from(value: String) -> Self {
         Self(value.into())
     }
 }
 
-impl From<JsString> for String {
-    fn from(string: JsString) -> Self {
+impl From<PsString> for String {
+    fn from(string: PsString) -> Self {
         // It'd be nice to be able to reuse the allocated string if we own the
         // last copy of the wrapping Arc, but I can't find a way to do that
         // since str is unsized, so we have to clone all the data
@@ -384,24 +384,24 @@ impl Display for Exports {
 }
 
 /// Trait for converting values into [Value]
-pub trait IntoJs {
-    fn into_js(self) -> Result<Value, ValueError>;
+pub trait IntoPs {
+    fn into_ps(self) -> Result<Value, ValueError>;
 }
 
-impl<T: Into<Value>> IntoJs for T {
-    fn into_js(self) -> Result<Value, ValueError> {
+impl<T: Into<Value>> IntoPs for T {
+    fn into_ps(self) -> Result<Value, ValueError> {
         Ok(self.into())
     }
 }
 
-impl IntoJs for () {
-    fn into_js(self) -> Result<Value, ValueError> {
+impl IntoPs for () {
+    fn into_ps(self) -> Result<Value, ValueError> {
         Ok(Value::Undefined)
     }
 }
 
-impl IntoJs for PathBuf {
-    fn into_js(self) -> Result<Value, ValueError> {
+impl IntoPs for PathBuf {
+    fn into_ps(self) -> Result<Value, ValueError> {
         // Attempt to convert the path to UTF-8
         let string =
             String::from_utf8(self.into_os_string().into_encoded_bytes())?;
@@ -410,26 +410,26 @@ impl IntoJs for PathBuf {
 }
 
 /// Trait for converting values from [Value]
-pub trait FromJs: Sized {
-    fn from_js(value: Value) -> Result<Self, ValueError>;
+pub trait FromPs: Sized {
+    fn from_ps(value: Value) -> Result<Self, ValueError>;
 }
 
-impl<T: From<Value>> FromJs for T {
-    fn from_js(value: Value) -> Result<Self, ValueError> {
+impl<T: From<Value>> FromPs for T {
+    fn from_ps(value: Value) -> Result<Self, ValueError> {
         Ok(value.into())
     }
 }
 
-impl FromJs for PathBuf {
-    fn from_js(value: Value) -> Result<Self, ValueError> {
+impl FromPs for PathBuf {
+    fn from_ps(value: Value) -> Result<Self, ValueError> {
         let string: String = value.into_todo()?;
         Ok(string.into())
     }
 }
 
-impl<T: FromJs> FromJs for Vec<T> {
-    fn from_js(value: Value) -> Result<Self, ValueError> {
+impl<T: FromPs> FromPs for Vec<T> {
+    fn from_ps(value: Value) -> Result<Self, ValueError> {
         let array = ensure_type!(value, Array);
-        array.into_iter().map(T::from_js).collect()
+        array.into_iter().map(T::from_ps).collect()
     }
 }

@@ -438,7 +438,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         self.next_field += 1;
         match *field {
             Function::FIELD_TYPE => {
-                // Emit "__type": "__JsFunction"
+                // Emit "__type": "<type>"
                 let type_ = match &self.function {
                     FunctionInner::User { .. } => Function::TYPE_USER,
                     FunctionInner::Native { .. } => Function::TYPE_NATIVE,

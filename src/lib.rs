@@ -16,8 +16,8 @@ pub use crate::{
     error::Error,
     execute::Process,
     value::{
-        function, Array, Exports, FromJs, Function, IntoJs, JsString, Number,
-        Object, Value, ValueType,
+        function, Array, Exports, FromPs, Function, IntoPs, Number, Object,
+        PsString, Value, ValueType,
     },
 };
 
@@ -26,12 +26,12 @@ use crate::{
     scope::Scope,
     stdlib::stdlib,
     value::function::{
-        FromJsArgs, NativeFunctionDefinition, NativeFunctionTable,
+        FromPsArgs, NativeFunctionDefinition, NativeFunctionTable,
     },
 };
 
-/// The main entrypoint for executing and evaluating PetitJS programs. An engine
-/// defines how code should be executed. TODO more
+/// The main entrypoint for executing and evaluating PetitScript programs. An
+/// engine defines how code should be executed. TODO more
 #[derive(Clone, Debug)]
 pub struct Engine {
     /// Global values available to all code execution. This includes both the
@@ -63,7 +63,7 @@ impl Engine {
 
     /// Register a value in the global namespace. This will be made available
     /// to all code executed in this engine. This can be used to register
-    /// anything that implements [IntoJs], including primitive values and
+    /// anything that implements [IntoPs], including primitive values and
     /// objects. To register native functions, use
     /// [register_fn](Self::register_fn) instead.
     pub fn register_global(&mut self, name: impl ToString, value: Value) {
@@ -71,15 +71,15 @@ impl Engine {
     }
 
     /// Register a Rust function as a global, allowing it to be used within
-    /// PetitJS programs
+    /// PetitScript programs
     pub fn register_fn<F, Args, Out, Err>(
         &mut self,
         name: impl ToString,
         function: F,
     ) where
         F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
-        Args: FromJsArgs,
-        Out: IntoJs,
+        Args: FromPsArgs,
+        Out: IntoPs,
         Err: Into<RuntimeError>,
     {
         let mut function = self.create_fn(function);
@@ -90,12 +90,12 @@ impl Engine {
 
     /// Add a Rust native function to the engine, but do *not* register it in
     /// the global namespace. The function will be returned instead, and can be
-    /// used as a JS value anywhere.
+    /// used as a PS value anywhere.
     pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
     where
         F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
-        Args: FromJsArgs,
-        Out: IntoJs,
+        Args: FromPsArgs,
+        Out: IntoPs,
         Err: Into<RuntimeError>,
     {
         let id = self

@@ -7,7 +7,7 @@ use crate::{
     execute::ProcessId,
     function::{Captures, Function, FunctionInner, UserFunctionId},
     serde::from_value,
-    Array, IntoJs, Number, Object, Value,
+    Array, IntoPs, Number, Object, Value,
 };
 use serde::{
     de::{
@@ -96,7 +96,7 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                i.into_js().map_err(|_| todo!())
+                i.into_ps().map_err(|_| todo!())
             }
 
             fn visit_f64<E>(self, f: f64) -> Result<Self::Value, E>

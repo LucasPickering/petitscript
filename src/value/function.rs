@@ -1,6 +1,6 @@
 use crate::{
     compile::FunctionDefinitionId, error::RuntimeError, execute::ProcessId,
-    value::Value, FromJs, IntoJs, Process,
+    value::Value, FromPs, IntoPs, Process,
 };
 use indexmap::IndexMap;
 use std::{
@@ -9,14 +9,15 @@ use std::{
 };
 
 /// An executable function, bound to a specific program. All functions in
-/// PetitJS are closures, meaning they capture their environment when created,
-/// and references to outside variables may be used within the function body.
+/// PetitScript are closures, meaning they capture their environment when
+/// created, and references to outside variables may be used within the function
+/// body.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function(pub(crate) FunctionInner);
 
 impl Function {
     /// Create a new function. A "user" function is a function defined in
-    /// PetitJS, as opposed to a "native" function that's defined in Rust.
+    /// PetitScript, as opposed to a "native" function that's defined in Rust.
     pub(crate) fn user(
         id: UserFunctionId,
         name: Option<String>,
@@ -64,10 +65,11 @@ impl Display for Function {
 /// The implementation of a function, which is hidden from the external API
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum FunctionInner {
-    /// A function defined in PetitJS. User functions must be defined in code
-    /// and their definnitions interned at the program level during the
-    /// compilation process. Once a function _value_ is created, that function
-    /// can only be called within the process in which it was created.
+    /// A function defined in PetitScript. User functions must be defined in
+    /// code and their definnitions interned at the program level during
+    /// the compilation process. Once a function _value_ is created, that
+    /// function can only be called within the process in which it was
+    /// created.
     User {
         /// TODO
         id: UserFunctionId,
@@ -158,16 +160,16 @@ impl NativeFunctionDefinition {
     pub fn new<F, Args, Out, Err>(f: F) -> Self
     where
         F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
-        Args: FromJsArgs,
-        Out: IntoJs,
+        Args: FromPsArgs,
+        Out: IntoPs,
         Err: Into<RuntimeError>,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
         let function = move |process: &Process, args: &[Value]| {
             // TODO add error context
-            let args = Args::from_js_args(args)?;
+            let args = Args::from_ps_args(args)?;
             let output = f(process, args).map_err(Err::into)?;
-            output.into_js().map_err(RuntimeError::Value)
+            output.into_ps().map_err(RuntimeError::Value)
         };
         Self(Arc::new(function))
     }
@@ -199,12 +201,12 @@ impl PartialEq for NativeFunctionDefinition {
 pub struct Varargs(pub Vec<Value>);
 
 /// TODO
-pub trait FromJsArgs: Sized {
-    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError>;
+pub trait FromPsArgs: Sized {
+    fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
-/// convert each one according to its FromJs impl, then pass them all to a
+/// convert each one according to its FromPs impl, then pass them all to a
 /// function
 macro_rules! call_fn {
     // Entrypoint - pass a function you want called, the array of arguments to
@@ -236,57 +238,57 @@ macro_rules! call_fn {
     };
 }
 
-/// Generate an implementation of FromJsArgs for a fixed number of arguments
-macro_rules! impl_from_js_args {
+/// Generate an implementation of FromPsArgs for a fixed number of arguments
+macro_rules! impl_from_ps_args {
     ($($arg_types:ident),*) => {
-        impl<'a, $($arg_types,)*> FromJsArgs for ($($arg_types,)*)
-            where $($arg_types: FromJs,)*
+        impl<'a, $($arg_types,)*> FromPsArgs for ($($arg_types,)*)
+            where $($arg_types: FromPs,)*
         {
-            fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
+            fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError> {
                 Ok(call_fn!(args, ($($arg_types,)*)))
             }
         }
     };
 }
 
-impl FromJsArgs for () {
-    fn from_js_args(_: &[Value]) -> Result<Self, RuntimeError> {
+impl FromPsArgs for () {
+    fn from_ps_args(_: &[Value]) -> Result<Self, RuntimeError> {
         Ok(())
     }
 }
 
 /// TODO
-impl FromJsArgs for Varargs {
-    fn from_js_args(values: &[Value]) -> Result<Self, RuntimeError> {
+impl FromPsArgs for Varargs {
+    fn from_ps_args(values: &[Value]) -> Result<Self, RuntimeError> {
         // TODO remove clones
         Ok(Self(values.to_owned()))
     }
 }
 
 /// Special case implementation: a single argument doesn't need a tuple wrapper
-impl<T0: FromJs> FromJsArgs for T0 {
-    fn from_js_args(args: &[Value]) -> Result<Self, RuntimeError> {
+impl<T0: FromPs> FromPsArgs for T0 {
+    fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError> {
         let arg0 = get_arg(args, 0)?;
         Ok(arg0)
     }
 }
 
-impl_from_js_args!(T0);
-impl_from_js_args!(T0, T1);
-impl_from_js_args!(T0, T1, T2);
-impl_from_js_args!(T0, T1, T2, T3);
-impl_from_js_args!(T0, T1, T2, T3, T4);
-impl_from_js_args!(T0, T1, T2, T3, T4, T5);
-impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6);
-impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7);
-impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
-impl_from_js_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+impl_from_ps_args!(T0);
+impl_from_ps_args!(T0, T1);
+impl_from_ps_args!(T0, T1, T2);
+impl_from_ps_args!(T0, T1, T2, T3);
+impl_from_ps_args!(T0, T1, T2, T3, T4);
+impl_from_ps_args!(T0, T1, T2, T3, T4, T5);
+impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6);
+impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7);
+impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
+impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 
 /// Helper to get a particular arg from the array and convert it to a static
 /// type
-fn get_arg<T: FromJs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
-    // If the arg is missing, use undefined instead to mirror JS semantics
-    // TODO remove clone? we'd have to make FromJs take &Value
+fn get_arg<T: FromPs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
+    // If the arg is missing, use undefined instead to mirror PS semantics
+    // TODO remove clone? we'd have to make FromPs take &Value
     let value = args.get(index).cloned().unwrap_or_default();
-    Ok(T::from_js(value)?)
+    Ok(T::from_ps(value)?)
 }

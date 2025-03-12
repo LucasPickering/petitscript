@@ -3,7 +3,7 @@
 use crate::{
     error::ValueError,
     function::{Captures, Function, UserFunctionId},
-    IntoJs, Value,
+    IntoPs, Value,
 };
 use indexmap::IndexMap;
 use serde::ser;
@@ -28,12 +28,12 @@ macro_rules! serialize_into {
     };
 }
 
-/// Serialize a `T` into `Value` using its `IntoJs` impl
+/// Serialize a `T` into `Value` using its `IntoPs` impl
 macro_rules! serialize_into_fallible {
     ($name:ident, $t:ty) => {
         #[inline]
         fn $name(self, value: $t) -> Result<Value, ValueError> {
-            value.into_js()
+            value.into_ps()
         }
     };
 }

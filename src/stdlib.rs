@@ -1,4 +1,4 @@
-//! The PetitJS standard library
+//! The PetitScript standard library
 
 use crate::{
     error::RuntimeError, function::Varargs, scope::Scope, value::Object,

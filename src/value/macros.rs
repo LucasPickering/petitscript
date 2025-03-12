@@ -28,13 +28,13 @@ macro_rules! impl_value_from {
     };
 }
 
-/// Implement `IntoJs` for a type `T`, where `T` is fallibly convertibale to a
+/// Implement `IntoPs` for a type `T`, where `T` is fallibly convertibale to a
 /// a particular variant. This is only useful for fallible conversions;
-/// infallible converts are already covered by a blanket implement of `IntoJs`
-macro_rules! impl_into_js {
+/// infallible converts are already covered by a blanket implement of `IntoPs`
+macro_rules! impl_into_ps {
     ($type:ty, $variant:ident) => {
-        impl IntoJs for $type {
-            fn into_js(self) -> Result<Value, ValueError> {
+        impl IntoPs for $type {
+            fn into_ps(self) -> Result<Value, ValueError> {
                 Ok(Value::$variant(self.try_into()?))
             }
         }
@@ -55,12 +55,12 @@ macro_rules! ensure_type {
     };
 }
 
-/// Implement `FromJs` for `T`, where `T` is convertible from the value in one
+/// Implement `FromPs` for `T`, where `T` is convertible from the value in one
 /// variant of `Value`.
-macro_rules! impl_from_js {
+macro_rules! impl_from_ps {
     ($type:ty, $variant:ident, infallible) => {
-        impl $crate::FromJs for $type {
-            fn from_js(
+        impl $crate::FromPs for $type {
+            fn from_ps(
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {
                 let value =
@@ -70,8 +70,8 @@ macro_rules! impl_from_js {
         }
     };
     ($type:ty, $variant:ident, fallible) => {
-        impl $crate::FromJs for $type {
-            fn from_js(
+        impl $crate::FromPs for $type {
+            fn from_ps(
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {
                 // Fallible in two ways: wrong type, or value conversion fails
@@ -86,37 +86,37 @@ macro_rules! impl_from_js {
 /// Implement two complementary traits for a type `T`, where `T` is convertible
 /// to a particular variant (e.g. the `String` type and the `String` variant).
 /// - `From<T> for Value` (infallible) OR `TryFrom<T> for Value` (fallible)
-/// - `FromJs for T` - Ensure the value is of the expected variant, then use
+/// - `FromPs for T` - Ensure the value is of the expected variant, then use
 ///   either an infallible (`From`) or fallible (`TryFrom`) conversion to
 ///   convert the variant of `Value` into `T`.
 ///
-/// Note: from_js being infallible just means the _value_ conversion is
-/// infallible. FromJs can always fail if the value has the wrong type.
+/// Note: from_ps being infallible just means the _value_ conversion is
+/// infallible. FromPs can always fail if the value has the wrong type.
 /// Fallibility here just refers to whether we should use `From` or `TryFrom`
 /// to convert the contained value, after narrowing the type of the `Value
 macro_rules! impl_value_conversions {
     ($type:ty, $variant:ident) => {
         $crate::value::macros::impl_value_from!($type, $variant);
-        $crate::value::macros::impl_from_js!($type, $variant, infallible);
+        $crate::value::macros::impl_from_ps!($type, $variant, infallible);
     };
-    ($type:ty, $variant:ident, to_js: infallible, from_js: infallible) => {
+    ($type:ty, $variant:ident, to_ps: infallible, from_ps: infallible) => {
         $crate::value::macros::impl_value_from!($type, $variant);
-        $crate::value::macros::impl_from_js!($type, $variant, infallible);
+        $crate::value::macros::impl_from_ps!($type, $variant, infallible);
     };
-    ($type:ty, $variant:ident, to_js: infallible, from_js: fallible) => {
+    ($type:ty, $variant:ident, to_ps: infallible, from_ps: fallible) => {
         $crate::value::macros::impl_value_from!($type, $variant);
-        $crate::value::macros::impl_from_js!($type, $variant, fallible);
+        $crate::value::macros::impl_from_ps!($type, $variant, fallible);
     };
     // Note: there are no cases of fallible/infallible, so it's not supported
-    ($type:ty, $variant:ident, to_js: fallible, from_js: fallible) => {
-        $crate::value::macros::impl_into_js!($type, $variant);
-        $crate::value::macros::impl_from_js!($type, $variant, fallible);
+    ($type:ty, $variant:ident, to_ps: fallible, from_ps: fallible) => {
+        $crate::value::macros::impl_into_ps!($type, $variant);
+        $crate::value::macros::impl_from_ps!($type, $variant, fallible);
     };
 }
 
 pub(crate) use ensure_type;
-pub(crate) use impl_from_js;
-pub(crate) use impl_into_js;
+pub(crate) use impl_from_ps;
+pub(crate) use impl_into_ps;
 pub(crate) use impl_value_conversions;
 pub(crate) use impl_value_from;
 pub(crate) use impl_value_numeric_binary_op;

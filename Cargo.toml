@@ -3,14 +3,14 @@ authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
 description = "Minimal embeddable JavaScript subset"
 edition = "2021"
 license = "MIT"
-name = "petit-js"
-repository = "https://github.com/LucasPickering/petit-js"
+name = "petitscript"
+repository = "https://github.com/LucasPickering/petitscript"
 version = "0.1.0"
 # Keep in sync w/ rust-toolchain.toml
 rust-version = "1.82.0"
 
 [[bin]]
-name = "petit_js"
+name = "petitscript"
 path = "src/main.rs"
 
 [dependencies]

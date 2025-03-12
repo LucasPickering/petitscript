@@ -1,4 +1,4 @@
-use petit_js::Engine;
+use petitscript::Engine;
 use std::{env, path::PathBuf};
 
 fn main() {

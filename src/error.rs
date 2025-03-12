@@ -12,7 +12,7 @@ use std::{
 };
 use thiserror::Error;
 
-/// Any error that can occur within PetitJS
+/// Any error that can occur within PetitScript
 #[derive(Debug, Error)]
 pub enum Error {
     /// Attempted to register two values of the same type as app data
@@ -30,8 +30,8 @@ pub enum Error {
     Parse(#[from] ParseError),
 
     /// An error that occurs while transforming a parsed program from
-    /// ECMAScript to the PetitJS abstract syntax tree. This indicates the
-    /// source is valid JavaScript syntax, but is illegal in PetitJS.
+    /// ECMAScript to the PetitScript abstract syntax tree. This indicates the
+    /// source is valid JavaScript syntax, but is illegal in PetitScript.
     #[error("Error transforming AST at {span}: {error}")]
     Transform {
         #[source]
@@ -79,8 +79,8 @@ impl Display for ParseError {
 }
 
 /// An error that occurs while transforming a parsed program from ECMAScript to
-/// the PetitJS abstract syntax tree. This indicates the source is valid
-/// JavaScript syntax, but is illegal in PetitJS.
+/// the PetitScript abstract syntax tree. This indicates the source is valid
+/// JavaScript syntax, but is illegal in PetitScript.
 #[derive(Debug, Error)]
 pub enum TransformError {
     /// Source code contains a syntax construct that isn't supported in our
@@ -124,7 +124,7 @@ pub enum RuntimeError {
     /// Oopsies!
     /// TODO include bug report link here
     #[error(
-        "Internal error occurred in the PetitJS engine. \
+        "Internal error occurred in the PetitScript engine. \
         This is a bug; please report it! {0}"
     )]
     Internal(String),
@@ -141,7 +141,7 @@ pub enum RuntimeError {
     #[error("Unknown user function with definition ID {0:?}")]
     UnknownUserFunction(FunctionDefinitionId),
 
-    /// Error converting to/from JS values
+    /// Error converting to/from PS values
     #[error(transparent)]
     Value(#[from] ValueError),
 }

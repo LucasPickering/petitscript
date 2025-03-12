@@ -1,9 +1,9 @@
 use indexmap::IndexMap;
-use petit_js::{Engine, Value};
+use petitscript::{Engine, Value};
 use std::path::PathBuf;
 use test_case::test_case;
 
-/// Test a full compile+execution pipeline for an external JS file. This expects
+/// Test a full compile+execution pipeline for an external PS file. This expects
 /// the script to both compile and execute successfully, and asserts on the
 /// *default* export of each script. If we need to assert on multiple values,
 /// export an object.
@@ -11,7 +11,7 @@ use test_case::test_case;
 #[test_case("parameterScope", 7; "parameter_scope")]
 fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
     let engine = Engine::new();
-    let path = PathBuf::from(format!("tests/js/{file_name}.js"));
+    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
     if !path.exists() {
         // Sanity check
         panic!("Path {path:?} does not exist");

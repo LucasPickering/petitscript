@@ -12,36 +12,35 @@ mod ser;
 pub use de::Deserializer;
 pub use ser::Serializer;
 
-use crate::{error::ValueError, FromJs, IntoJs, Value};
+use crate::{error::ValueError, FromPs, IntoPs, Value};
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
-/// Serialize an instance of type `T` into a PetitJS value
+/// Serialize an instance of type `T` into a PetitScript value
 pub fn to_value<T: Serialize>(data: &T) -> Result<Value, ValueError> {
     data.serialize(&Serializer)
 }
 
-/// Deserialize an instance of type `T` from a PetitJS value
+/// Deserialize an instance of type `T` from a PetitScript value
 pub fn from_value<'de, T: Deserialize<'de>>(
     value: Value,
 ) -> Result<T, ValueError> {
     T::deserialize(Deserializer::new(value))
 }
 
-/// Helper for converting a value to/from JS using its
-/// [Serialize] and/or [Deserialize] implementations. This is useful when
-/// defining native functions that need to convert their args and/or return
-/// value using `serde`.
-pub struct SerdeJs<T>(pub T);
+/// Helper for converting a value to/from [Value] using its [Serialize] and/or
+/// [Deserialize] implementations. This is useful when defining native functions
+/// that need to convert their args and/or return value using `serde`.
+pub struct SerdePs<T>(pub T);
 
-impl<T> SerdeJs<T> {
+impl<T> SerdePs<T> {
     /// Move the inner value out of this wrapper
     pub fn into_inner(self) -> T {
         self.0
     }
 }
 
-impl<T> Deref for SerdeJs<T> {
+impl<T> Deref for SerdePs<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -49,20 +48,20 @@ impl<T> Deref for SerdeJs<T> {
     }
 }
 
-impl<T> DerefMut for SerdeJs<T> {
+impl<T> DerefMut for SerdePs<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-impl<T: Serialize> IntoJs for SerdeJs<T> {
-    fn into_js(self) -> Result<Value, ValueError> {
+impl<T: Serialize> IntoPs for SerdePs<T> {
+    fn into_ps(self) -> Result<Value, ValueError> {
         to_value(&self.0)
     }
 }
 
-impl<'de, T: Deserialize<'de>> FromJs for SerdeJs<T> {
-    fn from_js(value: Value) -> Result<Self, ValueError> {
+impl<'de, T: Deserialize<'de>> FromPs for SerdePs<T> {
+    fn from_ps(value: Value) -> Result<Self, ValueError> {
         Ok(Self(from_value(value)?))
     }
 }

@@ -67,7 +67,7 @@ impl Engine {
     /// objects. To register native functions, use
     /// [register_fn](Self::register_fn) instead.
     pub fn register_global(&mut self, name: impl ToString, value: Value) {
-        self.globals.declare(name, value);
+        self.globals.declare(name.to_string(), value);
     }
 
     /// Register a Rust function as a global, allowing it to be used within
@@ -85,7 +85,7 @@ impl Engine {
         let mut function = self.create_fn(function);
         let name = name.to_string();
         function.set_name(name.clone()); // Label the function
-        self.globals.declare(name.to_string(), function.into());
+        self.globals.declare(name.to_string(), function);
     }
 
     /// Add a Rust native function to the engine, but do *not* register it in

@@ -31,7 +31,8 @@ pub struct Process {
     /// the engine after spawning will not be reflected here.
     native_functions: NativeFunctionTable,
     /// Global values available to the program, such as the stdlib and native
-    /// functions provided by the user
+    /// functions provided by the user. This is cloned from the engine when the
+    /// process is spawned, and is read-only here.
     globals: Scope,
     /// Arbitrary user-defined data attached to this process
     app_data: AppData,
@@ -88,8 +89,7 @@ impl Process {
 
     /// Execute the loaded program and return its exported values
     pub fn execute(&self) -> Result<Exports, Error> {
-        let mut scope = self.globals.clone();
-        scope.subscope();
+        let scope = self.globals.clone().child();
         let mut thread_state = ThreadState::new(scope, self, true);
         self.program
             .ast()

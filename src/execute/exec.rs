@@ -294,7 +294,7 @@ impl Execute for Spanned<FunctionDeclaration> {
 
         // Bind the name to the function pointer
         if let Some(name) = &name {
-            state.scope_mut().declare(name.as_str(), function.into());
+            state.scope_mut().declare(name, function);
         }
         Ok(name)
     }

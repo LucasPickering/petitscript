@@ -8,8 +8,8 @@ use crate::{
 /// Create a scope containing the entire standard library. This needs to be
 /// recreated for every execution
 pub fn stdlib(engine: &mut Engine) -> Scope {
-    let mut scope = Scope::global();
-    scope.declare("console", console(engine).into());
+    let mut scope = Scope::new();
+    scope.declare("console", console(engine));
     scope
 }
 

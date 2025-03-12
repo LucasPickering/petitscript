@@ -170,13 +170,10 @@ impl serde::Serializer for &Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        // TODO explain
-        if name == Function::TYPE_USER {
-            Ok(SerializeStruct::Function {
-                id: None,
-                name: None,
-                captures: None,
-            })
+        // Functions serialize as structs. In order to distinguish between a
+        // function and a user's struct type, we use the name of the struct.
+        if name == Function::TYPE_USER || name == Function::TYPE_NATIVE {
+            Ok(SerializeStruct::Function(SerializeStructFunction::default()))
         } else {
             Ok(SerializeStruct::Map(SerializeMap::new(Some(len))))
         }
@@ -353,11 +350,7 @@ impl ser::SerializeStructVariant for &Serializer {
 /// Serialize a struct. It could become a function or an object, depending on
 /// what name serialize_struct was called with
 pub enum SerializeStruct {
-    Function {
-        id: Option<UserFunctionId>,
-        name: Option<String>,
-        captures: Option<Captures>,
-    },
+    Function(SerializeStructFunction),
     Map(SerializeMap),
 }
 
@@ -374,8 +367,8 @@ impl ser::SerializeStruct for SerializeStruct {
         T: ?Sized + ser::Serialize,
     {
         match self {
-            Self::Function { .. } => match key {
-                Function::FIELD_TYPE => todo!("ensure value is __JsFunction"),
+            Self::Function(_) => match key {
+                Function::FIELD_TYPE => todo!("ensure value is valid"),
                 Function::FIELD_ID => todo!("TODO"),
                 _ => todo!("unexpected key"),
             },
@@ -393,4 +386,12 @@ impl ser::SerializeStruct for SerializeStruct {
             Self::Map(map) => Ok(map.map.into()),
         }
     }
+}
+
+/// Serialize a function as a struct
+#[derive(Default)]
+pub struct SerializeStructFunction {
+    id: Option<UserFunctionId>,
+    name: Option<String>,
+    captures: Option<Captures>,
 }

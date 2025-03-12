@@ -23,6 +23,8 @@ impl<'a> ThreadState<'a> {
         Self {
             process,
             call_stack: CallStack::new(globals),
+            // Function invocations cannot export, since they're not at the root
+            // scope
             exports: if can_export {
                 Some(Exports::default())
             } else {
@@ -40,13 +42,10 @@ impl<'a> ThreadState<'a> {
         &self.process.program
     }
 
-    /// TODO
+    /// Set a named export value
     pub fn export(&mut self, name: String) -> Result<(), RuntimeError> {
         let value = self.scope().get(&name)?;
-        let exports =
-            self.exports.as_mut().ok_or(RuntimeError::IllegalExport)?;
-
-        // TODO only allow root scope to be exported
+        let exports = self.exports_mut()?;
         match exports.named.entry(name) {
             Entry::Occupied(entry) => Err(RuntimeError::AlreadyExported {
                 name: entry.key().clone(),
@@ -58,11 +57,9 @@ impl<'a> ThreadState<'a> {
         }
     }
 
-    /// TODO
+    /// Set the default export value
     pub fn export_default(&mut self, value: Value) -> Result<(), RuntimeError> {
-        let exports =
-            self.exports.as_mut().ok_or(RuntimeError::IllegalExport)?;
-        // TODO only allow root scope to be exported
+        let exports = self.exports_mut()?;
         if exports.default.is_some() {
             return Err(RuntimeError::AlreadyExported {
                 name: "(default)".into(),
@@ -72,8 +69,21 @@ impl<'a> ThreadState<'a> {
         Ok(())
     }
 
+    /// Move the exported values out of this thread state
     pub fn into_exports(self) -> Option<Exports> {
         self.exports
+    }
+
+    fn exports_mut(&mut self) -> Result<&mut Exports, RuntimeError> {
+        if self.scope().is_root() {
+            // If exports aren't defined, it means we were invoked from a
+            // function entrypoint. Therefore we're not in the root scope and
+            // exports aren't allowed
+            self.exports.as_mut().ok_or(RuntimeError::IllegalExport)
+        } else {
+            // We're not at the root of the source file - no exports allowed!
+            Err(RuntimeError::IllegalExport)
+        }
     }
 
     /// Map an error with a raw byte span to lines and columns, bound to a
@@ -111,9 +121,9 @@ impl<'a> ThreadState<'a> {
     /// Execute a function in a new scope that's a child of the current scope.
     /// Use this for blocks such as ifs, loops, etc.
     pub fn with_subscope<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
-        self.scope_mut().subscope();
+        self.scope_mut().push_subscope();
         let value = f(self);
-        self.scope_mut().revert();
+        self.scope_mut().pop_subscope();
         value
     }
 }
@@ -141,7 +151,8 @@ impl CallStack {
 
     fn pop(&mut self) {
         if self.0.len() == 1 {
-            todo!("not allowed!!")
+            // Bug!!
+            panic!("Cannot pop final frame of the call stack")
         }
         self.0.pop();
     }
@@ -149,12 +160,12 @@ impl CallStack {
     /// Get the frame on top of the stack. As the stack can never be empty, this
     /// always returns something
     fn top(&self) -> &Scope {
-        self.0.last().expect("TODO")
+        self.0.last().expect("Call stack can never be empty")
     }
 
     /// Get a mutable reference to the frame on top of the stack. As the stack
     /// can never be empty, this always returns something
     fn top_mut(&mut self) -> &mut Scope {
-        self.0.last_mut().expect("TODO")
+        self.0.last_mut().expect("Call stack can never be empty")
     }
 }

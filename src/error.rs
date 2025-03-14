@@ -156,7 +156,7 @@ pub enum RuntimeError {
 
 impl RuntimeError {
     /// Wrap a custom error type
-    pub fn custom(
+    pub fn other(
         error: impl 'static + std::error::Error + Send + Sync,
     ) -> Self {
         Self::Other(error.into())

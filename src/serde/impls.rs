@@ -3,10 +3,8 @@
 
 use crate::{
     compile::FunctionDefinitionId,
-    error::ValueError,
     execute::ProcessId,
     function::{Captures, Function, FunctionInner, UserFunctionId},
-    serde::from_value,
     Array, IntoPs, Number, Object, Value,
 };
 use serde::{
@@ -19,16 +17,6 @@ use serde::{
     Deserialize, Serialize,
 };
 use std::fmt;
-
-impl Value {
-    /// Deserialize this value into an arbitrary type, using the type's
-    /// [Deserialize] implementation
-    pub fn deserialize<'de, T: Deserialize<'de>>(
-        self,
-    ) -> Result<T, ValueError> {
-        from_value(self)
-    }
-}
 
 impl serde::Serialize for Value {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -44,6 +32,7 @@ impl serde::Serialize for Value {
             Value::String(string) => string.serialize(serializer),
             Value::Array(array) => array.serialize(serializer),
             Value::Object(object) => object.serialize(serializer),
+            #[cfg(feature = "bytes")]
             Value::Buffer(buffer) => buffer.serialize(serializer),
             Value::Function(function) => function.serialize(serializer),
         }

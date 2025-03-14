@@ -5,6 +5,7 @@ mod exec;
 mod state;
 
 use crate::{
+    ast::source::Span,
     compile::Program,
     execute::{exec::Execute, state::ThreadState},
     function::{Function, FunctionInner},
@@ -89,8 +90,8 @@ impl Process {
 
     /// Execute the loaded program and return its exported values
     pub fn execute(&self) -> Result<Exports, Error> {
-        let scope = self.globals.clone().child();
-        let mut thread_state = ThreadState::new(scope, self, true);
+        let mut thread_state =
+            ThreadState::new(self.globals.clone(), self, true);
         self.program
             .ast()
             .exec(&mut thread_state)
@@ -117,7 +118,8 @@ impl Process {
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
         function
-            .call(&mut thread_state, arguments)
+            // TODO can we do better with the span?
+            .call(Span::default(), &mut thread_state, arguments)
             .map_err(|error| thread_state.qualify_error(error))
     }
 }

@@ -25,9 +25,7 @@ use crate::{
     error::RuntimeError,
     scope::Scope,
     stdlib::stdlib,
-    value::function::{
-        FromPsArgs, NativeFunctionDefinition, NativeFunctionTable,
-    },
+    value::function::{FromPsArgs, NativeFunctionTable},
 };
 
 /// The main entrypoint for executing and evaluating PetitScript programs. An
@@ -52,13 +50,13 @@ impl Engine {
     /// Initialize a new engine with default configuration and the standard
     /// library available
     pub fn new() -> Self {
-        let mut engine = Self {
-            globals: Default::default(),
-            native_functions: Default::default(),
-        };
+        let mut native_functions = NativeFunctionTable::default();
         // Register the standard library
-        stdlib(&mut engine);
-        engine
+        let globals = stdlib(&mut native_functions);
+        Self {
+            globals,
+            native_functions,
+        }
     }
 
     /// Register a value in the global namespace. This will be made available
@@ -82,26 +80,10 @@ impl Engine {
         Out: IntoPs,
         Err: Into<RuntimeError>,
     {
-        let mut function = self.create_fn(function);
+        let mut function = self.native_functions.create_fn(function);
         let name = name.to_string();
         function.set_name(name.clone()); // Label the function
         self.globals.declare(name.to_string(), function);
-    }
-
-    /// Add a Rust native function to the engine, but do *not* register it in
-    /// the global namespace. The function will be returned instead, and can be
-    /// used as a PS value anywhere.
-    pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
-    where
-        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
-        Args: FromPsArgs,
-        Out: IntoPs,
-        Err: Into<RuntimeError>,
-    {
-        let id = self
-            .native_functions
-            .register(NativeFunctionDefinition::new(function));
-        Function::native(id)
     }
 
     /// Compile some source code into a loaded program. The returned [Process]

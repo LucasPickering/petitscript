@@ -108,11 +108,6 @@ pub enum RuntimeError {
     #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
 
-    /// Custom error type, for errors originating in user-provided native
-    /// functions
-    #[error(transparent)]
-    Custom(Box<dyn std::error::Error + Send + Sync>),
-
     /// Attempted to export from within a subscope
     #[error("Export only allowed in program root")]
     IllegalExport,
@@ -133,6 +128,11 @@ pub enum RuntimeError {
     #[error("Assignment to immutable variable `{name}`")]
     ImmutableAssign { name: String },
 
+    /// Custom error type, for errors originating in user-provided native
+    /// functions
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
+
     /// Reference to an identifier that isn't bound
     #[error("`{name}` is not defined")]
     Reference { name: String },
@@ -144,6 +144,14 @@ pub enum RuntimeError {
     /// Error converting to/from PS values
     #[error(transparent)]
     Value(#[from] ValueError),
+
+    /// A runtime error with an additional context message
+    #[error("{message}")]
+    WithContext {
+        message: String,
+        #[source]
+        source: Box<Self>,
+    },
 }
 
 impl RuntimeError {
@@ -151,19 +159,27 @@ impl RuntimeError {
     pub fn custom(
         error: impl 'static + std::error::Error + Send + Sync,
     ) -> Self {
-        Self::Custom(error.into())
+        Self::Other(error.into())
     }
 
     /// Create an error that indicates an internal bug in the runtime
     pub(crate) fn internal(message: impl ToString) -> Self {
         Self::Internal(message.to_string())
     }
+
+    /// Wrap this error to attach an additional context message to it
+    pub fn context(self, context: impl ToString) -> Self {
+        Self::WithContext {
+            message: context.to_string(),
+            source: Box::new(self),
+        }
+    }
 }
 
 /// An error that can occur while converting to/from [Value](crate::Value)
 #[derive(Debug, Error)]
 pub enum ValueError {
-    /// TODO
+    /// A custom error message, e.g. for deserialization
     #[error("{0}")]
     Custom(String),
 
@@ -179,6 +195,10 @@ pub enum ValueError {
         number: Number,
         description: &'static str,
     },
+
+    /// Wrapper for an external error type
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync>),
 
     /// An operation required a specific type (or types), but received a value
     /// of an unsupported type. This commonly occurs during type downcasting,

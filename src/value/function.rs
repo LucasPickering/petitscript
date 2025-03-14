@@ -130,14 +130,18 @@ impl NativeFunctionTable {
         self.0.get(id.0 as usize).ok_or_else(|| todo!())
     }
 
-    /// Add a new native function definition to the pool
-    pub fn register(
-        &mut self,
-        function: NativeFunctionDefinition,
-    ) -> NativeFunctionId {
+    /// Add a Rust native function definition to the table and return a pointer
+    /// to it
+    pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
+    where
+        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
+        Args: FromPsArgs,
+        Out: IntoPs,
+        Err: Into<RuntimeError>,
+    {
         let id = NativeFunctionId(self.0.len() as u64);
-        self.0.push(function);
-        id
+        self.0.push(NativeFunctionDefinition::new(function));
+        Function::native(id)
     }
 }
 
@@ -290,5 +294,9 @@ fn get_arg<T: FromPs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
     // If the arg is missing, use undefined instead to mirror PS semantics
     // TODO remove clone? we'd have to make FromPs take &Value
     let value = args.get(index).cloned().unwrap_or_default();
-    Ok(T::from_ps(value)?)
+    let converted = T::from_ps(value).map_err(|error| {
+        RuntimeError::from(error)
+            .context(format!("Error converting argument {index}"))
+    })?;
+    Ok(converted)
 }

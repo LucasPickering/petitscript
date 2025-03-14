@@ -45,6 +45,9 @@ impl Scope {
     /// access to all of the parent's existing bindings, but any new
     /// declarations will occur in the child
     pub fn child(self) -> Self {
+        if self.is_root() {
+            panic!("Cannot create a child scope of the root scope");
+        }
         Self {
             parent: Some(Box::new(self)),
             bindings: Bindings::default(),

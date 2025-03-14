@@ -10,8 +10,8 @@ use serde::ser;
 use std::fmt::Display;
 
 impl ser::Error for ValueError {
-    fn custom<T: Display>(msg: T) -> Self {
-        ValueError::Custom(msg.to_string())
+    fn custom<T: Display>(message: T) -> Self {
+        ValueError::Custom(message.to_string())
     }
 }
 

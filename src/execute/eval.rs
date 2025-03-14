@@ -232,7 +232,9 @@ impl Evaluate for Spanned<FunctionCall> {
         }
 
         match function {
-            Value::Function(function) => function.call(state, &arguments),
+            Value::Function(function) => {
+                function.call(self.span, state, &arguments)
+            }
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
@@ -321,6 +323,7 @@ impl Function {
     /// Call this function with some arguments
     pub(super) fn call(
         &self,
+        span: Span,
         state: &mut ThreadState<'_>,
         arguments: &[Value],
     ) -> Result<Value, Spanned<RuntimeError>> {
@@ -331,8 +334,7 @@ impl Function {
                         .program()
                         .function_table()
                         .get(id.definition_id)
-                        // TODO use a real span
-                        .spanned_err(Span::default())?,
+                        .spanned_err(span)?,
                 );
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
@@ -385,11 +387,10 @@ impl Function {
                     .process()
                     .native_functions
                     .get(*id)
-                    // TODO correct span
-                    .spanned_err(Span::default())?;
+                    .spanned_err(span)?;
                 definition
                     .call(state.process(), arguments)
-                    .spanned_err(Span::default()) // TODO span
+                    .spanned_err(span)
             }
         }
     }

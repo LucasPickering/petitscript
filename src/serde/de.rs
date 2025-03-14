@@ -12,8 +12,8 @@ use serde::de::{
 use std::{fmt::Display, mem};
 
 impl de::Error for ValueError {
-    fn custom<T: Display>(msg: T) -> Self {
-        ValueError::Custom(msg.to_string())
+    fn custom<T: Display>(message: T) -> Self {
+        ValueError::Custom(message.to_string())
     }
 }
 
@@ -127,6 +127,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
                 if map.len() != 1 {
                     return Err(de::Error::invalid_length(
                         map.len(),
+                        // TODO include variant names in error msg
                         &"map of length 1 for an externally tagged enum",
                     ));
                 }
@@ -306,8 +307,9 @@ impl<'de> de::EnumAccess<'de> for EnumDeserializer {
     where
         V: de::DeserializeSeed<'de>,
     {
-        let key =
-            seed.deserialize(Value::from(self.variant).into_deserializer())?;
+        let key = seed.deserialize(StringDeserializer::<Self::Error>::new(
+            self.variant,
+        ))?;
         Ok((key, VariantDeserializer { value: self.value }))
     }
 }

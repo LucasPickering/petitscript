@@ -13,6 +13,11 @@ use std::{
 pub struct Object(Arc<IndexMap<String, Value>>);
 
 impl Object {
+    /// Create a new empty object
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Get a value from the object by key, or undefined if not present
     pub fn get(&self, key: &str) -> &Value {
         self.0

@@ -194,7 +194,8 @@ impl Value {
             (Self::Object(object), Self::String(key)) => {
                 Ok(object.get(key).clone())
             }
-            _ => todo!("error"),
+            (Self::Undefined | Self::Null, _) => todo!(),
+            _ => Ok(Value::Undefined),
         }
     }
 

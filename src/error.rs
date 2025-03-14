@@ -156,7 +156,7 @@ pub enum RuntimeError {
 
 impl RuntimeError {
     /// Wrap a custom error type
-    pub fn custom(
+    pub fn other(
         error: impl 'static + std::error::Error + Send + Sync,
     ) -> Self {
         Self::Other(error.into())
@@ -208,6 +208,15 @@ pub enum ValueError {
         expected: ValueType,
         actual: ValueType,
     },
+}
+
+impl ValueError {
+    /// Wrap a custom error type
+    pub fn other(
+        error: impl 'static + std::error::Error + Send + Sync,
+    ) -> Self {
+        Self::Other(error.into())
+    }
 }
 
 pub(crate) trait ResultExt<T, E> {

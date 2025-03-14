@@ -17,6 +17,11 @@ use std::{
 pub struct Array(Arc<Vec<Value>>);
 
 impl Array {
+    /// Create a new empty array
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Append a single value to the end of the array.
     pub fn push(self, value: Value) -> Self {
         self.with_inner(|vec| vec.push(value))

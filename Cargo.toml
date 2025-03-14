@@ -18,12 +18,13 @@ bytes = {version = "1.0.0", default-features = false, optional = true}
 indexmap = {version = "2.7.0"}
 rslint_parser = "0.3.1"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
+serde_json = {version = "1.0.140", optional = true}
 thiserror = "2.0.10"
 
 [features]
 bytes = ["dep:bytes"]
 default = []
-serde = ["dep:serde", "indexmap/serde"]
+serde = ["dep:serde", "dep:serde_json", "indexmap/serde"]
 
 [workspace.metadata.release]
 pre-release-replacements = [

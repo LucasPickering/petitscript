@@ -5,12 +5,12 @@ use crate::{
     ast::{
         source::{IntoSpanned, Span, Spanned},
         ArrayElement, ArrayLiteral, Ast, BinaryOperation, BinaryOperator,
-        Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
-        Expression, FunctionCall, FunctionDeclaration, FunctionDefinition,
-        FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
+        Binding, Block, Declaration, ExportDeclaration, Expression,
+        FunctionCall, FunctionDeclaration, FunctionDefinition,
+        FunctionParameter, FunctionPointer, Identifier, ImportDeclaration,
         LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
         ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateChunk,
-        TemplateLiteral, Variable, WhileLoop,
+        TemplateLiteral, Variable,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -126,21 +126,19 @@ impl Transform for ext::Stmt {
             Self::BlockStmt(block_stmt) => {
                 block_stmt.transform_spanned().map(Statement::Block)
             }
-            Self::IfStmt(if_stmt) => {
-                if_stmt.transform_spanned().map(Statement::If)
+            Self::IfStmt(node) => unsupported(node.range(), "TODO", "TODO"),
+            Self::DoWhileStmt(node) => {
+                unsupported(node.range(), "TODO", "TODO")
             }
-            Self::DoWhileStmt(do_while_stmt) => do_while_stmt
-                .transform_spanned()
-                .map(Statement::DoWhileLoop),
-            Self::WhileStmt(while_stmt) => {
-                while_stmt.transform_spanned().map(Statement::WhileLoop)
-            }
+            Self::WhileStmt(node) => unsupported(node.range(), "TODO", "TODO"),
             Self::ForStmt(node) => unsupported(node.range(), "TODO", "TODO"),
             // TODO for..of loop?
             Self::ForInStmt(_) => todo!(),
             // TODO error if labels are present
-            Self::ContinueStmt(_) => Ok(Statement::Continue),
-            Self::BreakStmt(_) => Ok(Statement::Break),
+            Self::ContinueStmt(node) => {
+                unsupported(node.range(), "TODO", "TODO")
+            }
+            Self::BreakStmt(node) => unsupported(node.range(), "TODO", "TODO"),
             Self::ReturnStmt(return_stmt) => {
                 let expression = return_stmt.value().transform_spanned_opt()?;
                 Ok(Statement::Return(expression))
@@ -168,44 +166,6 @@ impl Transform for ext::BlockStmt {
     fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
         let statements = self.stmts().transform_all()?;
         Ok(Block { statements })
-    }
-}
-
-impl Transform for ext::IfStmt {
-    type Output = If;
-
-    fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
-        let condition = self
-            .condition()
-            .required(self.range())?
-            .condition()
-            .required(self.range())?
-            .transform_spanned()?;
-        // This body is NOT optional
-        let body = self.cons().required(self.range())?.transform_spanned()?;
-        // This body IS optional
-        let else_body = self.alt().transform_spanned_opt()?;
-        Ok(If {
-            condition,
-            body: body.into(),
-            else_body: else_body.map(Box::new),
-        })
-    }
-}
-
-impl Transform for ext::DoWhileStmt {
-    type Output = DoWhileLoop;
-
-    fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
-        todo!()
-    }
-}
-
-impl Transform for ext::WhileStmt {
-    type Output = WhileLoop;
-
-    fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
-        todo!()
     }
 }
 

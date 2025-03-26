@@ -32,19 +32,10 @@ pub enum Statement {
     Block(Spanned<Block>),
     Expression(Spanned<Expression>),
     Declaration(Spanned<Declaration>),
-
-    If(Spanned<If>),
-    ForOfLoop(Spanned<ForOfLoop>),
-    WhileLoop(Spanned<WhileLoop>),
-    DoWhileLoop(Spanned<DoWhileLoop>),
-
     Return(Option<Spanned<Expression>>),
-    Break,
-    Continue,
 
     Import(Spanned<ImportDeclaration>),
     Export(Spanned<ExportDeclaration>),
-    // TODO: switch, throw, try, catch, finally
 }
 
 /// A collection of statements, delineated by {}. This denotes a new
@@ -124,37 +115,6 @@ pub struct FunctionDefinition {
 pub struct FunctionParameter {
     pub variable: Spanned<Variable>,
     pub varargs: bool,
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct If {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
-    /// Optional else block. For `else if` blocks, this will be a nested `if`
-    pub else_body: Option<Box<Spanned<Statement>>>,
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct ForOfLoop {
-    pub binding: Binding,
-    pub iterable: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct WhileLoop {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
-}
-
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct DoWhileLoop {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
 }
 
 #[derive(Clone, Debug)]

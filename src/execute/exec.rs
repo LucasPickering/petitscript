@@ -2,9 +2,8 @@
 
 use crate::{
     ast::{
-        source::Spanned, Ast, Block, Declaration, DoWhileLoop,
-        ExportDeclaration, ForOfLoop, FunctionDeclaration, If,
-        ImportDeclaration, LexicalDeclaration, Statement, WhileLoop,
+        source::Spanned, Ast, Block, Declaration, ExportDeclaration,
+        FunctionDeclaration, ImportDeclaration, LexicalDeclaration, Statement,
     },
     error::{ResultExt, RuntimeError},
     execute::{eval::Evaluate, ThreadState},
@@ -82,13 +81,6 @@ impl Execute for Spanned<Statement> {
                 Ok(None)
             }
 
-            Statement::If(if_statement) => if_statement.exec(state),
-            Statement::DoWhileLoop(do_while_loop) => do_while_loop.exec(state),
-            Statement::WhileLoop(while_loop) => while_loop.exec(state),
-            Statement::ForOfLoop(for_of_loop) => for_of_loop.exec(state),
-
-            Statement::Continue => Ok(Some(Terminate::Continue)),
-            Statement::Break => Ok(Some(Terminate::Break)),
             Statement::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
                     Some(expression.eval(state)?)
@@ -191,65 +183,6 @@ impl Execute for Declaration {
     }
 }
 
-impl Execute for If {
-    type Output = Option<Terminate>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Self::Output, Spanned<RuntimeError>> {
-        if self.condition.eval(state)?.to_bool() {
-            self.body.exec(state)
-        } else if let Some(statement) = &self.else_body {
-            statement.exec(state)
-        } else {
-            Ok(None)
-        }
-    }
-}
-
-impl Execute for DoWhileLoop {
-    type Output = Option<Terminate>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Self::Output, Spanned<RuntimeError>> {
-        loop {
-            self.body.exec(state)?;
-            if !self.condition.eval(state)?.to_bool() {
-                break;
-            }
-        }
-        Ok(None)
-    }
-}
-
-impl Execute for WhileLoop {
-    type Output = Option<Terminate>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Self::Output, Spanned<RuntimeError>> {
-        while self.condition.eval(state)?.to_bool() {
-            self.body.exec(state)?;
-        }
-        Ok(None)
-    }
-}
-
-impl Execute for ForOfLoop {
-    type Output = Option<Terminate>;
-
-    fn exec(
-        &self,
-        _state: &mut ThreadState,
-    ) -> Result<Self::Output, Spanned<RuntimeError>> {
-        todo!()
-    }
-}
-
 impl Execute for Spanned<LexicalDeclaration> {
     /// Return the list of declared names
     type Output = Vec<String>;
@@ -304,10 +237,6 @@ impl Execute for Spanned<FunctionDeclaration> {
 #[derive(Debug)]
 #[must_use]
 pub enum Terminate {
-    /// Skip to the entire of the current loop iteration
-    Continue,
-    /// Break out of the current loop
-    Break,
     /// Return from the current function, optionally with a return value
     Return { return_value: Option<Value> },
 }

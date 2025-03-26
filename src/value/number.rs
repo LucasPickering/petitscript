@@ -1,8 +1,9 @@
 use crate::error::ValueError;
 use std::{
+    cmp::Ordering,
     f64,
     fmt::{self, Display},
-    ops::{Add, Div, Mul, Rem, Sub},
+    ops::{Add, Div, Mul, Neg, Rem, Sub},
 };
 
 /// TODO
@@ -42,6 +43,29 @@ impl PartialEq for Number {
             (Self::Float(l0), Self::Float(r0)) => l0 == r0,
             // TODO handle int-float equality
             _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Number {
+    fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
+        match (self, rhs) {
+            (Number::Int(i1), Number::Int(i2)) => i1.partial_cmp(i2),
+            (Number::Float(f1), Number::Float(f2)) => f1.partial_cmp(f2),
+            (Number::Int(_), Number::Float(_)) => todo!(),
+            (Number::Float(_), Number::Int(_)) => todo!(),
+        }
+    }
+}
+
+impl Neg for Number {
+    type Output = Self;
+
+    /// Apply arithmetic negation to this number
+    fn neg(self) -> Self::Output {
+        match self {
+            Self::Int(i) => Self::Int(-i),
+            Self::Float(f) => Self::Float(-f),
         }
     }
 }

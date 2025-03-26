@@ -7,7 +7,7 @@ use std::{
     fs,
     hash::Hash,
     ops::{Deref, DerefMut},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 /// A source of source code. E.g. a string literal or a file path

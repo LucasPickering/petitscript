@@ -3,6 +3,9 @@
 /// Implement a numeric binary operator for `Value`
 macro_rules! impl_value_numeric_binary_op {
     ($trait:ident, $func:ident, $op:tt) => {
+        /// Apply this arithmetic operation between two values. Cast both values
+        /// to numbers with [Self::to_number]; if both are successful ly cast,
+        /// apply the operation between them. If not, return `NaN`.
         impl $trait for Value {
             type Output = Self;
 

@@ -283,10 +283,10 @@ impl Evaluate for UnaryOperation {
         &self,
         state: &mut ThreadState<'_>,
     ) -> Result<Value, Spanned<RuntimeError>> {
-        let _ = self.expression.eval(state)?;
+        let value = self.expression.eval(state)?;
         match self.operator {
-            UnaryOperator::BooleanNot => todo!(),
-            UnaryOperator::Negate => todo!(),
+            UnaryOperator::BooleanNot => Ok(!value),
+            UnaryOperator::Negate => Ok(-value),
         }
     }
 }
@@ -303,14 +303,14 @@ impl Evaluate for BinaryOperation {
             BinaryOperator::Sub => Ok(lhs - rhs),
             BinaryOperator::Mul => Ok(lhs * rhs),
             BinaryOperator::Div => Ok(lhs / rhs),
-            BinaryOperator::Mod => todo!(),
+            BinaryOperator::Mod => Ok(lhs % rhs),
 
             BinaryOperator::Equal => Ok((lhs == rhs).into()),
             BinaryOperator::NotEqual => Ok((lhs != rhs).into()),
-            BinaryOperator::GreaterThan => todo!(),
-            BinaryOperator::GreaterThanEqual => todo!(),
-            BinaryOperator::LessThan => todo!(),
-            BinaryOperator::LessThanEqual => todo!(),
+            BinaryOperator::GreaterThan => Ok((lhs > rhs).into()),
+            BinaryOperator::GreaterThanEqual => Ok((lhs >= rhs).into()),
+            BinaryOperator::LessThan => Ok((lhs < rhs).into()),
+            BinaryOperator::LessThanEqual => Ok((lhs <= rhs).into()),
 
             BinaryOperator::BooleanAnd => Ok(lhs.and(&rhs).into()),
             BinaryOperator::BooleanOr => Ok(lhs.or(&rhs).into()),

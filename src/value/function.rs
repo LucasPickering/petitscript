@@ -12,6 +12,9 @@ use std::{
 /// PetitScript are closures, meaning they capture their environment when
 /// created, and references to outside variables may be used within the function
 /// body.
+///
+/// TODO should we add refcounting somewhere in here? So we don't have to clone
+/// the name/captures
 #[derive(Clone, Debug, PartialEq)]
 pub struct Function(pub(crate) FunctionInner);
 

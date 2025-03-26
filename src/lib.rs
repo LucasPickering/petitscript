@@ -17,7 +17,7 @@ pub use crate::{
     execute::Process,
     value::{
         function, Array, Exports, FromPs, Function, IntoPs, Number, Object,
-        PsString, Value, ValueType,
+        PetitString, Value, ValueType,
     },
 };
 
@@ -30,7 +30,7 @@ use crate::{
 
 /// The main entrypoint for executing and evaluating PetitScript programs. An
 /// engine defines how code should be executed. TODO more
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Engine {
     /// Global values available to all code execution. This includes both the
     /// standard library and user-defined values.

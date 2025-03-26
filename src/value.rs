@@ -24,8 +24,9 @@ use crate::{
 };
 use indexmap::IndexMap;
 use std::{
+    cmp::Ordering,
     fmt::{self, Display},
-    ops::{Add, Deref, Div, Mul, Rem, Sub},
+    ops::{Add, Deref, Div, Mul, Neg, Not, Rem, Sub},
     path::PathBuf,
     sync::Arc,
 };
@@ -47,7 +48,7 @@ pub enum Value {
     /// A float or integer
     Number(Number),
     /// A string of UTF-8 characters
-    String(PsString),
+    String(PetitString),
     /// An ordered list
     Array(Array),
     /// An ordered key-value mapping
@@ -106,7 +107,7 @@ impl Value {
 
     /// If this value is a string, get the inner string. Otherwise return a type
     /// error.
-    pub fn try_into_string(self) -> Result<PsString, ValueError> {
+    pub fn try_into_string(self) -> Result<PetitString, ValueError> {
         if let Self::String(string) = self {
             Ok(string)
         } else {
@@ -243,15 +244,61 @@ impl Display for Value {
     }
 }
 
+impl Not for Value {
+    type Output = Self;
+
+    /// Apply boolean negation to this value. The value will be cast to a
+    /// boolean according to [Self::to_bool], then negated.
+    fn not(self) -> Self::Output {
+        (!self.to_bool()).into()
+    }
+}
+
+impl Neg for Value {
+    type Output = Self;
+
+    /// Apply arithmetic negation to this value. The value will be cast to a
+    /// number according to [Self::to_number], then negated. If the value cannot
+    /// be cast to a number, the result is `NaN`.
+    fn neg(self) -> Self::Output {
+        if let Some(number) = self.to_number() {
+            Self::Number(-number)
+        } else {
+            Self::Number(Number::NAN)
+        }
+    }
+}
+
 impl Add for Value {
     type Output = Self;
 
+    /// TODO link to MDN docs or something on this
     fn add(self, rhs: Self) -> Self::Output {
         // Add is unique from the other mathematical operations. For types that
         // can't be converted to a number, we'll do string concatenation
         match (self, rhs) {
             (Self::Number(n1), Self::Number(n2)) => (n1 + n2).into(),
             _ => todo!(),
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    /// Compare two values. This is a best attempt at following the semantics
+    /// defined [for the comparison operators in MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Less_than).
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Value::Undefined, Value::Undefined)
+            | (Value::Null, Value::Null) => Some(Ordering::Equal),
+            (Value::Boolean(b1), Value::Boolean(b2)) => b1.partial_cmp(b2),
+            (Value::Number(n1), Value::Number(n2)) => n1.partial_cmp(n2),
+            (Value::String(s1), Value::String(s2)) => s1.partial_cmp(s2),
+            _ => match (self.to_number(), other.to_number()) {
+                // Try to cast both to numbers
+                (Some(n1), Some(n2)) => n1.partial_cmp(&n2),
+                // Last resort: cast both to strings
+                _ => self.to_string().partial_cmp(&other.to_string()),
+            },
         }
     }
 }
@@ -318,11 +365,11 @@ impl Display for ValueType {
 }
 
 /// A reference-counted immutable string
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct PsString(Arc<str>);
+pub struct PetitString(Arc<str>);
 
-impl Deref for PsString {
+impl Deref for PetitString {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -330,32 +377,32 @@ impl Deref for PsString {
     }
 }
 
-impl Display for PsString {
+impl Display for PetitString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        self.0.fmt(f)
     }
 }
 
-impl From<char> for PsString {
+impl From<char> for PetitString {
     fn from(value: char) -> Self {
         Self(value.to_string().into())
     }
 }
 
-impl From<&str> for PsString {
+impl From<&str> for PetitString {
     fn from(value: &str) -> Self {
         Self(value.into())
     }
 }
 
-impl From<String> for PsString {
+impl From<String> for PetitString {
     fn from(value: String) -> Self {
         Self(value.into())
     }
 }
 
-impl From<PsString> for String {
-    fn from(string: PsString) -> Self {
+impl From<PetitString> for String {
+    fn from(string: PetitString) -> Self {
         // It'd be nice to be able to reuse the allocated string if we own the
         // last copy of the wrapping Arc, but I can't find a way to do that
         // since str is unsized, so we have to clone all the data

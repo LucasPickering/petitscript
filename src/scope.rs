@@ -1,8 +1,8 @@
 use crate::{
     ast::{Binding, Identifier},
-    function::Captures,
-    value::Value,
-    RuntimeError,
+    function::{Captures, FromPsArgs},
+    value::{Value, ValueSubtype, ValueType},
+    Function, IntoPs, Process, RuntimeError,
 };
 use indexmap::IndexMap;
 use std::mem;
@@ -17,6 +17,11 @@ pub struct Scope {
     parent: Option<Box<Self>>,
     /// TODO
     bindings: Bindings,
+    /// A set of bindings scoped to a particular type, such as `Array.map`. The
+    /// prototype for all types are stored in a single map, for simplicity.
+    /// Prototypes are restricted to only storing functions. This is all we
+    /// need in practice, so it simplifies everything.
+    prototypes: Option<IndexMap<(ValueType, String), Function>>,
 }
 
 impl Scope {
@@ -51,6 +56,7 @@ impl Scope {
         Self {
             parent: Some(Box::new(self)),
             bindings: Bindings::default(),
+            prototypes: None,
         }
     }
 
@@ -86,6 +92,23 @@ impl Scope {
         self.bindings.declare(name.into(), value.into());
     }
 
+    /// TODO
+    pub fn declare_prototype<T, F, Args, Out, Err>(
+        &mut self,
+        name: impl Into<String>,
+        function: F,
+    ) where
+        T: ValueSubtype,
+        F: 'static + Fn(&Process, T, Args) -> Result<Out, Err> + Send + Sync,
+        Args: FromPsArgs,
+        Out: IntoPs,
+        Err: Into<RuntimeError>,
+    {
+        self.prototypes
+            .get_or_insert_with(Default::default)
+            .insert((T::VALUE_TYPE, name.into()), todo!());
+    }
+
     /// Get the value of a binding. Return an error if the binding doesn't exist
     /// in scope.
     pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
@@ -101,6 +124,21 @@ impl Scope {
                 }
             }
         }
+    }
+
+    /// Get a function from a specific type's prototype
+    pub fn get_prototype(
+        &self,
+        value_type: ValueType,
+        name: &str,
+    ) -> Result<&Function, RuntimeError> {
+        self.prototypes()
+            .and_then(|prototypes| {
+                prototypes.get(&(value_type, name.to_owned()))
+            })
+            .ok_or_else(|| RuntimeError::Reference {
+                name: name.to_owned(),
+            })
     }
 
     /// Declare a new binding in this scope. The binding can be a single
@@ -148,6 +186,15 @@ impl Scope {
                 Ok((name.to_owned(), value))
             })
             .collect()
+    }
+
+    /// Find the prototype map for this scope. Only one scope in a chain should
+    /// have prototypes. This shouldn't ever return `None`, but that may change
+    /// in the future so maybe I forgot to update this comment.
+    fn prototypes(&self) -> Option<&IndexMap<(ValueType, String), Function>> {
+        self.prototypes
+            .as_ref()
+            .or_else(|| self.parent.as_ref()?.prototypes())
     }
 }
 

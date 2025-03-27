@@ -188,15 +188,18 @@ impl Value {
     }
 
     /// TODO
-    pub fn get(&self, key: &Self) -> Result<Value, RuntimeError> {
+    pub(crate) fn get(
+        &self,
+        key: &Self,
+    ) -> Result<Option<Value>, RuntimeError> {
         match (self, key) {
             (Self::Array(_), Self::Number(_)) => todo!(),
             // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => {
-                Ok(object.get(key).clone())
+                Ok(object.get(key).cloned())
             }
-            (Self::Undefined | Self::Null, _) => todo!(),
-            _ => Ok(Value::Undefined),
+            (Self::Undefined | Self::Null, _) => todo!("error!"),
+            _ => Ok(None),
         }
     }
 
@@ -336,7 +339,7 @@ impl_value_from!(Vec<Value>, Array);
 impl_value_from!(IndexMap<&str, Value>, Object);
 
 /// Possible types for a value
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ValueType {
     Undefined,
     Null,
@@ -345,8 +348,9 @@ pub enum ValueType {
     String,
     Array,
     Object,
-    Buffer,
     Function,
+    #[cfg(feature = "bytes")]
+    Buffer,
 }
 
 impl Display for ValueType {
@@ -359,16 +363,31 @@ impl Display for ValueType {
             Self::String => write!(f, "string"),
             Self::Array => write!(f, "array"),
             Self::Object => write!(f, "object"),
-            Self::Buffer => write!(f, "buffer"),
             Self::Function => write!(f, "function"),
+            #[cfg(feature = "bytes")]
+            Self::Buffer => write!(f, "buffer"),
         }
     }
+}
+
+/// A trait for any subtype of a value. This correlates a static Rust type with
+/// the enum that represents PS types at runtime.
+pub trait ValueSubtype {
+    const VALUE_TYPE: ValueType;
+}
+
+impl ValueSubtype for bool {
+    const VALUE_TYPE: ValueType = ValueType::Boolean;
 }
 
 /// A reference-counted immutable string
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PetitString(Arc<str>);
+
+impl ValueSubtype for PetitString {
+    const VALUE_TYPE: ValueType = ValueType::String;
+}
 
 impl Deref for PetitString {
     type Target = str;

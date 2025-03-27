@@ -1,4 +1,10 @@
-use crate::value::macros::{impl_value_conversions, impl_value_from};
+use crate::{
+    value::{
+        macros::{impl_value_conversions, impl_value_from},
+        ValueSubtype,
+    },
+    ValueType,
+};
 use bytes::Bytes;
 use std::{
     fmt::{self, Display},
@@ -19,6 +25,10 @@ impl Deref for Buffer {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+impl ValueSubtype for Buffer {
+    const VALUE_TYPE: ValueType = ValueType::Buffer;
 }
 
 impl Display for Buffer {

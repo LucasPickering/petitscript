@@ -1,8 +1,8 @@
 //! The PetitScript standard library
 
 use crate::{
-    error::RuntimeError, function::Varargs, scope::Scope, value::Object,
-    NativeFunctionTable, Process,
+    error::RuntimeError, function::Varargs, scope::Scope, value::Object, Array,
+    NativeFunctionTable, Process, Value,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -14,6 +14,7 @@ pub fn stdlib(functions: &mut NativeFunctionTable) -> Scope {
     {
         scope.declare("JSON", json(functions));
     }
+    scope.declare_prototype("includes", array_includes);
     scope
 }
 
@@ -80,4 +81,14 @@ fn json_stringify(
     value: crate::Value,
 ) -> Result<String, RuntimeError> {
     serde_json::to_string_pretty(&value).map_err(RuntimeError::other)
+}
+
+/// `Array.prototype.includes`
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/includes>
+fn array_includes(
+    _: &Process,
+    array: Array,
+    value: Value,
+) -> Result<bool, RuntimeError> {
+    Ok(array.contains(&value))
 }

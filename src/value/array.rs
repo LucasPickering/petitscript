@@ -1,4 +1,7 @@
-use crate::value::Value;
+use crate::{
+    value::{Value, ValueSubtype},
+    ValueType,
+};
 use std::{
     fmt::{self, Display},
     ops::Deref,
@@ -62,6 +65,10 @@ impl Array {
             Self(vec.into())
         }
     }
+}
+
+impl ValueSubtype for Array {
+    const VALUE_TYPE: ValueType = ValueType::Array;
 }
 
 impl Deref for Array {

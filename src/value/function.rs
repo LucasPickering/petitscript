@@ -1,6 +1,9 @@
 use crate::{
-    compile::FunctionDefinitionId, error::RuntimeError, execute::ProcessId,
-    value::Value, FromPs, IntoPs, Process,
+    compile::FunctionDefinitionId,
+    error::RuntimeError,
+    execute::ProcessId,
+    value::{Value, ValueSubtype},
+    FromPs, IntoPs, Process, ValueType,
 };
 use indexmap::IndexMap;
 use std::{
@@ -103,6 +106,10 @@ pub(crate) enum FunctionInner {
         /// affect program behavior beyond its `toString()` output.
         name: Option<String>,
     },
+}
+
+impl ValueSubtype for Function {
+    const VALUE_TYPE: ValueType = ValueType::Function;
 }
 
 /// A unique ID for a user function. This is unique only within the process that

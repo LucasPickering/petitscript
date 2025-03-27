@@ -1,4 +1,7 @@
-use crate::value::Value;
+use crate::{
+    value::{Value, ValueSubtype},
+    ValueType,
+};
 use indexmap::IndexMap;
 use std::{
     fmt::{self, Display},
@@ -19,11 +22,10 @@ impl Object {
     }
 
     /// Get a value from the object by key, or undefined if not present
-    pub fn get(&self, key: &str) -> &Value {
+    pub(crate) fn get(&self, key: &str) -> Option<&Value> {
         self.0
             .iter()
             .find_map(|(k, v)| if k == key { Some(v) } else { None })
-            .unwrap_or(&Value::Undefined)
     }
 
     /// Get the number of entries in this object
@@ -86,6 +88,10 @@ impl Object {
             Self(vec.into())
         }
     }
+}
+
+impl ValueSubtype for Object {
+    const VALUE_TYPE: ValueType = ValueType::Object;
 }
 
 impl Display for Object {

@@ -1,4 +1,4 @@
-use crate::error::ValueError;
+use crate::{error::ValueError, value::ValueSubtype, ValueType};
 use std::{
     cmp::Ordering,
     f64,
@@ -25,6 +25,10 @@ impl Number {
             Number::Float(f) => f != 0.0,
         }
     }
+}
+
+impl ValueSubtype for Number {
+    const VALUE_TYPE: ValueType = ValueType::Number;
 }
 
 impl Display for Number {

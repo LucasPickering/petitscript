@@ -2,7 +2,7 @@
 
 use crate::{
     error::RuntimeError, function::Varargs, scope::Scope, value::Object,
-    NativeFunctionTable, Process, Value,
+    NativeFunctionTable, Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -10,7 +10,8 @@ use crate::{
 pub fn stdlib(functions: &mut NativeFunctionTable) -> Scope {
     let mut scope = Scope::new();
     scope.declare("console", console(functions));
-    if cfg!(feature = "serde") {
+    #[cfg(feature = "serde")]
+    {
         scope.declare("JSON", json(functions));
     }
     scope
@@ -64,13 +65,19 @@ fn json(functions: &mut NativeFunctionTable) -> Object {
 /// Parse a JSON string
 /// TODO can we accept a &str?
 #[cfg(feature = "serde")]
-fn json_parse(_: &Process, input: String) -> Result<Value, RuntimeError> {
+fn json_parse(
+    _: &Process,
+    input: String,
+) -> Result<crate::Value, RuntimeError> {
     serde_json::from_str(&input).map_err(RuntimeError::other)
 }
 
 /// Stringify a value to JSON
 /// TODO accept &Value
 #[cfg(feature = "serde")]
-fn json_stringify(_: &Process, value: Value) -> Result<String, RuntimeError> {
+fn json_stringify(
+    _: &Process,
+    value: crate::Value,
+) -> Result<String, RuntimeError> {
     serde_json::to_string_pretty(&value).map_err(RuntimeError::other)
 }

@@ -8,9 +8,10 @@ use crate::{
         Binding, Block, Declaration, DoWhileLoop, ExportDeclaration,
         Expression, FunctionCall, FunctionDeclaration, FunctionDefinition,
         FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-        LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
-        ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateChunk,
-        TemplateLiteral, Variable, WhileLoop,
+        ImportNamed, LexicalDeclaration, Literal, ModuleSpecifier,
+        ObjectLiteral, ObjectPatternElement, ObjectProperty, PropertyAccess,
+        PropertyName, Statement, TemplateChunk, TemplateLiteral, Variable,
+        WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -83,7 +84,82 @@ impl Transform for ext::ImportDecl {
     type Output = ImportDeclaration;
 
     fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
-        todo!()
+        if let Some(node) = self.assert_token() {
+            // https://v8.dev/features/import-assertions
+            unsupported(node.text_range(), "import assertion", "TODO")?;
+        }
+
+        // TODO explain
+        let mut wildcard: Option<Spanned<Identifier>> = None;
+        let mut default: Option<Spanned<Identifier>> = None;
+        let mut named: Vec<Spanned<ImportNamed>> = vec![];
+        for import in self.imports() {
+            match import {
+                ext::ImportClause::WildcardImport(wildcard_import) => {
+                    let range = wildcard_import.range();
+                    let identifier = Identifier::new(
+                        wildcard_import
+                            .ident_token()
+                            .required(range)?
+                            .to_string(),
+                    );
+                    // TODO handle error for duplicate
+                    wildcard.replace(identifier.into_spanned(range));
+                }
+                ext::ImportClause::NamedImports(named_imports) => {
+                    named.extend(named_imports.specifiers().transform_all()?);
+                }
+                ext::ImportClause::Name(name) => {
+                    // TODO handle error for duplicate
+                    default.replace(name.transform_spanned()?);
+                }
+                ext::ImportClause::ImportStringSpecifier(_) => {
+                    todo!("what is this?")
+                }
+            }
+        }
+
+        let source = self.source().required(self.range())?;
+        let source_text = source
+            .inner_string_text()
+            .required(source.range())?
+            .to_string();
+
+        // If it's a valid native module name, treat it as such. Otherwise treat
+        // it as a path. A path is always going to have a character like . or /
+        // that will make it an invalid module name
+        let module = match source_text.try_into() {
+            Ok(name) => ModuleSpecifier::Native(name),
+            Err(error) => ModuleSpecifier::Path(error.name.into()),
+        }
+        .into_spanned(source.range());
+
+        match (wildcard, default, named.as_slice()) {
+            (Some(wildcard), None, &[]) => Ok(ImportDeclaration::Namespace {
+                identifier: wildcard,
+                module,
+            }),
+            (Some(_), _, _) => todo!("error"),
+            (None, None, &[]) => todo!("error no imports specified"),
+            (None, default, _) => Ok(ImportDeclaration::Named {
+                default,
+                named,
+                module,
+            }),
+        }
+    }
+}
+
+impl Transform for ext::Specifier {
+    type Output = ImportNamed;
+
+    fn transform(self) -> Result<Self::Output, Spanned<TransformError>> {
+        let identifier =
+            Identifier::new(self.name().required(self.range())?.to_string())
+                .into_spanned(self.range());
+        // Optional `as x` rename
+        let rename = self.alias().transform_spanned_opt()?;
+        Ok(ImportNamed { identifier, rename })
     }
 }
 
@@ -392,7 +468,7 @@ impl Transform for ext::FnDecl {
                 body,
                 captures: [].into(), // Will be filled out later
             }
-            .into_spanned(self.range().into()),
+            .into_spanned(self.range()),
         );
         Ok(FunctionDeclaration { name, pointer })
     }
@@ -440,7 +516,7 @@ impl Transform for ext::ArrowExpr {
                 body,
                 captures: [].into(), // Will be filled out later
             }
-            .into_spanned(self.range().into()),
+            .into_spanned(self.range()),
         ))
     }
 }
@@ -634,14 +710,11 @@ impl Transform for ext::Template {
         let mut chunks: Vec<Spanned<TemplateChunk>> = self
             .quasis()
             .map(|quasi| {
-                let span = quasi.text_range().into();
-                Spanned {
-                    data: TemplateChunk::Literal(Spanned {
-                        data: quasi.text().to_string(),
-                        span,
-                    }),
-                    span,
-                }
+                let range = quasi.text_range();
+                TemplateChunk::Literal(
+                    quasi.text().to_string().into_spanned(range),
+                )
+                .into_spanned(range)
             })
             .chain(self.elements().transform_all()?)
             .collect();
@@ -764,7 +837,7 @@ impl Transform for ext::PropName {
                         .inner_string_text()
                         .required(literal.range())?
                         .to_string();
-                    let span = literal.range().into();
+                    let span = literal.range();
                     Ok(PropertyName::Expression(
                         Expression::Literal(
                             Literal::String(s).into_spanned(span),
@@ -787,7 +860,7 @@ impl Transform for ext::BracketExpr {
         let expression =
             self.object().required(self.range())?.transform_spanned()?;
         let prop = self.prop().required(self.range())?;
-        let property_span = prop.range().into();
+        let property_span = prop.range();
         let property = prop.transform_spanned()?;
         Ok(PropertyAccess {
             expression: expression.into(),
@@ -805,7 +878,7 @@ impl Transform for ext::DotExpr {
             self.object().required(self.range())?.transform_spanned()?;
         let identifier =
             self.prop().required(self.range())?.transform_spanned()?;
-        let span = self.range().into();
+        let span = self.range();
         Ok(PropertyAccess {
             expression: expression.into(),
             property: PropertyName::Literal(identifier).into_spanned(span),
@@ -944,7 +1017,7 @@ impl<T> OptionExt<T> for Option<T> {
             TransformError::Missing {
                 expected_type: any::type_name::<T>(),
             }
-            .into_spanned(parent_text_range.into())
+            .into_spanned(parent_text_range)
         })
     }
 
@@ -971,8 +1044,7 @@ fn unsupported<T>(
     name: &'static str,
     help: &'static str,
 ) -> Result<T, Spanned<TransformError>> {
-    Err(TransformError::Unsupported { name, help }
-        .into_spanned(text_range.into()))
+    Err(TransformError::Unsupported { name, help }.into_spanned(text_range))
 }
 
 /// TODO

@@ -22,16 +22,22 @@ pub use crate::{
 };
 
 use crate::{
+    ast::ModuleName,
     error::RuntimeError,
     scope::Scope,
     stdlib::stdlib,
     value::function::{FromPsArgs, NativeFunctionTable},
 };
+use indexmap::IndexMap;
 
 /// The main entrypoint for executing and evaluating PetitScript programs. An
 /// engine defines how code should be executed. TODO more
 #[derive(Debug)]
 pub struct Engine {
+    /// Modules registered by the user that can be imported into any script.
+    /// This is the only way to provide named module imports. All other imports
+    /// must be by relative path.
+    modules: IndexMap<ModuleName, Exports>,
     /// Global values available to all code execution. This includes both the
     /// standard library and user-defined values.
     globals: Scope,
@@ -54,9 +60,36 @@ impl Engine {
         // Register the standard library
         let globals = stdlib(&mut native_functions);
         Self {
+            modules: Default::default(),
             globals,
             native_functions,
         }
+    }
+
+    /// Register a native module, which can be imported into any PetitScript
+    /// program executed by this engine. If a module with the given name is
+    /// already registered, it will be replaced.
+    ///
+    /// ```
+    /// engine.register_module("math", todo!()).unwrap();
+    /// ```
+    ///
+    /// ```notrust
+    /// import { add } from "math";
+    /// ```
+    ///
+    /// ## Errors
+    ///
+    /// Return an error if the module name is invalid. TODO explain naming rules
+    /// here.
+    pub fn register_module(
+        &mut self,
+        name: impl ToString,
+        module: Exports,
+    ) -> Result<(), Error> {
+        let name: ModuleName = name.to_string().try_into()?;
+        self.modules.insert(name, module);
+        Ok(())
     }
 
     /// Register a value in the global namespace. This will be made available

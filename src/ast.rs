@@ -11,10 +11,14 @@
 pub mod source;
 pub mod walk;
 
-use crate::{ast::source::Spanned, compile::FunctionDefinitionId};
+use crate::{
+    ast::source::Spanned, compile::FunctionDefinitionId, error::ModuleNameError,
+};
 use std::{
     fmt::{self, Display},
     hash::Hash,
+    path::PathBuf,
+    str::FromStr,
 };
 
 /// The root AST node. This is the outcome of parsing a program, but is not yet
@@ -157,10 +161,80 @@ pub struct DoWhileLoop {
     pub body: Box<Spanned<Statement>>,
 }
 
+/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct ImportDeclaration {
-    // TODO
+pub enum ImportDeclaration {
+    /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
+    Named {
+        /// `exportDefault`
+        default: Option<Spanned<Identifier>>,
+        /// `{ export1, export2 as ex2 }`
+        named: Vec<Spanned<ImportNamed>>,
+        /// `"module-name"`
+        module: Spanned<ModuleSpecifier>,
+    },
+    /// `import * as name from "module-name"`
+    Namespace {
+        identifier: Spanned<Identifier>,
+        module: Spanned<ModuleSpecifier>,
+    },
+    // Side-effect imports not supported - we're a functional lang!!
+}
+
+/// One identifier in a named import clause. In this import:
+/// ```
+/// import exportDefault, { export1, export2 as ex2 } from "module-name"
+/// ```
+///
+/// the nameds are `export1` and `export2 as ex2`
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub struct ImportNamed {
+    /// `export1` or `export2`
+    pub identifier: Spanned<Identifier>,
+    /// `ex2`
+    pub rename: Option<Spanned<Identifier>>,
+}
+
+/// Source path for an external module that will be imported
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum ModuleSpecifier {
+    /// A native module provided by the engine with a static name, like
+    /// `import helpers from 'helpers'`
+    Native(ModuleName),
+    /// A relative path to another PetitScript file
+    Path(PathBuf),
+}
+
+/// TODO move this somewhere
+/// TODO explain naming rules
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ModuleName(String);
+
+impl TryFrom<String> for ModuleName {
+    type Error = ModuleNameError;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        fn is_valid(c: char) -> bool {
+            c.is_alphanumeric() || ['-', '_'].contains(&c)
+        }
+
+        if !name.is_empty() && name.chars().all(is_valid) {
+            Ok(Self(name))
+        } else {
+            Err(ModuleNameError { name })
+        }
+    }
+}
+
+impl FromStr for ModuleName {
+    type Err = ModuleNameError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.to_owned().try_into()
+    }
 }
 
 #[derive(Clone, Debug)]

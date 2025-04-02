@@ -19,6 +19,10 @@ pub enum Error {
     #[error("Multiple app data values of type `{type_name}` were registered")]
     DuplicateAppData { type_name: &'static str },
 
+    /// Attempted to register a native module with an invalid name
+    #[error(transparent)]
+    InvalidModuleName(#[from] ModuleNameError),
+
     /// Error occurred while loading source code from a file or other I/O
     /// source
     #[error(transparent)]
@@ -40,9 +44,9 @@ pub enum Error {
         span: QualifiedSpan,
     },
 
-    /// An error that occurs while executing a program. All runtime errors have
-    /// an attached source span, indicating the point in the program where the
-    /// error occurred.
+    /// An error that occurs while executing a PetitScript program. All runtime
+    /// errors have an attached source span, indicating the point in the
+    /// program where the error occurred.
     #[error("Error at {span}: {error}")]
     Runtime {
         #[source]
@@ -229,4 +233,14 @@ impl<T, E: Into<RuntimeError>> ResultExt<T, E> for Result<T, E> {
     fn spanned_err(self, span: Span) -> Result<T, Spanned<RuntimeError>> {
         self.map_err(|error| error.into().into_spanned(span))
     }
+}
+
+/// TODO
+#[derive(Debug, Error)]
+#[error(
+    "Invalid module name: `{name}`; module names must not be empty, and can \
+    only contain alphanumeric characters, hyphens (-) or underscores (_)"
+)]
+pub struct ModuleNameError {
+    pub name: String,
 }

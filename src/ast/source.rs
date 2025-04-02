@@ -202,7 +202,7 @@ impl<T: Hash> Hash for Spanned<T> {
 /// TODO
 pub trait IntoSpanned: Sized {
     /// TODO
-    fn into_spanned(self, span: Span) -> Spanned<Self>;
+    fn into_spanned(self, span: impl Into<Span>) -> Spanned<Self>;
 
     /// Wrap an AST node in a [Spanned], with a wildcard span that will
     /// match anything in quality checking. For AST comparisons
@@ -212,8 +212,11 @@ pub trait IntoSpanned: Sized {
 }
 
 impl<T> IntoSpanned for T {
-    fn into_spanned(self, span: Span) -> Spanned<Self> {
-        Spanned { data: self, span }
+    fn into_spanned(self, span: impl Into<Span>) -> Spanned<Self> {
+        Spanned {
+            data: self,
+            span: span.into(),
+        }
     }
 
     #[cfg(test)]

@@ -1,5 +1,8 @@
 use crate::{
-    ast::source::{IntoSpanned, QualifiedSpan, Span, Spanned},
+    ast::{
+        source::{IntoSpanned, QualifiedSpan, Span, Spanned},
+        NativeModuleName,
+    },
     compile::FunctionDefinitionId,
     value::ValueType,
     Number,
@@ -8,6 +11,7 @@ use rslint_parser::ParserError;
 use std::{
     fmt::{self, Display},
     io,
+    path::PathBuf,
     string::FromUtf8Error,
 };
 use thiserror::Error;
@@ -23,10 +27,13 @@ pub enum Error {
     #[error(transparent)]
     InvalidModuleName(#[from] ModuleNameError),
 
-    /// Error occurred while loading source code from a file or other I/O
-    /// source
-    #[error(transparent)]
-    Io(#[from] io::Error),
+    /// Error occurred while loading source code from a file
+    #[error("Error loading {path:?}: {error}")]
+    Io {
+        #[source]
+        error: io::Error,
+        path: PathBuf,
+    },
 
     /// Error occurred while parsing source code. This indicates the source is
     /// not valid ECMAScript code
@@ -87,13 +94,10 @@ impl Display for ParseError {
 /// JavaScript syntax, but is illegal in PetitScript.
 #[derive(Debug, Error)]
 pub enum TransformError {
-    /// Source code contains a syntax construct that isn't supported in our
-    /// semantics
-    #[error("Unsupported: {name}; {help}")]
-    Unsupported {
-        name: &'static str,
-        help: &'static str,
-    },
+    /// A nested error that occurred while parsing an imported local module
+    #[error(transparent)]
+    Import(Box<Error>),
+
     /// AST is missing a node that should be present
     /// TODO improve error message - this is probably invalid syntax
     #[error(
@@ -102,6 +106,14 @@ pub enum TransformError {
     Missing {
         /// Name of the type of node that was expected
         expected_type: &'static str,
+    },
+
+    /// Source code contains a syntax construct that isn't supported in our
+    /// semantics
+    #[error("Unsupported: {name}; {help}")]
+    Unsupported {
+        name: &'static str,
+        help: &'static str,
     },
 }
 
@@ -140,6 +152,13 @@ pub enum RuntimeError {
     /// Reference to an identifier that isn't bound
     #[error("`{name}` is not defined")]
     Reference { name: String },
+
+    /// Attempt to import from a module that doesn't exist
+    #[error(
+        "Unknown module `{name}`. Native modules must be registered with the \
+        engine. If you meant to import from a local file, try `./{name}`"
+    )]
+    UnknownModule { name: NativeModuleName },
 
     /// TODO
     #[error("Unknown user function with definition ID {0:?}")]

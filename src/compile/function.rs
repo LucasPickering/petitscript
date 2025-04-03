@@ -7,9 +7,9 @@ use crate::{
     ast::{
         source::Spanned,
         walk::{AstVisitor, Walk as _},
-        Ast, Binding, Block, Expression, FunctionDeclaration,
-        FunctionDefinition, FunctionPointer, Identifier, ObjectProperty,
-        PropertyName, Variable,
+        Binding, Block, Expression, FunctionDeclaration, FunctionDefinition,
+        FunctionPointer, Identifier, Module, ObjectProperty, PropertyName,
+        Variable,
     },
     error::RuntimeError,
 };
@@ -235,11 +235,11 @@ impl FunctionTable {
     /// into a single registry, and replacing the original definitions with
     /// IDs into the registry. This is akin to moving all functions into the
     /// .text section of a binary and generating pointers.
-    pub fn lift(ast: &mut Ast) -> Self {
+    pub fn lift(module: &mut Module) -> Self {
         let mut table = Self {
             functions: Vec::new(),
         };
-        ast.walk(&mut table);
+        module.walk(&mut table);
         table
     }
 

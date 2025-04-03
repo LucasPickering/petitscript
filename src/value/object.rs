@@ -103,6 +103,16 @@ impl Display for Object {
     }
 }
 
+impl<T: Into<Value>> From<IndexMap<&str, T>> for Object {
+    fn from(map: IndexMap<&str, T>) -> Self {
+        Self(Arc::new(
+            map.into_iter()
+                .map(|(k, v)| (k.to_owned(), v.into()))
+                .collect(),
+        ))
+    }
+}
+
 impl<T: Into<Value>> From<IndexMap<String, T>> for Object {
     fn from(map: IndexMap<String, T>) -> Self {
         Self(Arc::new(

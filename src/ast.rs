@@ -17,15 +17,16 @@ use crate::{
 use std::{
     fmt::{self, Display},
     hash::Hash,
+    ops::Deref,
     path::PathBuf,
     str::FromStr,
 };
 
-/// The root AST node. This is the outcome of parsing a program, but is not yet
-/// ready for execution.
+/// The root AST node for a single source file. This is the outcome of parsing a
+/// file, and may contain nested modules from local imports.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct Ast {
+pub struct Module {
     pub statements: Box<[Spanned<Statement>]>,
 }
 
@@ -170,14 +171,14 @@ pub enum ImportDeclaration {
         /// `exportDefault`
         default: Option<Spanned<Identifier>>,
         /// `{ export1, export2 as ex2 }`
-        named: Vec<Spanned<ImportNamed>>,
+        named: Box<[Spanned<ImportNamed>]>,
         /// `"module-name"`
-        module: Spanned<ModuleSpecifier>,
+        module: Spanned<ImportModule>,
     },
     /// `import * as name from "module-name"`
     Namespace {
         identifier: Spanned<Identifier>,
-        module: Spanned<ModuleSpecifier>,
+        module: Spanned<ImportModule>,
     },
     // Side-effect imports not supported - we're a functional lang!!
 }
@@ -197,23 +198,31 @@ pub struct ImportNamed {
     pub rename: Option<Spanned<Identifier>>,
 }
 
-/// Source path for an external module that will be imported
+/// Source for an imported module
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum ModuleSpecifier {
+pub enum ImportModule {
     /// A native module provided by the engine with a static name, like
     /// `import helpers from 'helpers'`
-    Native(ModuleName),
-    /// A relative path to another PetitScript file
-    Path(PathBuf),
+    Native(NativeModuleName),
+    /// Another PetitScript file, e.g. `import helpers from './helpers'`. The
+    /// imported file will be parsed during the parse of the parent, so we
+    /// end up with a separate AST to be executed.
+    Local(Module),
 }
 
 /// TODO move this somewhere
 /// TODO explain naming rules
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ModuleName(String);
+pub struct NativeModuleName(String);
 
-impl TryFrom<String> for ModuleName {
+impl Display for NativeModuleName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TryFrom<String> for NativeModuleName {
     type Error = ModuleNameError;
 
     fn try_from(name: String) -> Result<Self, Self::Error> {
@@ -229,7 +238,7 @@ impl TryFrom<String> for ModuleName {
     }
 }
 
-impl FromStr for ModuleName {
+impl FromStr for NativeModuleName {
     type Err = ModuleNameError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -500,7 +509,7 @@ mod tests {
     // These helpers all take `Vec<T>` instead of `impl IntoIterator<Item = T>`
     // to cut down on compile time/code dupe
 
-    impl Ast {
+    impl Module {
         pub fn new(statements: Vec<Spanned<Statement>>) -> Self {
             Self {
                 statements: statements.into_iter().collect(),

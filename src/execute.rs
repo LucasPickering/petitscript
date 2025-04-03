@@ -5,14 +5,16 @@ mod exec;
 mod state;
 
 use crate::{
-    ast::source::Span,
+    ast::{source::Span, NativeModuleName},
     compile::Program,
+    error::RuntimeError,
     execute::{exec::Execute, state::ThreadState},
     function::{Function, FunctionInner},
     scope::Scope,
     value::{Exports, Value},
     Error, NativeFunctionTable,
 };
+use indexmap::IndexMap;
 use std::{
     any::{self, Any, TypeId},
     collections::{hash_map::Entry, HashMap},
@@ -26,6 +28,12 @@ pub struct Process {
     id: ProcessId,
     /// The program we'll be executing
     program: Arc<Program>,
+    /// A clone of the module registry from the engine. This clone should be
+    /// relatively cheap because all the values within each export are
+    /// reference counted. Cloning snapshots the modules at the time of the
+    /// process being spawned, allowing the engine to register new modules as
+    /// needed without interfering with running modules.
+    modules: IndexMap<NativeModuleName, Exports>,
     /// Intern pool of native function definitions. This is read-only; native
     /// functions can only be registered in the engine. Once a process is
     /// spawned, new native functions cannot be added to it. Anything added to
@@ -45,6 +53,7 @@ static_assertions::assert_impl_all!(Process: Send, Sync);
 impl Process {
     /// TODO
     pub(super) fn new(
+        modules: IndexMap<NativeModuleName, Exports>,
         native_functions: NativeFunctionTable,
         globals: Scope,
         program: Program,
@@ -58,6 +67,7 @@ impl Process {
         Self {
             id,
             program: program.into(),
+            modules,
             native_functions,
             globals,
             app_data: AppData::default(),
@@ -93,7 +103,7 @@ impl Process {
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, true);
         self.program
-            .ast()
+            .module()
             .exec(&mut thread_state)
             .map_err(|error| thread_state.qualify_error(error))?;
         // Exporting is available here because we're in the root scope
@@ -121,6 +131,21 @@ impl Process {
             // TODO can we do better with the span?
             .call(Span::default(), &mut thread_state, arguments)
             .map_err(|error| thread_state.qualify_error(error))
+    }
+
+    /// TODO
+    fn chungus(&self) -> ThreadState<'_> {
+        ThreadState::new(self.globals.clone(), self, true)
+    }
+
+    /// Look up a native module by name
+    fn native_module(
+        &self,
+        name: &NativeModuleName,
+    ) -> Result<&Exports, RuntimeError> {
+        self.modules
+            .get(name)
+            .ok_or_else(|| RuntimeError::UnknownModule { name: name.clone() })
     }
 }
 

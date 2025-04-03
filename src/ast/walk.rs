@@ -1,12 +1,13 @@
 use crate::ast::{
-    ArrayElement, ArrayLiteral, ArrayPatternElement, Ast, BinaryOperation,
-    Binding, Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
-    ForOfLoop, FunctionCall, FunctionDeclaration, FunctionDefinition,
-    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-    LexicalDeclaration, Literal, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    Spanned, Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
-    UnaryOperation, Variable, WhileLoop,
+    ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation, Binding,
+    Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
+    FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
+    FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
+    ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned, Statement,
+    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -24,7 +25,7 @@ pub trait Walk {
     fn walk(&mut self, visitor: &mut dyn AstVisitor);
 }
 
-impl Walk for Ast {
+impl Walk for Module {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_ast(self);
         self.statements.walk(visitor);
@@ -345,8 +346,46 @@ impl Walk for FunctionCall {
 impl Walk for ImportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import(self);
-        // TODO
+        match self {
+            ImportDeclaration::Named {
+                default,
+                named,
+                module,
+            } => {
+                default.walk(visitor);
+                named.walk(visitor);
+                module.walk(visitor);
+            }
+            ImportDeclaration::Namespace { identifier, module } => {
+                identifier.walk(visitor);
+                module.walk(visitor);
+            }
+        }
         visitor.exit_import(self);
+    }
+}
+
+impl Walk for ImportNamed {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_import_named(self);
+        self.identifier.walk(visitor);
+        self.rename.walk(visitor);
+        visitor.exit_import_named(self);
+    }
+}
+
+impl Walk for ImportModule {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_import_module(self);
+        match self {
+            ImportModule::Native(module_name) => {
+                // Nothing to do here. We could add a visit_module_name but
+                // I don't think it would have any value
+            }
+            // woo baby a whole nested module!!
+            ImportModule::Local(module) => module.walk(visitor),
+        }
+        visitor.exit_import_module(self);
     }
 }
 
@@ -443,8 +482,8 @@ pub trait AstVisitor {
     fn enter_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
     fn exit_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
 
-    fn enter_ast(&mut self, _: &mut Ast) {}
-    fn exit_ast(&mut self, _: &mut Ast) {}
+    fn enter_ast(&mut self, _: &mut Module) {}
+    fn exit_ast(&mut self, _: &mut Module) {}
 
     fn enter_binary(&mut self, _: &mut BinaryOperation) {}
     fn exit_binary(&mut self, _: &mut BinaryOperation) {}
@@ -492,6 +531,12 @@ pub trait AstVisitor {
 
     fn enter_import(&mut self, _: &mut ImportDeclaration) {}
     fn exit_import(&mut self, _: &mut ImportDeclaration) {}
+
+    fn enter_import_named(&mut self, _: &mut ImportNamed) {}
+    fn exit_import_named(&mut self, _: &mut ImportNamed) {}
+
+    fn enter_import_module(&mut self, _: &mut ImportModule) {}
+    fn exit_import_module(&mut self, _: &mut ImportModule) {}
 
     fn enter_lexical_declaration(&mut self, _: &mut LexicalDeclaration) {}
     fn exit_lexical_declaration(&mut self, _: &mut LexicalDeclaration) {}

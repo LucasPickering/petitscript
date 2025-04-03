@@ -22,7 +22,7 @@ pub use crate::{
 };
 
 use crate::{
-    ast::ModuleName,
+    ast::NativeModuleName,
     error::RuntimeError,
     scope::Scope,
     stdlib::stdlib,
@@ -37,7 +37,7 @@ pub struct Engine {
     /// Modules registered by the user that can be imported into any script.
     /// This is the only way to provide named module imports. All other imports
     /// must be by relative path.
-    modules: IndexMap<ModuleName, Exports>,
+    modules: IndexMap<NativeModuleName, Exports>,
     /// Global values available to all code execution. This includes both the
     /// standard library and user-defined values.
     globals: Scope,
@@ -87,7 +87,7 @@ impl Engine {
         name: impl ToString,
         module: Exports,
     ) -> Result<(), Error> {
-        let name: ModuleName = name.to_string().try_into()?;
+        let name: NativeModuleName = name.to_string().try_into()?;
         self.modules.insert(name, module);
         Ok(())
     }
@@ -119,11 +119,24 @@ impl Engine {
         self.globals.declare(name.to_string(), function);
     }
 
+    /// Define a native function and return it as a value so it can be included
+    /// in a module definition.
+    pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
+    where
+        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
+        Args: FromPsArgs,
+        Out: IntoPs,
+        Err: Into<RuntimeError>,
+    {
+        self.native_functions.create_fn(function)
+    }
+
     /// Compile some source code into a loaded program. The returned [Process]
     /// can be used to execute the program.
     pub fn compile(&self, source: impl Source) -> Result<Process, Error> {
         let program = compile::compile(source)?;
         Ok(Process::new(
+            self.modules.clone(),
             self.native_functions.clone(),
             self.globals.clone(),
             program,

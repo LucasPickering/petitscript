@@ -6,7 +6,7 @@ mod parse;
 pub use function::FunctionDefinitionId;
 
 use crate::{
-    ast::{walk::Walk, Ast},
+    ast::{walk::Walk, Module},
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
 };
@@ -26,7 +26,7 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 #[derive(Debug)]
 pub struct Program {
     source: Box<dyn Source>,
-    ast: Ast,
+    module: Module,
     function_table: FunctionTable,
 }
 
@@ -37,8 +37,8 @@ impl Program {
     }
 
     /// TODO
-    pub fn ast(&self) -> &Ast {
-        &self.ast
+    pub fn module(&self) -> &Module {
+        &self.module
     }
 
     /// The function table stores the definition of each function, including
@@ -59,17 +59,17 @@ struct Compiler<T> {
 }
 
 /// AST that has been parsed, but had no transformations applied
-struct ParsedAst(Ast);
+struct ParsedAst(Module);
 
 /// AST after function labelling
-struct LabelledAst(Ast);
+struct LabelledAst(Module);
 
 /// AST after function capture
-struct CapturedAst(Ast);
+struct CapturedAst(Module);
 
 /// A program after function lifting
 struct Lifted {
-    ast: Ast,
+    module: Module,
     function_table: FunctionTable,
 }
 
@@ -125,7 +125,7 @@ impl Compiler<CapturedAst> {
         Compiler {
             source: self.source,
             program: Lifted {
-                ast,
+                module: ast,
                 function_table,
             },
         }
@@ -136,7 +136,7 @@ impl Compiler<Lifted> {
     fn end(self) -> Program {
         Program {
             source: self.source,
-            ast: self.program.ast,
+            module: self.program.module,
             function_table: self.program.function_table,
         }
     }

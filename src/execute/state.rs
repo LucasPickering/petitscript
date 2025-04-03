@@ -11,15 +11,19 @@ use indexmap::map::Entry;
 
 /// TODO
 #[derive(Debug)]
-pub(super) struct ThreadState<'a> {
-    process: &'a Process,
+pub(super) struct ThreadState<'process> {
+    process: &'process Process,
     call_stack: CallStack,
     // TODO comments
     exports: Option<Exports>,
 }
 
-impl<'a> ThreadState<'a> {
-    pub fn new(globals: Scope, process: &'a Process, can_export: bool) -> Self {
+impl<'process> ThreadState<'process> {
+    pub fn new(
+        globals: Scope,
+        process: &'process Process,
+        can_export: bool,
+    ) -> Self {
         Self {
             process,
             call_stack: CallStack::new(globals),
@@ -33,7 +37,7 @@ impl<'a> ThreadState<'a> {
         }
     }
 
-    pub fn process(&self) -> &Process {
+    pub fn process(&self) -> &'process Process {
         self.process
     }
 

@@ -1,8 +1,8 @@
 use crate::{
     ast::{
-        source::IntoSpanned, Ast, BinaryOperator, Binding, Declaration,
-        Expression, FunctionDeclaration, FunctionDefinition, FunctionParameter,
-        FunctionPointer, Identifier, LexicalDeclaration, Literal,
+        source::IntoSpanned, BinaryOperator, Binding, Declaration, Expression,
+        FunctionDeclaration, FunctionDefinition, FunctionParameter,
+        FunctionPointer, Identifier, LexicalDeclaration, Literal, Module,
         ObjectLiteral, ObjectProperty, PropertyName, Statement, Variable,
     },
     compile::{CapturedAst, Compiler, LabelledAst, Lifted},
@@ -69,7 +69,7 @@ fn test_function_label() {
 
     assert_eq!(
         ast,
-        Ast {
+        Module {
             statements: [expected_statement_1, expected_statement_2].into(),
         }
     );
@@ -101,7 +101,7 @@ fn test_function_capture() {
 
     assert_eq!(
         ast,
-        Ast::new(vec![
+        Module::new(vec![
             Statement::function(
                 "log",
                 vec![FunctionParameter::identifier("e")],
@@ -150,7 +150,7 @@ fn test_function_capture() {
 #[test]
 fn test_function_lift() {
     let Lifted {
-        ast,
+        module: ast,
         function_table,
     } = Compiler::new(
         // TODO include a function in param position here: (i = () => {}) => {}
@@ -171,7 +171,7 @@ fn test_function_lift() {
 
     assert_eq!(
         ast,
-        Ast {
+        Module {
             statements: [Statement::Declaration(
                 Declaration::Function(
                     FunctionDeclaration {

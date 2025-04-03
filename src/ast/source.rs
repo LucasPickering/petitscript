@@ -3,6 +3,7 @@
 use crate::Error;
 use std::{
     borrow::Cow,
+    env,
     fmt::{self, Debug, Display},
     fs,
     hash::Hash,
@@ -15,12 +16,22 @@ pub trait Source: 'static + Debug + Send + Sync {
     /// TODO
     fn name(&self) -> Option<&str>;
 
+    /// Root path for local module imports. Import paths will be relative to
+    /// this path. For file-less source strings, return `None` and the current
+    /// working directory will be used.
+    fn import_root(&self) -> Option<&Path>;
+
     /// TODO
     fn text(&self) -> Result<Cow<'_, str>, Error>;
 }
 
 impl Source for &'static str {
     fn name(&self) -> Option<&str> {
+        None
+    }
+
+    fn import_root(&self) -> Option<&Path> {
+        // Use cwd for imports
         None
     }
 
@@ -34,6 +45,11 @@ impl Source for String {
         None
     }
 
+    fn import_root(&self) -> Option<&Path> {
+        // Use cwd for imports
+        None
+    }
+
     fn text(&self) -> Result<Cow<'_, str>, Error> {
         Ok(self.as_str().into())
     }
@@ -44,8 +60,17 @@ impl Source for PathBuf {
         self.to_str()
     }
 
+    fn import_root(&self) -> Option<&Path> {
+        Some(self)
+    }
+
     fn text(&self) -> Result<Cow<'_, str>, Error> {
-        Ok(fs::read_to_string(self)?.into())
+        Ok(fs::read_to_string(self)
+            .map_err(|error| Error::Io {
+                path: self.clone(),
+                error,
+            })?
+            .into())
     }
 }
 

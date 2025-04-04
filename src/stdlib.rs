@@ -25,10 +25,7 @@ fn console(functions: &mut NativeFunctionTable) -> Object {
 }
 
 /// Log values to stdout
-fn console_log(
-    _: &Process,
-    Varargs(values): Varargs,
-) -> Result<(), RuntimeError> {
+fn console_log(_: &Process, Varargs(values): Varargs) {
     for (i, value) in values.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -36,14 +33,10 @@ fn console_log(
         print!("{value}");
     }
     println!();
-    Ok(())
 }
 
 /// Log values to stdout with their debug format
-fn console_debug(
-    _: &Process,
-    Varargs(values): Varargs,
-) -> Result<(), RuntimeError> {
+fn console_debug(_: &Process, Varargs(values): Varargs) {
     for (i, value) in values.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -51,7 +44,6 @@ fn console_debug(
         print!("{value:?}");
     }
     println!();
-    Ok(())
 }
 
 /// `JSON` module

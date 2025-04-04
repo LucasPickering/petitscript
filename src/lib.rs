@@ -26,7 +26,7 @@ use crate::{
     error::RuntimeError,
     scope::Scope,
     stdlib::stdlib,
-    value::function::{FromPsArgs, NativeFunctionTable},
+    value::function::{FromPsArgs, IntoPsResult, NativeFunctionTable},
 };
 use indexmap::IndexMap;
 
@@ -98,12 +98,11 @@ impl Engine {
     /// ## Caveats
     ///
     /// The returned function can only be used within _this_ PetitScript engine.
-    pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
+    pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
     where
-        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
         Args: FromPsArgs,
-        Out: IntoPs,
-        Err: Into<RuntimeError>,
+        Out: IntoPsResult,
     {
         self.native_functions.create_fn(function)
     }

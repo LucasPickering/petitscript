@@ -135,12 +135,11 @@ impl NativeFunctionTable {
 
     /// Add a Rust native function definition to the table and return a pointer
     /// to it
-    pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
+    pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
     where
-        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
         Args: FromPsArgs,
-        Out: IntoPs,
-        Err: Into<RuntimeError>,
+        Out: IntoPsResult,
     {
         let id = NativeFunctionId(self.0.len() as u64);
         self.0.push(NativeFunctionDefinition::new(function));
@@ -164,18 +163,17 @@ pub(crate) struct NativeFunctionDefinition(
 
 impl NativeFunctionDefinition {
     /// TODO
-    pub fn new<F, Args, Out, Err>(f: F) -> Self
+    pub fn new<F, Args, Out>(f: F) -> Self
     where
-        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
         Args: FromPsArgs,
-        Out: IntoPs,
-        Err: Into<RuntimeError>,
+        Out: IntoPsResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
         let function = move |process: &Process, args: &[Value]| {
             // TODO add error context
             let args = Args::from_ps_args(args)?;
-            let output = f(process, args).map_err(Err::into)?;
+            let output = f(process, args).into_ps_result()?;
             output.into_ps().map_err(RuntimeError::Value)
         };
         Self(Arc::new(function))
@@ -302,4 +300,25 @@ fn get_arg<T: FromPs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
             .context(format!("Error converting argument {index}"))
     })?;
     Ok(converted)
+}
+
+/// TODO
+pub trait IntoPsResult {
+    /// TODO
+    fn into_ps_result(self) -> Result<Value, RuntimeError>;
+}
+
+impl<T: IntoPs> IntoPsResult for T {
+    fn into_ps_result(self) -> Result<Value, RuntimeError> {
+        self.into_ps().map_err(RuntimeError::from)
+    }
+}
+
+impl<T: IntoPs, E: Into<RuntimeError>> IntoPsResult for Result<T, E> {
+    fn into_ps_result(self) -> Result<Value, RuntimeError> {
+        match self {
+            Ok(value) => Ok(value.into_ps()?),
+            Err(error) => Err(error.into()),
+        }
+    }
 }

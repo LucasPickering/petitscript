@@ -48,6 +48,12 @@ impl Object {
         })
     }
 
+    /// Return an iterator over the key-value pairs of this object, in order of
+    /// insertion
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
+        self.0.iter()
+    }
+
     /// TODO
     /// TODO better name?
     pub fn insert_all(self, other: Self) -> Self {

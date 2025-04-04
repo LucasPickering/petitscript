@@ -15,6 +15,7 @@ use std::{
     path::PathBuf,
     string::FromUtf8Error,
 };
+use winnow::error::ContextError;
 
 /// Any error that can occur within PetitScript
 #[derive(Debug)]
@@ -186,6 +187,9 @@ pub enum RuntimeError {
     /// Second assignment to a `const` variable
     ImmutableAssign { name: String },
 
+    /// Error in `JSO.parse`
+    JsonParse { error: ContextError },
+
     /// Custom error type, for errors originating in user-provided native
     /// functions
     Other(Box<dyn StdError + Send + Sync>),
@@ -203,7 +207,7 @@ pub enum RuntimeError {
     Value(ValueError),
 
     /// A runtime error with an additional context message
-    WithContext { message: String, source: Box<Self> },
+    WithContext { message: String, error: Box<Self> },
 }
 
 impl RuntimeError {
@@ -221,7 +225,7 @@ impl RuntimeError {
     pub fn context(self, context: impl ToString) -> Self {
         Self::WithContext {
             message: context.to_string(),
-            source: Box::new(self),
+            error: Box::new(self),
         }
     }
 }
@@ -246,6 +250,7 @@ impl Display for RuntimeError {
             Self::ImmutableAssign { name } => {
                 write!(f, "Assignment to immutable variable `{name}`")
             }
+            Self::JsonParse { error } => write!(f, "TODO: {error}"),
             Self::Other(error) => write!(f, "{error}"),
             Self::Reference { name } => write!(f, "`{name}` is not defined"),
             Self::UnknownModule { name } => write!(
@@ -271,12 +276,13 @@ impl StdError for RuntimeError {
             RuntimeError::IllegalReturn => None,
             RuntimeError::Internal(_) => None,
             RuntimeError::ImmutableAssign { .. } => None,
+            RuntimeError::JsonParse { .. } => None,
             RuntimeError::Other(error) => Some(&**error),
             RuntimeError::Reference { .. } => None,
             RuntimeError::UnknownModule { .. } => None,
             RuntimeError::UnknownUserFunction(_) => None,
             RuntimeError::Value(error) => Some(error),
-            RuntimeError::WithContext { source, .. } => Some(source),
+            RuntimeError::WithContext { error, .. } => Some(error),
         }
     }
 }

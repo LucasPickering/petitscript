@@ -13,6 +13,7 @@ use test_case::test_case;
 #[test_case("parameterScope", 7; "parameter_scope")]
 #[test_case("importLocal", 6; "import_local")]
 #[test_case("importNative", 6; "import_native")]
+#[test_case("json", true; "json")]
 fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
     fn add(
         _: &Process,

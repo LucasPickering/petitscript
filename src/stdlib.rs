@@ -1,8 +1,10 @@
 //! The PetitScript standard library
 
+mod json;
+
 use crate::{
-    error::RuntimeError, function::Varargs, scope::Scope, value::Object,
-    NativeFunctionTable, Process,
+    function::Varargs, scope::Scope, value::Object, NativeFunctionTable,
+    Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -10,10 +12,7 @@ use crate::{
 pub fn stdlib(functions: &mut NativeFunctionTable) -> Scope {
     let mut scope = Scope::new();
     scope.declare("console", console(functions));
-    #[cfg(feature = "serde")]
-    {
-        scope.declare("JSON", json(functions));
-    }
+    scope.declare("JSON", json::json(functions));
     scope
 }
 
@@ -44,32 +43,4 @@ fn console_debug(_: &Process, Varargs(values): Varargs) {
         print!("{value:?}");
     }
     println!();
-}
-
-/// `JSON` module
-#[cfg(feature = "serde")]
-fn json(functions: &mut NativeFunctionTable) -> Object {
-    Object::default()
-        .insert("parse", functions.create_fn(json_parse))
-        .insert("stringify", functions.create_fn(json_stringify))
-}
-
-/// Parse a JSON string
-/// TODO can we accept a &str?
-#[cfg(feature = "serde")]
-fn json_parse(
-    _: &Process,
-    input: String,
-) -> Result<crate::Value, RuntimeError> {
-    serde_json::from_str(&input).map_err(RuntimeError::other)
-}
-
-/// Stringify a value to JSON
-/// TODO accept &Value
-#[cfg(feature = "serde")]
-fn json_stringify(
-    _: &Process,
-    value: crate::Value,
-) -> Result<String, RuntimeError> {
-    serde_json::to_string_pretty(&value).map_err(RuntimeError::other)
 }

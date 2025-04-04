@@ -92,35 +92,12 @@ impl Engine {
         Ok(())
     }
 
-    /// Register a value in the global namespace. This will be made available
-    /// to all code executed in this engine. This can be used to register
-    /// anything that implements [IntoPs], including primitive values and
-    /// objects. To register native functions, use
-    /// [register_fn](Self::register_fn) instead.
-    pub fn register_global(&mut self, name: impl ToString, value: Value) {
-        self.globals.declare(name.to_string(), value);
-    }
-
-    /// Register a Rust function as a global, allowing it to be used within
-    /// PetitScript programs
-    pub fn register_fn<F, Args, Out, Err>(
-        &mut self,
-        name: impl ToString,
-        function: F,
-    ) where
-        F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,
-        Args: FromPsArgs,
-        Out: IntoPs,
-        Err: Into<RuntimeError>,
-    {
-        let mut function = self.native_functions.create_fn(function);
-        let name = name.to_string();
-        function.set_name(name.clone()); // Label the function
-        self.globals.declare(name.to_string(), function);
-    }
-
     /// Define a native function and return it as a value so it can be included
     /// in a module definition.
+    ///
+    /// ## Caveats
+    ///
+    /// The returned function can only be used within _this_ PetitScript engine.
     pub fn create_fn<F, Args, Out, Err>(&mut self, function: F) -> Function
     where
         F: 'static + Fn(&Process, Args) -> Result<Out, Err> + Send + Sync,

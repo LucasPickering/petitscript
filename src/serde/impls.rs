@@ -4,7 +4,9 @@
 use crate::{
     compile::FunctionDefinitionId,
     execute::ProcessId,
-    function::{Captures, Function, FunctionInner, UserFunctionId},
+    function::{
+        Captures, Function, FunctionInner, NativeFunctionId, UserFunctionId,
+    },
     Array, IntoPs, Number, Object, Value,
 };
 use serde::{
@@ -206,7 +208,7 @@ impl Function {
         Self::FIELD_CAPTURES,
     ];
     pub(super) const NATIVE_FIELDS: &'static [&'static str] =
-        &[Self::FIELD_TYPE, Self::FIELD_NAME];
+        &[Self::FIELD_TYPE, Self::FIELD_ID, Self::FIELD_NAME];
 }
 
 impl Serialize for Function {
@@ -229,12 +231,13 @@ impl Serialize for Function {
                 strct.serialize_field(Self::FIELD_CAPTURES, captures)?;
                 strct.end()
             }
-            FunctionInner::Native { name, .. } => {
+            FunctionInner::Native { id, name } => {
                 let mut strct = serializer.serialize_struct(
                     Self::TYPE_USER,
                     Self::NATIVE_FIELDS.len(),
                 )?;
                 strct.serialize_field(Self::FIELD_TYPE, Self::TYPE_NATIVE)?;
+                strct.serialize_field(Self::FIELD_ID, &id.0)?;
                 strct.serialize_field(Self::FIELD_NAME, name)?;
                 strct.end()
             }
@@ -250,7 +253,7 @@ impl<'de> Deserialize<'de> for Function {
         struct FunctionVisitor {
             /// [Function::TYPE_USER] or [Function::TYPE_NATIVE]
             type_: Field<String>,
-            id: Field<UserFunctionId>,
+            id: Field<u64>,
             name: Field<Option<String>>,
             captures: Field<Captures>,
         }
@@ -290,11 +293,14 @@ impl<'de> Deserialize<'de> for Function {
                 match self.type_.get()?.as_str() {
                     // If any of the fields weren't specified, fail here
                     Function::TYPE_USER => Ok(Function::user(
-                        self.id.get()?,
+                        UserFunctionId::unpack(self.id.get()?),
                         self.name.get()?,
                         self.captures.get()?,
                     )),
-                    Function::TYPE_NATIVE => todo!(),
+                    Function::TYPE_NATIVE => Ok(Function::native(
+                        NativeFunctionId(self.id.get()?),
+                        self.name.get()?,
+                    )),
                     type_ => Err(de::Error::invalid_value(
                         Unexpected::Other(&format!(
                             "map with {} set to {type_}",

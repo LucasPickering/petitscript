@@ -31,8 +31,8 @@ impl Function {
 
     /// Create a new native function. The function must have been predefined in
     /// the engine. This is just a "pointer" to the function definition.
-    pub(crate) fn native(id: NativeFunctionId) -> Self {
-        Self(FunctionInner::Native { id, name: None })
+    pub(crate) fn native(id: NativeFunctionId, name: Option<String>) -> Self {
+        Self(FunctionInner::Native { id, name })
     }
 
     /// TODO
@@ -144,7 +144,7 @@ impl NativeFunctionTable {
     {
         let id = NativeFunctionId(self.0.len() as u64);
         self.0.push(NativeFunctionDefinition::new(function));
-        Function::native(id)
+        Function::native(id, None)
     }
 }
 

@@ -11,19 +11,9 @@ use test_case::test_case;
 /// export an object.
 #[test_case("capture", 9; "capture")]
 #[test_case("parameterScope", 7; "parameter_scope")]
-#[test_case("importLocal", 3; "import_local")]
+#[test_case("importLocal", 6; "import_local")]
+#[test_case("importNative", 6; "import_native")]
 fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
-    let engine = Engine::new();
-    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-
-    let exported = execute(&engine, path);
-    let expected_default = expected.into();
-    assert_eq!(exported, expected_default);
-}
-
-/// Test importing from a module defined in Rust code
-#[test]
-fn test_native_import() {
     fn add(
         _: &Process,
         (a, b): (Number, Number),
@@ -34,9 +24,11 @@ fn test_native_import() {
     let mut engine = Engine::new();
     let module = Exports::named([("add", engine.create_fn(add))]);
     engine.register_module("math", module).unwrap();
+    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
 
-    let exported = execute(&engine, "tests/ps/importNative.js".into());
-    assert_eq!(exported, 3.into());
+    let exported = execute(&engine, path);
+    let expected_default = expected.into();
+    assert_eq!(exported, expected_default);
 }
 
 /// Compile and execute a program. Expect no named exports, and return the

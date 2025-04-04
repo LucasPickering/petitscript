@@ -18,7 +18,7 @@ use crate::{
 };
 use std::{borrow::Cow, iter, sync::Arc};
 
-/// TODO
+/// Evaluate an expression into a value
 pub trait Evaluate {
     /// Evaluate an AST node into a runtime [Value]. Errors are returned wrapped
     /// with the source span of the AST node from which the error originated.

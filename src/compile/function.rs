@@ -8,8 +8,8 @@ use crate::{
         source::Spanned,
         walk::{AstVisitor, Walk as _},
         Binding, Block, Expression, FunctionDeclaration, FunctionDefinition,
-        FunctionPointer, Identifier, Module, ObjectProperty, PropertyName,
-        Variable,
+        FunctionPointer, Identifier, ImportDeclaration, Module, ObjectProperty,
+        PropertyName, Variable,
     },
     error::RuntimeError,
 };
@@ -81,7 +81,12 @@ impl AstVisitor for LabelFunctions {
 /// just identifiers. The runtime will use this list to determine which values
 /// to capture.
 ///
-/// TODO explain how it works
+/// This works by walking through every function body and visiting every
+/// variable reference. For each reference, check if it's available in the
+/// function's local scope. If not, assume it's in the outer scope and capture
+/// it. This doesn't actually verify if it *is* available in the outer scope;
+/// that will be enforced at runtime, as all reference errors are runtime
+/// errors.
 #[derive(Debug)]
 pub struct CaptureFunctions {
     /// TODO
@@ -90,17 +95,6 @@ pub struct CaptureFunctions {
     /// TODO
     /// Invariant: empty iff we are not inside a function definition
     function_stack: Vec<Frame>,
-}
-
-/// TODO rename
-#[derive(Debug)]
-struct Frame {
-    /// TODO
-    captures: IndexSet<Identifier>,
-    /// A pointer into the scope stack for the top-level scope within this
-    /// function. The scope includes all functions further up (higher index in)
-    /// the stack as well
-    scope_index: usize,
 }
 
 impl CaptureFunctions {
@@ -112,9 +106,9 @@ impl CaptureFunctions {
     }
 
     /// Add a declaration to the outermost scope
-    fn declare(&mut self, identifier: Identifier) {
+    fn declare(&mut self, identifier: &Spanned<Identifier>) {
         let scope = self.scope_stack.last_mut().expect("Scope stack is empty");
-        scope.insert(identifier);
+        scope.insert(identifier.data.clone());
     }
 
     /// Track a reference to an identifier. We'll decide if it's accesible in
@@ -126,7 +120,7 @@ impl CaptureFunctions {
             .iter()
             .rev()
             .position(|scope| scope.contains(&identifier))
-            // Found index is from the _end_ - we need to flip it around
+            // Found index is from the *end* - we need to flip it around
             .map(|index| self.scope_stack.len() - 1 - index)
         else {
             // The name doesn't exist anywhere; let's assume it's in the global
@@ -163,10 +157,11 @@ impl AstVisitor for CaptureFunctions {
         self.scope_stack.pop().expect("Scope stack is empty");
     }
 
+    /// Create a new function frame on the stack
     fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {
         // A function definition defines a new function (obviously) as well as
-        // a new scope. Create the scope first, then let a function frame that
-        // points to that scope
+        // a new scope. Create the scope first, then create a function frame
+        // that points to that scope
         self.scope_stack.push(IndexSet::new());
         self.function_stack.push(Frame {
             captures: IndexSet::new(),
@@ -174,6 +169,7 @@ impl AstVisitor for CaptureFunctions {
         });
     }
 
+    /// Close out the function frame and finalize the list of captures
     fn exit_function_definition(
         &mut self,
         definition: &mut FunctionDefinition,
@@ -185,23 +181,42 @@ impl AstVisitor for CaptureFunctions {
         definition.captures = frame.captures.into_iter().collect();
     }
 
+    /// Declare a lexical variable
     fn enter_variable(&mut self, variable: &mut Variable) {
         // Lexical declaration could have any number of names
         match &variable.binding {
-            Binding::Identifier(identifier) => {
-                self.declare(identifier.data.clone())
-            }
+            Binding::Identifier(identifier) => self.declare(identifier),
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
         }
     }
 
+    /// Declare a function's name
     fn enter_function_declaration(
         &mut self,
         declaration: &mut FunctionDeclaration,
     ) {
         // Function declarations are simple: just one name
-        self.declare(declaration.name.data.clone());
+        self.declare(&declaration.name);
+    }
+
+    /// Declare names from an import
+    fn enter_import(&mut self, import: &mut ImportDeclaration) {
+        match import {
+            ImportDeclaration::Named { default, named, .. } => {
+                if let Some(default) = default {
+                    self.declare(default);
+                }
+                for named in named {
+                    let name =
+                        named.rename.as_ref().unwrap_or(&named.identifier);
+                    self.declare(name);
+                }
+            }
+            ImportDeclaration::Namespace { identifier, .. } => {
+                self.declare(identifier);
+            }
+        }
     }
 
     // Check all the ways an identifier can be used to reference its value. We
@@ -219,6 +234,17 @@ impl AstVisitor for CaptureFunctions {
             self.refer(identifier.data.clone());
         }
     }
+}
+
+/// TODO rename
+#[derive(Debug)]
+struct Frame {
+    /// TODO
+    captures: IndexSet<Identifier>,
+    /// A pointer into the scope stack for the top-level scope within this
+    /// function. The scope includes all functions further up (higher index in)
+    /// the stack as well
+    scope_index: usize,
 }
 
 /// A table of all user function definitions in a program. The definitions are

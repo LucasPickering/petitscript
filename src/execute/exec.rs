@@ -128,23 +128,22 @@ impl Execute for Block {
     }
 }
 
-impl Execute for ImportDeclaration {
+impl Execute for Spanned<ImportDeclaration> {
     type Output<'process> = ();
 
     fn exec(
         &self,
         state: &mut ThreadState,
     ) -> Result<(), Spanned<RuntimeError>> {
-        let module_specifier = match self {
-            Self::Named { module, .. } | Self::Namespace { module, .. } => {
-                module
-            }
+        let module_specifier = match &self.data {
+            ImportDeclaration::Named { module, .. }
+            | ImportDeclaration::Namespace { module, .. } => module,
         };
 
         let exports = module_specifier.exec(state)?;
 
         let scope = state.scope_mut();
-        match self {
+        match &self.data {
             ImportDeclaration::Named { default, named, .. } => {
                 if let Some(name) = default {
                     scope.declare(

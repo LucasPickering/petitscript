@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        source::IntoSpanned, BinaryOperator, Binding, Declaration, Expression,
+        source::IntoSpanned, Binding, Declaration, Expression,
         FunctionDeclaration, FunctionDefinition, FunctionParameter,
         FunctionPointer, Identifier, LexicalDeclaration, Literal, Module,
         ObjectLiteral, ObjectProperty, PropertyName, Statement, Variable,
@@ -80,6 +80,8 @@ fn test_function_label() {
 fn test_function_capture() {
     let CapturedAst(ast) = Compiler::new(
         "
+        import { add } from 'math';
+
         function log(e) {
             console.log(e);
         }
@@ -88,7 +90,7 @@ fn test_function_capture() {
         function f() {
             const y = 3;
             return (z) => {
-                log(x + y + z)
+                log(add(x, y, z))
             };
         }
         ",
@@ -102,6 +104,7 @@ fn test_function_capture() {
     assert_eq!(
         ast,
         Module::new(vec![
+            Statement::import_native(None, vec!["add"], "math"),
             Statement::function(
                 "log",
                 vec![FunctionParameter::identifier("e")],
@@ -123,24 +126,23 @@ fn test_function_capture() {
                         vec![FunctionParameter::identifier("z")],
                         vec![Statement::Expression(Expression::call(
                             Expression::identifier("log"),
-                            vec![Expression::binary(
-                                BinaryOperator::Add,
-                                Expression::binary(
-                                    BinaryOperator::Add,
+                            vec![Expression::call(
+                                Expression::identifier("add"),
+                                vec![
                                     Expression::identifier("x"),
-                                    Expression::identifier("y")
-                                ),
-                                Expression::identifier("z")
+                                    Expression::identifier("y"),
+                                    Expression::identifier("z"),
+                                ],
                             )]
                         ))
                         .s()],
                         // `console` isn't captured because it isn't declared
                         // in any parent scope
-                        vec!["log", "x", "y"]
+                        vec!["log", "add", "x", "y"]
                     )))
                     .s()
                 ],
-                vec!["log", "x"]
+                vec!["log", "add", "x"]
             )
         ])
     );

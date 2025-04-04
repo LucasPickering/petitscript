@@ -569,6 +569,33 @@ mod tests {
             )
             .s()
         }
+
+        /// Create a native import declaration: `import default, { named } from
+        /// 'math'`
+        pub fn import_native(
+            default: Option<&str>,
+            named: Vec<&str>,
+            module: &str,
+        ) -> Spanned<Self> {
+            Self::Import(
+                ImportDeclaration::Named {
+                    default: default.map(|name| Identifier::new(name).s()),
+                    named: named
+                        .into_iter()
+                        .map(|name| {
+                            ImportNamed {
+                                identifier: Identifier::new(name).s(),
+                                rename: None,
+                            }
+                            .s()
+                        })
+                        .collect(),
+                    module: ImportModule::Native("math".parse().unwrap()).s(),
+                }
+                .s(),
+            )
+            .s()
+        }
     }
 
     impl Expression {

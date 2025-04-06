@@ -6,7 +6,7 @@ mod parse;
 pub use function::FunctionDefinitionId;
 
 use crate::{
-    ast::{walk::Walk, Module},
+    ast::{source::SourceTable, walk::Walk, Module},
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
 };
@@ -25,15 +25,15 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 /// An executable program. This is produced by [compile]
 #[derive(Debug)]
 pub struct Program {
-    source: Box<dyn Source>,
+    sources: SourceTable,
     module: Module,
     function_table: FunctionTable,
 }
 
 impl Program {
     /// TODO
-    pub fn source(&self) -> &dyn Source {
-        &*self.source
+    pub fn sources(&self) -> &SourceTable {
+        &self.sources
     }
 
     /// TODO
@@ -54,7 +54,7 @@ impl Program {
 /// order. Each step of the pipeline should emit a unique type using a typestate
 /// wrapper.
 struct Compiler<T> {
-    source: Box<dyn Source>,
+    sources: SourceTable,
     program: T,
 }
 
@@ -75,17 +75,19 @@ struct Lifted {
 
 impl Compiler<()> {
     fn new(source: impl Source) -> Self {
+        let mut sources = SourceTable::default();
+        sources.insert(source);
         Self {
-            source: Box::new(source),
+            sources,
             program: (),
         }
     }
 
     /// Parse source code into an AST
-    fn parse(self) -> Result<Compiler<ParsedAst>, Error> {
-        let ast = parse::parse(&*self.source)?;
+    fn parse(mut self) -> Result<Compiler<ParsedAst>, Error> {
+        let ast = parse::parse(&mut self.sources)?;
         Ok(Compiler {
-            source: self.source,
+            sources: self.sources,
             program: ParsedAst(ast),
         })
     }
@@ -99,7 +101,7 @@ impl Compiler<ParsedAst> {
         let mut ast = self.program.0;
         ast.walk(&mut LabelFunctions);
         Compiler {
-            source: self.source,
+            sources: self.sources,
             program: LabelledAst(ast),
         }
     }
@@ -110,7 +112,7 @@ impl Compiler<LabelledAst> {
         let mut ast = self.program.0;
         ast.walk(&mut CaptureFunctions::new());
         Compiler {
-            source: self.source,
+            sources: self.sources,
             program: CapturedAst(ast),
         }
     }
@@ -123,7 +125,7 @@ impl Compiler<CapturedAst> {
         let mut ast = self.program.0;
         let function_table = FunctionTable::lift(&mut ast);
         Compiler {
-            source: self.source,
+            sources: self.sources,
             program: Lifted {
                 module: ast,
                 function_table,
@@ -135,7 +137,7 @@ impl Compiler<CapturedAst> {
 impl Compiler<Lifted> {
     fn end(self) -> Program {
         Program {
-            source: self.source,
+            sources: self.sources,
             module: self.program.module,
             function_table: self.program.function_table,
         }

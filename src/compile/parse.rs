@@ -3,7 +3,7 @@
 
 use crate::{
     ast::{
-        source::{IntoSpanned, Span, Spanned},
+        source::{IntoSpanned, SourceId, SourceTable, Span, Spanned},
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
         Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
         FunctionCall, FunctionDeclaration, FunctionDefinition,
@@ -28,8 +28,23 @@ use std::{
 /// File extensions that can be imported as a local module
 const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 
-/// Parse source code into an Abstract Syntax Tree
-pub fn parse(source: &dyn Source) -> Result<Module, Error> {
+/// Parse source code into an Abstract Syntax Tree. Collect all imported sources
+/// along the way as well, inserting them into the source table. This assumes
+/// the given source table has exactly one source in it to begin with, which is
+/// the source of the root module.
+pub fn parse(sources: &mut SourceTable) -> Result<Module, Error> {
+    let module = parse_module(sources, sources.root_id())?;
+    Ok(module)
+}
+
+/// Helper for parsing a single module. This is called recursively within a
+/// parse tree, once per PS module. Each module corresponds to a single source,
+/// so this will add a new source to the given source table
+fn parse_module(
+    sources: &mut SourceTable,
+    current_source_id: SourceId,
+) -> Result<Module, Error> {
+    let source = sources.get(current_source_id);
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()
@@ -37,17 +52,42 @@ pub fn parse(source: &dyn Source) -> Result<Module, Error> {
             source_name: source.name().map(String::from),
             errors,
         })?;
-    ast.transform(&ParseContext { source })
-        .map_err(|error| Error::Transform {
-            error: error.data,
-            span: error.span.qualify(source),
-        })
+    let mut context = ParseContext {
+        sources,
+        current_source_id,
+    };
+    let module =
+        ast.transform(&mut context)
+            .map_err(|error| Error::Transform {
+                error: error.data,
+                span: sources.qualify(error.span),
+            })?;
+    Ok(module)
 }
 
 /// Context object to be passed around to every transformation
 struct ParseContext<'a> {
+    /// All sources that have been reached so far in the parse
+    sources: &'a mut SourceTable,
     /// The source of the module currently being parsed
-    source: &'a dyn Source,
+    current_source_id: SourceId,
+}
+
+impl<'a> ParseContext<'a> {
+    /// Current source being parsed
+    fn current_source(&self) -> &dyn Source {
+        self.sources.get(self.current_source_id)
+    }
+
+    /// Convert an `rslint` [TextRange] into a [Span] by attaching the current
+    /// source ID to it
+    fn span(&self, range: TextRange) -> Span {
+        Span::Source {
+            source_id: self.current_source_id,
+            start_offset: range.start().into(),
+            end_offset: range.end().into(),
+        }
+    }
 }
 
 /// Transform an rslint AST node to a local AST node
@@ -56,7 +96,7 @@ trait Transform {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>>;
 }
 
@@ -65,7 +105,7 @@ impl Transform for ext::Module {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let statements = self.items().transform_all(context)?;
         Ok(Module { statements })
@@ -77,7 +117,7 @@ impl Transform for ext::ModuleItem {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::ImportDecl(import_decl) => import_decl
@@ -95,9 +135,15 @@ impl Transform for ext::ModuleItem {
 
             Self::Stmt(stmt) => stmt.transform(context),
 
-            Self::TsImportEqualsDecl(node) => unsupported_ts(node.range()),
-            Self::TsExportAssignment(node) => unsupported_ts(node.range()),
-            Self::TsNamespaceExportDecl(node) => unsupported_ts(node.range()),
+            Self::TsImportEqualsDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsExportAssignment(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsNamespaceExportDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
         }
     }
 }
@@ -107,13 +153,17 @@ impl Transform for ext::ImportDecl {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         // TODO only allow imports at top level
 
         if let Some(node) = self.assert_token() {
             // https://v8.dev/features/import-assertions
-            unsupported(node.text_range(), "import assertion", "TODO")?;
+            unsupported(
+                context.span(node.text_range()),
+                "import assertion",
+                "TODO",
+            )?;
         }
 
         // TODO explain
@@ -123,15 +173,15 @@ impl Transform for ext::ImportDecl {
         for import in self.imports() {
             match import {
                 ext::ImportClause::WildcardImport(wildcard_import) => {
-                    let range = wildcard_import.range();
+                    let span = context.span(wildcard_import.range());
                     let identifier = Identifier::new(
                         wildcard_import
                             .ident_token()
-                            .required(range)?
+                            .required(span)?
                             .to_string(),
                     );
                     // TODO handle error for duplicate
-                    wildcard.replace(identifier.into_spanned(range));
+                    wildcard.replace(identifier.into_spanned(span));
                 }
                 ext::ImportClause::NamedImports(named_imports) => {
                     named.extend(
@@ -148,10 +198,11 @@ impl Transform for ext::ImportDecl {
             }
         }
 
-        let source = self.source().required(self.range())?;
+        let source = self.source().required(context.span(self.range()))?;
+        let source_span = context.span(source.range());
         let source_text = source
             .inner_string_text()
-            .required(source.range())?
+            .required(source_span)?
             .to_string();
 
         // If it's a valid native module name, treat it as such. Otherwise treat
@@ -160,16 +211,19 @@ impl Transform for ext::ImportDecl {
         let module = match source_text.try_into() {
             Ok(name) => ImportModule::Native(name),
             Err(error) => {
-                let ast = resolve_module(error.name, context.source)
-                    .and_then(|path| parse(&path))
+                let ast = resolve_module(error.name, context.current_source())
+                    .and_then(|path| {
+                        let source_id = context.sources.insert(path);
+                        parse_module(context.sources, source_id)
+                    })
                     .map_err(|error| {
                         TransformError::Import(error.into())
-                            .into_spanned(source.range())
+                            .into_spanned(source_span)
                     })?;
                 ImportModule::Local(ast)
             }
         }
-        .into_spanned(source.range());
+        .into_spanned(source_span);
 
         match (wildcard, default, named.as_slice()) {
             (Some(wildcard), None, &[]) => Ok(ImportDeclaration::Namespace {
@@ -226,11 +280,12 @@ impl Transform for ext::Specifier {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
+        let span = context.span(self.range());
         let identifier =
-            Identifier::new(self.name().required(self.range())?.to_string())
-                .into_spanned(self.range());
+            Identifier::new(self.name().required(span)?.to_string())
+                .into_spanned(span);
         // Optional `as x` rename
         let rename = self.alias().transform_spanned_opt(context)?;
         Ok(ImportNamed { identifier, rename })
@@ -242,12 +297,12 @@ impl Transform for ext::ExportDecl {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         // TODO only allow exports at top level
 
         self.decl()
-            .required(self.range())?
+            .required(context.span(self.range()))?
             .transform_spanned(context)
             .map(ExportDeclaration::Declaration)
     }
@@ -258,10 +313,10 @@ impl Transform for ext::ExportDefaultExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         self.expr()
-            .required(self.range())?
+            .required(context.span(self.range()))?
             .transform_spanned(context)
             .map(ExportDeclaration::DefaultExpression)
     }
@@ -272,14 +327,14 @@ impl Transform for ext::Stmt {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             // Things that can return None
             Self::EmptyStmt(_) => Ok(Statement::Empty),
             Self::ExprStmt(expr_stmt) => expr_stmt
                 .expr()
-                .required(expr_stmt.range())?
+                .required(context.span(expr_stmt.range()))?
                 .transform_spanned(context)
                 .map(Statement::Expression),
 
@@ -296,7 +351,9 @@ impl Transform for ext::Stmt {
             Self::WhileStmt(while_stmt) => while_stmt
                 .transform_spanned(context)
                 .map(Statement::WhileLoop),
-            Self::ForStmt(node) => unsupported(node.range(), "TODO", "TODO"),
+            Self::ForStmt(node) => {
+                unsupported(context.span(node.range()), "TODO", "TODO")
+            }
             // TODO for..of loop?
             Self::ForInStmt(_) => todo!(),
             // TODO error if labels are present
@@ -308,7 +365,7 @@ impl Transform for ext::Stmt {
                 Ok(Statement::Return(expression))
             }
             Self::LabelledStmt(node) => {
-                unsupported(node.range(), "TODO", "TODO")
+                unsupported(context.span(node.range()), "TODO", "TODO")
             }
             Self::SwitchStmt(_) => todo!(),
             Self::ThrowStmt(_) => todo!(),
@@ -317,9 +374,11 @@ impl Transform for ext::Stmt {
                 decl.transform_spanned(context).map(Statement::Declaration)
             }
             Self::DebuggerStmt(node) => {
-                unsupported(node.range(), "TODO", "TODO")
+                unsupported(context.span(node.range()), "TODO", "TODO")
             }
-            Self::WithStmt(node) => unsupported(node.range(), "TODO", "TODO"),
+            Self::WithStmt(node) => {
+                unsupported(context.span(node.range()), "TODO", "TODO")
+            }
         }
     }
 }
@@ -329,7 +388,7 @@ impl Transform for ext::BlockStmt {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let statements = self.stmts().transform_all(context)?;
         Ok(Block { statements })
@@ -341,19 +400,17 @@ impl Transform for ext::IfStmt {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
+        let span = context.span(self.range());
         let condition = self
             .condition()
-            .required(self.range())?
+            .required(span)?
             .condition()
-            .required(self.range())?
+            .required(span)?
             .transform_spanned(context)?;
         // This body is NOT optional
-        let body = self
-            .cons()
-            .required(self.range())?
-            .transform_spanned(context)?;
+        let body = self.cons().required(span)?.transform_spanned(context)?;
         // This body IS optional
         let else_body = self.alt().transform_spanned_opt(context)?;
         Ok(If {
@@ -369,7 +426,7 @@ impl Transform for ext::DoWhileStmt {
 
     fn transform(
         self,
-        _: &ParseContext,
+        _: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         todo!()
     }
@@ -380,7 +437,7 @@ impl Transform for ext::WhileStmt {
 
     fn transform(
         self,
-        _: &ParseContext,
+        _: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         todo!()
     }
@@ -391,7 +448,7 @@ impl Transform for ext::Decl {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::VarDecl(var_decl) => var_decl
@@ -401,15 +458,23 @@ impl Transform for ext::Decl {
                 .transform_spanned(context)
                 .map(Declaration::Function),
             Self::ClassDecl(node) => unsupported(
-                node.range(),
+                context.span(node.range()),
                 "`class`",
                 "Classes are not supported",
             ),
-            Self::TsEnum(node) => unsupported_ts(node.range()),
-            Self::TsTypeAliasDecl(node) => unsupported_ts(node.range()),
-            Self::TsNamespaceDecl(node) => unsupported_ts(node.range()),
-            Self::TsModuleDecl(node) => unsupported_ts(node.range()),
-            Self::TsInterfaceDecl(node) => unsupported_ts(node.range()),
+            Self::TsEnum(node) => unsupported_ts(context.span(node.range())),
+            Self::TsTypeAliasDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsNamespaceDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsModuleDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsInterfaceDecl(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
         }
     }
 }
@@ -419,15 +484,19 @@ impl Transform for ext::VarDecl {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         if self.is_var() {
-            return unsupported(self.range(), "`var`", "Use `const` instead");
+            return unsupported(
+                context.span(self.range()),
+                "`var`",
+                "Use `const` instead",
+            );
         }
         if self.is_let() {
             // TODO add link to docs explaining immutability
             return unsupported(
-                self.range(),
+                context.span(self.range()),
                 "`let`",
                 "Mutable bindings are not supported; use `const` instead",
             );
@@ -442,10 +511,12 @@ impl Transform for ext::Declarator {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let binding =
-            self.pattern().required(self.range())?.transform(context)?;
+        let binding = self
+            .pattern()
+            .required(context.span(self.range()))?
+            .transform(context)?;
         let init = self.value().transform_spanned_opt(context)?.map(Box::new);
         Ok(Variable { binding, init })
     }
@@ -456,7 +527,7 @@ impl Transform for ext::PatternOrExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             ext::PatternOrExpr::Pattern(pattern) => pattern.transform(context),
@@ -473,7 +544,7 @@ impl Transform for ext::Pattern {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::SinglePattern(single_pattern) => single_pattern
@@ -496,9 +567,11 @@ impl Transform for ext::SinglePattern {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        self.name().required(self.range())?.transform(context)
+        self.name()
+            .required(context.span(self.range()))?
+            .transform(context)
     }
 }
 
@@ -507,11 +580,11 @@ impl Transform for ext::AssignPattern {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let binding = self.key().required(self.range())?.transform(context)?;
-        let expression =
-            self.value().required(self.range())?.transform(context)?;
+        let span = context.span(self.range());
+        let binding = self.key().required(span)?.transform(context)?;
+        let expression = self.value().required(span)?.transform(context)?;
         Ok((binding, expression))
     }
 }
@@ -521,18 +594,19 @@ impl Transform for ext::ObjectPatternProp {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::AssignPattern(_) => todo!(),
             Self::KeyValuePattern(key_value_pattern) => {
+                let span = context.span(key_value_pattern.range());
                 let key = key_value_pattern
                     .key()
-                    .required(key_value_pattern.range())?
+                    .required(span)?
                     .transform_spanned(context)?;
                 let value = key_value_pattern
                     .value()
-                    .required(key_value_pattern.range())?
+                    .required(span)?
                     .transform_spanned(context)?;
                 Ok(ObjectPatternElement::Mapped {
                     key,
@@ -543,7 +617,7 @@ impl Transform for ext::ObjectPatternProp {
             Self::RestPattern(rest_pattern) => {
                 let binding = rest_pattern
                     .pat()
-                    .required(rest_pattern.range())?
+                    .required(context.span(rest_pattern.range()))?
                     .transform_spanned(context)?;
                 Ok(ObjectPatternElement::Rest {
                     binding,
@@ -566,10 +640,12 @@ impl Transform for ext::NameRef {
 
     fn transform(
         self,
-        _: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         Ok(Identifier::new(
-            self.ident_token().required(self.range())?.to_string(),
+            self.ident_token()
+                .required(context.span(self.range()))?
+                .to_string(),
         ))
     }
 }
@@ -579,7 +655,7 @@ impl Transform for ext::Name {
 
     fn transform(
         self,
-        _: &ParseContext,
+        _: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         Ok(Identifier::new(self.text()))
     }
@@ -590,29 +666,21 @@ impl Transform for ext::FnDecl {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         // `function f()` is the only supported form; `function()` in invalid
-        let name = self
-            .name()
-            .required(self.range())?
-            .transform_spanned(context)?;
-        let parameters = self
-            .parameters()
-            .required(self.range())?
-            .transform(context)?;
-        let body = self
-            .body()
-            .required(self.range())?
-            .transform(context)?
-            .statements;
+        let span = context.span(self.range());
+        let name = self.name().required(span)?.transform_spanned(context)?;
+        let parameters =
+            self.parameters().required(span)?.transform(context)?;
+        let body = self.body().required(span)?.transform(context)?.statements;
         let pointer = FunctionPointer::Inline(FunctionDefinition {
             name: Some(name.clone()),
             parameters,
             body,
             captures: [].into(), // Will be filled out later
         })
-        .into_spanned(self.range());
+        .into_spanned(context.span(self.range()));
         Ok(FunctionDeclaration { name, pointer })
     }
 }
@@ -622,9 +690,10 @@ impl Transform for ext::ArrowExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let parameters = match self.params().required(self.range())? {
+        let span = context.span(self.range());
+        let parameters = match self.params().required(span)? {
             ext::ArrowExprParams::Name(name) => {
                 let identifier = name.transform_spanned(context)?;
                 let span = identifier.span;
@@ -643,7 +712,7 @@ impl Transform for ext::ArrowExpr {
                 parameter_list.transform(context)?
             }
         };
-        let body = match self.body().required(self.range())? {
+        let body = match self.body().required(span)? {
             ext::ExprOrBlock::Expr(expr) => {
                 let expression = expr.transform_spanned(context)?;
                 let span = expression.span;
@@ -669,20 +738,21 @@ impl Transform for ext::ParameterList {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         /// Recursive helper for converting a pattern to a function parameter.
         /// We can't just rely on Pattern::transform because it's used in a few
         /// different places in the AST with different semantics
         fn transform(
             pattern: ext::Pattern,
-            context: &ParseContext,
+            context: &mut ParseContext,
         ) -> Result<Spanned<FunctionParameter>, Spanned<TransformError>>
         {
             match pattern {
                 ext::Pattern::RestPattern(rest_pattern) => {
-                    let pattern =
-                        rest_pattern.pat().required(rest_pattern.range())?;
+                    let pattern = rest_pattern
+                        .pat()
+                        .required(context.span(rest_pattern.range()))?;
                     let mut parameter = transform(pattern, context)?;
                     parameter.data.varargs = true;
                     Ok(parameter)
@@ -691,14 +761,13 @@ impl Transform for ext::ParameterList {
                     // Param has a default expression. Everything left of the =
                     // is the key, which could be a sub-pattern
                     // TODO why doesn't this work?
-                    let pattern = assign_pattern
-                        .key()
-                        .required(assign_pattern.range())?;
+                    let span = context.span(assign_pattern.range());
+                    let pattern = assign_pattern.key().required(span)?;
                     let mut parameter = transform(pattern, context)?;
 
                     let expression = assign_pattern
                         .value()
-                        .required(assign_pattern.range())?
+                        .required(span)?
                         .transform_spanned(context)?;
                     parameter.data.variable.data.init = Some(expression.into());
                     Ok(parameter)
@@ -729,7 +798,7 @@ impl Transform for ext::Expr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::Literal(literal) => {
@@ -757,7 +826,7 @@ impl Transform for ext::Expr {
             }
             Self::GroupingExpr(grouping_expr) => grouping_expr
                 .inner()
-                .required(grouping_expr.range())?
+                .required(context.span(grouping_expr.range()))?
                 .transform(context),
             Self::BracketExpr(bracket_expr) => bracket_expr
                 .transform_spanned(context)
@@ -773,7 +842,9 @@ impl Transform for ext::Expr {
                 bin_expr.transform_spanned(context).map(Expression::Binary)
             }
             Self::CondExpr(_) => todo!(),
-            Self::AssignExpr(node) => unsupported(node.range(), "TODO", "TODO"),
+            Self::AssignExpr(node) => {
+                unsupported(context.span(node.range()), "TODO", "TODO")
+            }
             Self::SequenceExpr(_) => todo!(),
             Self::ArrowExpr(arrow_expr) => arrow_expr
                 .transform_spanned(context)
@@ -781,14 +852,18 @@ impl Transform for ext::Expr {
             Self::FnExpr(_) => todo!("wtf is this?"),
 
             // Unsupported
-            Self::ThisExpr(expr) => {
-                unsupported(expr.range(), "`this`", "`this` is not supported")
-            }
-            Self::NewExpr(node) => {
-                unsupported(node.range(), "`new`", "Classes are not supported")
-            }
+            Self::ThisExpr(expr) => unsupported(
+                context.span(expr.range()),
+                "`this`",
+                "`this` is not supported",
+            ),
+            Self::NewExpr(node) => unsupported(
+                context.span(node.range()),
+                "`new`",
+                "Classes are not supported",
+            ),
             Self::SuperCall(node) => unsupported(
-                node.range(),
+                context.span(node.range()),
                 "`super`",
                 "Classes are not supported",
             ),
@@ -797,23 +872,27 @@ impl Transform for ext::Expr {
             Self::PrivatePropAccess(_) => todo!(),
             Self::ImportMeta(_) => todo!(),
             Self::ImportCall(node) => unsupported(
-                node.range(),
+                context.span(node.range()),
                 "`import()`",
                 "Use the ES6-style `import` keyword instead",
             ),
             Self::AwaitExpr(node) => unsupported(
-                node.range(),
+                context.span(node.range()),
                 "`await`",
                 "Async-await is not supported",
             ),
             Self::YieldExpr(node) => unsupported(
-                node.range(),
+                context.span(node.range()),
                 "`yield`",
                 "Generators are not supported",
             ),
-            Self::TsNonNull(node) => unsupported_ts(node.range()),
-            Self::TsAssertion(node) => unsupported_ts(node.range()),
-            Self::TsConstAssertion(node) => unsupported_ts(node.range()),
+            Self::TsNonNull(node) => unsupported_ts(context.span(node.range())),
+            Self::TsAssertion(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
+            Self::TsConstAssertion(node) => {
+                unsupported_ts(context.span(node.range()))
+            }
         }
     }
 }
@@ -823,7 +902,7 @@ impl Transform for ext::Literal {
 
     fn transform(
         self,
-        _: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let literal = match self.kind() {
             // TODO undefined literal?
@@ -839,15 +918,20 @@ impl Transform for ext::Literal {
                     Literal::Int(f as i64)
                 }
             }
-            ext::LiteralKind::BigInt(int) => Literal::Int(
-                int.try_into()
-                    .or(unsupported(self.range(), "TODO", "TODO"))?,
-            ),
+            ext::LiteralKind::BigInt(int) => {
+                Literal::Int(int.try_into().or(unsupported(
+                    context.span(self.range()),
+                    "TODO",
+                    "TODO",
+                ))?)
+            }
             ext::LiteralKind::String => Literal::String(
-                self.inner_string_text().required(self.range())?.to_string(),
+                self.inner_string_text()
+                    .required(context.span(self.range()))?
+                    .to_string(),
             ),
             ext::LiteralKind::Regex => {
-                unsupported(self.range(), "TODO", "TODO")?
+                unsupported(context.span(self.range()), "TODO", "TODO")?
             }
         };
         Ok(literal)
@@ -859,7 +943,7 @@ impl Transform for ext::Template {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         // rslint provides the quasis (literal chunks) and elements (expression
         // chunks) separately. We're responsible for piecing them back together
@@ -868,14 +952,15 @@ impl Transform for ext::Template {
         let mut chunks: Vec<Spanned<TemplateChunk>> = self
             .quasis()
             .map(|quasi| {
-                let range = quasi.text_range();
-                TemplateChunk::Literal(
-                    quasi.text().to_string().into_spanned(range),
-                )
-                .into_spanned(range)
+                let literal = quasi
+                    .text()
+                    .to_string()
+                    .into_spanned(context.span(quasi.text_range()));
+                let span = literal.span;
+                TemplateChunk::Literal(literal).into_spanned(span)
             })
-            .chain(self.elements().transform_all(context)?)
             .collect();
+        chunks.extend(self.elements().transform_all(context)?);
         chunks.sort_by_key(|chunk| {
             let Span::Source { start_offset, .. } = chunk.span else {
                 unreachable!("Span must be source: we just created it")
@@ -893,11 +978,11 @@ impl Transform for ext::TemplateElement {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let expression = self
             .expr()
-            .required(self.range())?
+            .required(context.span(self.range()))?
             .transform_spanned(context)?;
         Ok(TemplateChunk::Expression(expression))
     }
@@ -908,7 +993,7 @@ impl Transform for ext::ArrayExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let elements = self
             .elements()
@@ -921,7 +1006,7 @@ impl Transform for ext::ArrayExpr {
                 ext::ExprOrSpread::Spread(spread_element) => {
                     let expression = spread_element
                         .element()
-                        .required(spread_element.range())?
+                        .required(context.span(spread_element.range()))?
                         .transform_spanned(context)?;
                     let span = expression.span;
                     Ok(ArrayElement::Spread(expression).into_spanned(span))
@@ -937,7 +1022,7 @@ impl Transform for ext::ObjectExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let properties = self.props().transform_all(context)?;
         Ok(ObjectLiteral { properties })
@@ -949,17 +1034,18 @@ impl Transform for ext::ObjectProp {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             Self::LiteralProp(literal_prop) => {
+                let span = context.span(literal_prop.range());
                 let property = literal_prop
                     .key()
-                    .required(literal_prop.range())?
+                    .required(span)?
                     .transform_spanned(context)?;
                 let expression = literal_prop
                     .value()
-                    .required(literal_prop.range())?
+                    .required(span)?
                     .transform_spanned(context)?;
                 Ok(ObjectProperty::Property {
                     property,
@@ -969,14 +1055,14 @@ impl Transform for ext::ObjectProp {
             Self::IdentProp(ident_prop) => {
                 let identifier = ident_prop
                     .name()
-                    .required(ident_prop.range())?
+                    .required(context.span(ident_prop.range()))?
                     .transform_spanned(context)?;
                 Ok(ObjectProperty::Identifier(identifier))
             }
             Self::SpreadProp(spread_prop) => {
                 let expression = spread_prop
                     .value()
-                    .required(spread_prop.range())?
+                    .required(context.span(spread_prop.range()))?
                     .transform_spanned(context)?;
                 Ok(ObjectProperty::Spread(expression))
             }
@@ -994,7 +1080,7 @@ impl Transform for ext::PropName {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         match self {
             ext::PropName::Ident(name) => {
@@ -1006,7 +1092,7 @@ impl Transform for ext::PropName {
                 // {[f()]: ...}
                 let expression = computed_property_name
                     .prop()
-                    .required(computed_property_name.range())?
+                    .required(context.span(computed_property_name.range()))?
                     .transform_spanned(context)?;
                 Ok(PropertyName::Expression(expression.into()))
             }
@@ -1015,15 +1101,14 @@ impl Transform for ext::PropName {
                 if let ext::LiteralKind::String = literal.kind() {
                     let s = literal
                         .inner_string_text()
-                        .required(literal.range())?
+                        .required(context.span(literal.range()))?
                         .to_string();
-                    let span = literal.range();
+                    let range = literal.range();
+                    let literal =
+                        Literal::String(s).into_spanned(context.span(range));
+                    let span = literal.span;
                     Ok(PropertyName::Expression(
-                        Expression::Literal(
-                            Literal::String(s).into_spanned(span),
-                        )
-                        .into_spanned(span)
-                        .into(),
+                        Expression::Literal(literal).into_spanned(span).into(),
                     ))
                 } else {
                     todo!("not allowed?")
@@ -1038,19 +1123,18 @@ impl Transform for ext::BracketExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let expression = self
-            .object()
-            .required(self.range())?
-            .transform_spanned(context)?;
-        let prop = self.prop().required(self.range())?;
-        let property_span = prop.range();
+        let span = context.span(self.range());
+        let expression =
+            self.object().required(span)?.transform_spanned(context)?;
+        let prop = self.prop().required(span)?;
+        let property_range = prop.range();
         let property = prop.transform_spanned(context)?;
         Ok(PropertyAccess {
             expression: expression.into(),
             property: PropertyName::Expression(property.into())
-                .into_spanned(property_span),
+                .into_spanned(context.span(property_range)),
         })
     }
 }
@@ -1060,20 +1144,18 @@ impl Transform for ext::DotExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let expression = self
-            .object()
-            .required(self.range())?
-            .transform_spanned(context)?;
-        let identifier = self
-            .prop()
-            .required(self.range())?
-            .transform_spanned(context)?;
-        let span = self.range();
+        let span = context.span(self.range());
+        let expression =
+            self.object().required(span)?.transform_spanned(context)?;
+        let identifier =
+            self.prop().required(span)?.transform_spanned(context)?;
+
         Ok(PropertyAccess {
             expression: expression.into(),
-            property: PropertyName::Literal(identifier).into_spanned(span),
+            property: PropertyName::Literal(identifier)
+                .into_spanned(context.span(self.range())),
         })
     }
 }
@@ -1083,17 +1165,12 @@ impl Transform for ext::BinExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
-        let operator = self.op().required(self.range())?.transform(context)?;
-        let lhs = self
-            .lhs()
-            .required(self.range())?
-            .transform_spanned(context)?;
-        let rhs = self
-            .rhs()
-            .required(self.range())?
-            .transform_spanned(context)?;
+        let span = context.span(self.range());
+        let operator = self.op().required(span)?.transform(context)?;
+        let lhs = self.lhs().required(span)?.transform_spanned(context)?;
+        let rhs = self.rhs().required(span)?.transform_spanned(context)?;
         Ok(BinaryOperation {
             operator,
             lhs: lhs.into(),
@@ -1107,7 +1184,7 @@ impl Transform for ext::BinOp {
 
     fn transform(
         self,
-        _: &ParseContext,
+        _: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let operator = match self {
             Self::LessThan => BinaryOperator::LessThan,
@@ -1146,17 +1223,16 @@ impl Transform for ext::CallExpr {
 
     fn transform(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
+        let span = context.span(self.range());
         let arguments = self
             .arguments()
-            .required(self.range())?
+            .required(span)?
             .args()
             .transform_all(context)?;
-        let function = self
-            .callee()
-            .required(self.range())?
-            .transform_spanned(context)?;
+        let function =
+            self.callee().required(span)?.transform_spanned(context)?;
         Ok(FunctionCall {
             function: function.into(),
             arguments,
@@ -1170,18 +1246,17 @@ impl Transform for ext::CallExpr {
 trait TransformSpanned: Transform {
     fn transform_spanned(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Spanned<Self::Output>, Spanned<TransformError>>;
 }
 
 impl<T: ext::AstNode + Transform> TransformSpanned for T {
     fn transform_spanned(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Spanned<Self::Output>, Spanned<TransformError>> {
-        let span: Span = self.syntax().text_range().into();
-        let data = self.transform(context)?;
-        Ok(Spanned { data, span })
+        let range = self.syntax().text_range();
+        Ok(self.transform(context)?.into_spanned(context.span(range)))
     }
 }
 
@@ -1190,14 +1265,14 @@ trait TransformAll<T: Transform> {
     #[allow(clippy::type_complexity)]
     fn transform_all(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Box<[Spanned<T::Output>]>, Spanned<TransformError>>;
 }
 
 impl<T: ext::AstNode + Transform> TransformAll<T> for ext::AstChildren<T> {
     fn transform_all(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Box<[Spanned<T::Output>]>, Spanned<TransformError>> {
         self.map(|value| value.transform_spanned(context))
             .collect::<Result<_, _>>()
@@ -1209,36 +1284,30 @@ trait OptionExt<T> {
     /// allows most AST nodes to be missing, because it's designed to work on
     /// incomplete/incorrect code. We need correct code to execute though, so
     /// this method makes it easy to enforce AST nodes are present.
-    fn required(
-        self,
-        parent_text_range: TextRange,
-    ) -> Result<T, Spanned<TransformError>>;
+    fn required(self, parent_span: Span) -> Result<T, Spanned<TransformError>>;
 
     /// Call [TransformSpanned] on an optional AST node
     fn transform_spanned_opt(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Option<Spanned<T::Output>>, Spanned<TransformError>>
     where
         T: TransformSpanned;
 }
 
 impl<T> OptionExt<T> for Option<T> {
-    fn required(
-        self,
-        parent_text_range: TextRange,
-    ) -> Result<T, Spanned<TransformError>> {
+    fn required(self, parent_span: Span) -> Result<T, Spanned<TransformError>> {
         self.ok_or_else(|| {
             TransformError::Missing {
                 expected_type: any::type_name::<T>(),
             }
-            .into_spanned(parent_text_range)
+            .into_spanned(parent_span)
         })
     }
 
     fn transform_spanned_opt(
         self,
-        context: &ParseContext,
+        context: &mut ParseContext,
     ) -> Result<Option<Spanned<T::Output>>, Spanned<TransformError>>
     where
         T: TransformSpanned,
@@ -1248,28 +1317,20 @@ impl<T> OptionExt<T> for Option<T> {
     }
 }
 
-impl From<TextRange> for Span {
-    fn from(range: TextRange) -> Self {
-        Span::new(range.start().into(), range.end().into())
-    }
-}
-
 /// Helper for generating an [Unsupported](TransformError::Unsupported) error,
 /// wrapped in a `Result` for Added Convenience
 fn unsupported<T>(
-    text_range: TextRange,
+    span: Span,
     name: &'static str,
     help: &'static str,
 ) -> Result<T, Spanned<TransformError>> {
-    Err(TransformError::Unsupported { name, help }.into_spanned(text_range))
+    Err(TransformError::Unsupported { name, help }.into_spanned(span))
 }
 
 /// TODO
-fn unsupported_ts<T>(
-    text_range: TextRange,
-) -> Result<T, Spanned<TransformError>> {
+fn unsupported_ts<T>(span: Span) -> Result<T, Spanned<TransformError>> {
     unsupported(
-        text_range,
+        span,
         "TypeScript",
         "Type annotations and other TypeScript constructs \
             are not supported",

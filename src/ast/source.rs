@@ -13,7 +13,7 @@ use std::{
 
 /// A source of source code. E.g. a string literal or a file path
 pub trait Source: 'static + Debug + Send + Sync {
-    /// TODO
+    /// Descriptive user-friendly display name for this source
     fn name(&self) -> Option<&str>;
 
     /// Root path for local module imports. Import paths will be relative to
@@ -21,7 +21,7 @@ pub trait Source: 'static + Debug + Send + Sync {
     /// working directory will be used.
     fn import_root(&self) -> Option<&Path>;
 
-    /// TODO
+    /// Get the source code from this source
     fn text(&self) -> Result<Cow<'_, str>, Error>;
 }
 
@@ -74,50 +74,48 @@ impl Source for PathBuf {
     }
 }
 
-/// A range of source code, defined as byte offsets. This is the raw mapping
-/// that we pass around within the compiler/interpreter. To get a user-friendly
-/// version of this TODO
-///
-/// The parser we use only provides byte offsets for its AST nodes, so we defer
-/// mapping bytes to line/column until it's actually needed.
+/// TODO
 #[derive(Copy, Clone, Debug)]
-pub enum Span {
-    /// A location in PetitScript source code
-    Source {
-        /// Byte offset for the beginning of this span (inclusize). Always <=
-        /// end_span.
-        start_offset: usize,
-        /// Byte offset for the end of this span (inclusive). Always >=
-        /// start_span.
-        end_offset: usize,
-    },
-    /// A location in Rust native code. This carries no actual data because we
-    /// don't track Rust source locations.
-    /// TODO maybe we _can_ track native code too? look into it
-    Native,
-    /// A test-only variant that is considered equal to any other span. Useful
-    /// for creating assertions that don't care about source spans
-    #[cfg(test)]
-    Any,
-}
+pub(crate) struct SourceId(u32);
 
-impl Span {
-    /// Create a new source span
-    pub fn new(start_offset: usize, end_offset: usize) -> Self {
-        Self::Source {
-            start_offset,
-            end_offset,
-        }
+/// TODO
+#[derive(Debug, Default)]
+pub(crate) struct SourceTable(Vec<Box<dyn Source>>);
+
+impl SourceTable {
+    /// Get the ID of the first source in the table. Panic if the table is empty
+    pub fn root_id(&self) -> SourceId {
+        assert!(
+            !self.0.is_empty(),
+            "Cannot get root ID of empty source table"
+        );
+        SourceId(0)
     }
 
-    /// Map this span to source code. This converts byte offsets into
-    /// lines/columns, so it can be displayed to the user.
-    pub fn qualify(self, source: &dyn Source) -> QualifiedSpan {
-        match self {
-            Self::Source {
+    /// Get a source by its unique ID
+    pub fn get(&self, id: SourceId) -> &dyn Source {
+        &**self.0.get(id.0 as usize).expect("TODO")
+    }
+
+    /// Add a new source to the table, returning its new unique ID
+    pub fn insert(&mut self, source: impl Source) -> SourceId {
+        // The ID is the index that the pushed element will get
+        let index = self.0.len();
+        let id = SourceId(index as u32);
+        self.0.push(Box::new(source));
+        id
+    }
+
+    /// Map a span from cheap IDs and byte offsets to user-friendly source names
+    /// and lines/columns
+    pub fn qualify(&self, span: Span) -> QualifiedSpan {
+        match span {
+            Span::Source {
+                source_id,
                 start_offset,
                 end_offset,
             } => {
+                let source = self.get(source_id);
                 let text = &source.text().expect("TODO");
                 // Lines/columns are 1-indexed, because reasons
                 let mut line = 1;
@@ -149,16 +147,62 @@ impl Span {
                 }
 
                 QualifiedSpan::Source {
-                    source_name: source.name().unwrap_or("").to_owned(),
+                    source_name: source.name().unwrap_or("???").to_owned(),
                     start_line,
                     start_column,
                     end_line,
                     end_column,
                 }
             }
-            Self::Native => QualifiedSpan::Native,
+            Span::Native => QualifiedSpan::Native,
             #[cfg(test)]
-            Self::Any => unimplemented!("`Any` spans cannot be qualified"),
+            Span::Any => unimplemented!("`Any` spans cannot be qualified"),
+        }
+    }
+}
+
+/// A range of source code, defined as byte offsets. This is the raw mapping
+/// that we pass around within the compiler/interpreter. To get a user-friendly
+/// version of this TODO
+///
+/// The parser we use only provides byte offsets for its AST nodes, so we defer
+/// mapping bytes to line/column until it's actually needed.
+#[derive(Copy, Clone, Debug)]
+pub enum Span {
+    /// A location in a PetitScript source code
+    Source {
+        /// The ID of the [Source] (typically a file) containing the code. This
+        /// is just an ID because we create thousands of spans, so we need this
+        /// to be cheap. Use [SourceTable] to look up the actual source.
+        source_id: SourceId,
+        /// Byte offset for the beginning of this span (inclusive). Always <=
+        /// end_span.
+        start_offset: usize,
+        /// Byte offset for the end of this span (inclusive). Always >=
+        /// start_span.
+        end_offset: usize,
+    },
+    /// A location in Rust native code. This carries no actual data because we
+    /// don't track Rust source locations.
+    /// TODO maybe we _can_ track native code too? look into it
+    Native,
+    /// A test-only variant that is considered equal to any other span. Useful
+    /// for creating assertions that don't care about source spans
+    #[cfg(test)]
+    Any,
+}
+
+impl Span {
+    /// Create a new source span
+    pub fn new(
+        source_id: SourceId,
+        start_offset: usize,
+        end_offset: usize,
+    ) -> Self {
+        Self::Source {
+            source_id,
+            start_offset,
+            end_offset,
         }
     }
 }
@@ -246,10 +290,10 @@ impl<T: Hash> Hash for Spanned<T> {
     }
 }
 
-/// TODO
+/// Helper trait to attach a span to any piece of data
 pub trait IntoSpanned: Sized {
-    /// TODO
-    fn into_spanned(self, span: impl Into<Span>) -> Spanned<Self>;
+    /// Wrap this data in a [Spanned]
+    fn into_spanned(self, span: Span) -> Spanned<Self>;
 
     /// Wrap an AST node in a [Spanned], with a wildcard span that will
     /// match anything in quality checking. For AST comparisons
@@ -259,11 +303,8 @@ pub trait IntoSpanned: Sized {
 }
 
 impl<T> IntoSpanned for T {
-    fn into_spanned(self, span: impl Into<Span>) -> Spanned<Self> {
-        Spanned {
-            data: self,
-            span: span.into(),
-        }
+    fn into_spanned(self, span: Span) -> Spanned<Self> {
+        Spanned { data: self, span }
     }
 
     #[cfg(test)]
@@ -329,6 +370,7 @@ mod tests {
     fn test_span_any() {
         assert_eq!(
             Span::Source {
+                source_id: SourceId(0),
                 start_offset: 0,
                 end_offset: 0
             },

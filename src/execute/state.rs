@@ -99,7 +99,7 @@ impl<'process> ThreadState<'process> {
         error: RuntimeError,
         current: Span,
     ) -> TracedError {
-        let source = self.program().source();
+        let sources = self.program().sources();
         let trace = self
             .call_stack
             .0
@@ -110,11 +110,10 @@ impl<'process> ThreadState<'process> {
                 // tells us where we exited _this_ frame. If this is the topmost
                 // frame, we have no exit point so use the given current span
                 let next_frame = self.call_stack.0.get(i + 1);
-                let span = next_frame
-                    .map(|frame| frame.call_site)
-                    .unwrap_or(current)
-                    // Convert bytes to lines and columns
-                    .qualify(source);
+                // Convert bytes to lines and columns
+                let span = sources.qualify(
+                    next_frame.map(|frame| frame.call_site).unwrap_or(current),
+                );
 
                 // Look up the function by its ID. If the lookup fails, this
                 // indicates a bug but we're already unrolling an error so just

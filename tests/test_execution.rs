@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use petitscript::{
     error::RuntimeError, Engine, Error, Exports, Number, Process, Value,
 };
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 use test_case::test_case;
 
 fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
@@ -34,10 +34,10 @@ fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
 #[test_case(
     "stackTrace",
     "Error (most recent call last)
-  in <root> at ps/stackTrace.js:11:16
-  in g at ps/stackTrace.js:8:10
-  in f at ps/stackTrace.js:4:10
-  in error at ps/common.js:3:10
+  in <root> at $CWD/tests/ps/stackTrace.js:11:16
+  in g at $CWD/tests/ps/stackTrace.js:8:10
+  in f at $CWD/tests/ps/stackTrace.js:4:10
+  in error at $CWD/tests/ps/common.js:3:10
 `x` is not defined";
     "stack_trace")]
 fn test_error(file_name: &'static str, expected_error: &'static str) {
@@ -46,9 +46,16 @@ fn test_error(file_name: &'static str, expected_error: &'static str) {
     engine.register_module("math", module).unwrap();
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
 
+    let cwd = env::current_dir()
+        .unwrap()
+        .into_os_string()
+        .into_string()
+        .unwrap();
+    let expected_error = expected_error // Current dir is dynamic so we have to manually replace it
+        .replace("$CWD", &cwd);
     let error = execute(&engine, path).unwrap_err().to_string();
     assert!(
-        error.contains(expected_error),
+        error.contains(&expected_error),
         "Expected error message to contain `{expected_error}`\nbut it was:\n\
         {error}"
     );

@@ -1,6 +1,7 @@
 //! Utilities for interacting with source code
 
 use crate::Error;
+use normalize_path::NormalizePath;
 use std::{
     borrow::Cow,
     env,
@@ -14,7 +15,7 @@ use std::{
 /// A source of source code. E.g. a string literal or a file path
 pub trait Source: 'static + Debug + Send + Sync {
     /// Descriptive user-friendly display name for this source
-    fn name(&self) -> Option<&str>;
+    fn name(&self) -> Option<String>;
 
     /// Root path for local module imports. Import paths will be relative to
     /// this path. For file-less source strings, return `None` and the current
@@ -26,7 +27,7 @@ pub trait Source: 'static + Debug + Send + Sync {
 }
 
 impl Source for &'static str {
-    fn name(&self) -> Option<&str> {
+    fn name(&self) -> Option<String> {
         None
     }
 
@@ -41,7 +42,7 @@ impl Source for &'static str {
 }
 
 impl Source for String {
-    fn name(&self) -> Option<&str> {
+    fn name(&self) -> Option<String> {
         None
     }
 
@@ -56,8 +57,17 @@ impl Source for String {
 }
 
 impl Source for PathBuf {
-    fn name(&self) -> Option<&str> {
-        self.to_str()
+    fn name(&self) -> Option<String> {
+        // Absolute-ify the path and normalize it, but do _not_ canonicalize.
+        // Resolving links may lead to surprising behavior for the user. We use
+        // absolute paths because PS doesn't use any singular project root
+        env::current_dir()
+            .ok()?
+            .join(self)
+            .normalize()
+            .into_os_string()
+            .into_string()
+            .ok()
     }
 
     fn import_root(&self) -> Option<&Path> {
@@ -147,7 +157,7 @@ impl SourceTable {
                 }
 
                 QualifiedSpan::Source {
-                    source_name: source.name().unwrap_or("???").to_owned(),
+                    source_name: source.name().unwrap_or_else(|| "???".into()),
                     start_line,
                     start_column,
                     end_line,

@@ -277,33 +277,47 @@ impl<T> IntoSpanned for T {
 
 /// A list of source locations representing the function call stack at a
 /// particular moment in time. Most recent call is _last_ on this stack.
-/// TODO include function names
 #[derive(Debug)]
-pub struct StackTrace<S>(Vec<S>);
+pub struct StackTrace(Vec<StackTraceFrame>);
 
-impl Display for StackTrace<QualifiedSpan> {
+impl Display for StackTrace {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // TODO reverse order?
         writeln!(f, "Error (most recent call last)")?;
-        for span in &self.0 {
-            writeln!(f, "  at {span}")?;
+        for frame in &self.0 {
+            writeln!(f, "  {frame}")?;
         }
         Ok(())
     }
 }
 
-impl<S> IntoIterator for StackTrace<S> {
-    type Item = S;
-    type IntoIter = <Vec<S> as IntoIterator>::IntoIter;
+impl IntoIterator for StackTrace {
+    type Item = StackTraceFrame;
+    type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<S> FromIterator<S> for StackTrace<S> {
-    fn from_iter<T: IntoIterator<Item = S>>(iter: T) -> Self {
+impl FromIterator<StackTraceFrame> for StackTrace {
+    fn from_iter<T: IntoIterator<Item = StackTraceFrame>>(iter: T) -> Self {
         Self(iter.into_iter().collect())
+    }
+}
+
+/// One frame in a stack trace
+#[derive(Debug)]
+pub struct StackTraceFrame {
+    /// TODO
+    pub span: QualifiedSpan,
+    /// TODO
+    pub function_name: String,
+}
+
+impl Display for StackTraceFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "in {} at {}", self.function_name, self.span)
     }
 }
 

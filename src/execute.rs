@@ -100,12 +100,8 @@ impl Process {
 
     /// Execute the loaded program and return its exported values
     pub fn execute(&self) -> Result<Exports, Error> {
-        let mut thread_state =
-            ThreadState::new(self.globals.clone(), self, true);
-        self.program
-            .module()
-            .exec(&mut thread_state)
-            .map_err(|error| thread_state.qualify_error(error))?;
+        let mut thread_state = self.create_thread();
+        self.program.module().exec(&mut thread_state)?;
         // Exporting is available here because we're in the root scope
         Ok(thread_state.into_exports().unwrap())
     }
@@ -129,11 +125,11 @@ impl Process {
             ThreadState::new(self.globals.clone(), self, false);
         function
             .call(&mut thread_state, Span::Native, arguments)
-            .map_err(|error| thread_state.qualify_error(error))
+            .map_err(Error::from)
     }
 
-    /// TODO
-    fn chungus(&self) -> ThreadState<'_> {
+    /// Create a new thread to evaluate a module
+    fn create_thread(&self) -> ThreadState<'_> {
         ThreadState::new(self.globals.clone(), self, true)
     }
 

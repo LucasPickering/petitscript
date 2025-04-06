@@ -35,6 +35,13 @@ impl Function {
         Self(FunctionInner::Native { id, name })
     }
 
+    pub(crate) fn id(&self) -> FunctionId {
+        match &self.0 {
+            FunctionInner::User { id, .. } => FunctionId::User(*id),
+            FunctionInner::Native { id, .. } => FunctionId::Native(*id),
+        }
+    }
+
     /// TODO
     pub fn name(&self) -> Option<&str> {
         match &self.0 {
@@ -105,7 +112,15 @@ pub(crate) enum FunctionInner {
     },
 }
 
-/// A unique ID for a user function. This is unique only within the process that
+/// A unique ID for a user OR native function. This is unique only within the
+/// engine that the function is defined and executed.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum FunctionId {
+    User(UserFunctionId),
+    Native(NativeFunctionId),
+}
+
+/// A unique ID for a user function. This is unique only within the engine that
 /// the function is defined and executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct UserFunctionId {

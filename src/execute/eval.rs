@@ -342,7 +342,7 @@ impl Function {
 
                 // Push the new frame onto the stack and execute the function
                 // body
-                state.with_frame(scope, call_site, |state| {
+                state.with_frame(scope, call_site, self.id(), |state| {
                     match definition.body.exec(state)? {
                         Some(Terminate::Return {
                             return_value: Some(return_value),

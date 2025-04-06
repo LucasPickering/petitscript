@@ -1,9 +1,13 @@
 use indexmap::IndexMap;
 use petitscript::{
-    error::RuntimeError, Engine, Exports, Number, Process, Value,
+    error::RuntimeError, Engine, Error, Exports, Number, Process, Value,
 };
 use std::path::PathBuf;
 use test_case::test_case;
+
+fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
+    Ok(a + b)
+}
 
 /// Test a full compile+execution pipeline for an external PS file. This expects
 /// the script to both compile and execute successfully, and asserts on the
@@ -15,26 +19,44 @@ use test_case::test_case;
 #[test_case("importNative", 6; "import_native")]
 #[test_case("json", true; "json")]
 fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
-    fn add(
-        _: &Process,
-        (a, b): (Number, Number),
-    ) -> Result<Number, RuntimeError> {
-        Ok(a + b)
-    }
-
     let mut engine = Engine::new();
     let module = Exports::named([("add", engine.create_fn(add))]);
     engine.register_module("math", module).unwrap();
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
 
-    let exported = execute(&engine, path);
+    let exported = execute(&engine, path).unwrap();
     let expected_default = expected.into();
     assert_eq!(exported, expected_default);
 }
 
-/// Compile and execute a program. Expect no named exports, and return the
-/// default export.
-fn execute(engine: &Engine, path: PathBuf) -> Value {
+/// Test error cases during execution. Assert the program fails with an error
+/// message _containing_ the given error
+#[test_case(
+    "stackTrace",
+    "Error (most recent call last)
+  in <root> at ps/stackTrace.js:11:16
+  in g at ps/stackTrace.js:8:10
+  in f at ps/stackTrace.js:4:10
+  in error at ps/common.js:3:10
+`x` is not defined";
+    "stack_trace")]
+fn test_error(file_name: &'static str, expected_error: &'static str) {
+    let mut engine = Engine::new();
+    let module = Exports::named([("add", engine.create_fn(add))]);
+    engine.register_module("math", module).unwrap();
+    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
+
+    let error = execute(&engine, path).unwrap_err().to_string();
+    assert!(
+        error.contains(expected_error),
+        "Expected error message to contain `{expected_error}`\nbut it was:\n\
+        {error}"
+    );
+}
+
+/// Compile and execute a program. If the program succeeds, expected no named
+/// exports and return the default export
+fn execute(engine: &Engine, path: PathBuf) -> Result<Value, Error> {
     if !path.exists() {
         // Sanity check
         panic!("Path {path:?} does not exist");
@@ -42,9 +64,7 @@ fn execute(engine: &Engine, path: PathBuf) -> Value {
     let process = engine
         .compile(path.clone())
         .unwrap_or_else(|error| panic!("Error compiling {path:?}: {error}"));
-    let exports = process
-        .execute()
-        .unwrap_or_else(|error| panic!("Error executing {path:?}: {error}"));
+    let exports = process.execute()?;
 
     assert_eq!(
         exports.named,
@@ -52,5 +72,5 @@ fn execute(engine: &Engine, path: PathBuf) -> Value {
         "Named exports should be empty"
     );
 
-    exports.default.expect("Expected default export")
+    Ok(exports.default.expect("Expected default export"))
 }

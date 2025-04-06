@@ -1,15 +1,15 @@
 //! Program state management
 
 use crate::{
-    ast::source::Span,
+    ast::source::{Span, StackTraceFrame},
     compile::Program,
     error::TracedError,
+    function::FunctionId,
     scope::Scope,
     value::{Exports, Value},
-    Error, Process, RuntimeError,
+    Process, RuntimeError,
 };
 use indexmap::map::Entry;
-use std::iter;
 
 /// TODO
 #[derive(Debug)]
@@ -99,29 +99,53 @@ impl<'process> ThreadState<'process> {
         error: RuntimeError,
         current: Span,
     ) -> TracedError {
+        let source = self.program().source();
         let trace = self
             .call_stack
             .0
             .iter()
-            .map(|frame| frame.call_site)
-            // Append the exact error location to the end of the trace
-            .chain(iter::once(current))
+            .enumerate()
+            .map(|(i, frame)| {
+                // Grab the call site from the _next_ stack frame, because that
+                // tells us where we exited _this_ frame. If this is the topmost
+                // frame, we have no exit point so use the given current span
+                let next_frame = self.call_stack.0.get(i + 1);
+                let span = next_frame
+                    .map(|frame| frame.call_site)
+                    .unwrap_or(current)
+                    // Convert bytes to lines and columns
+                    .qualify(source);
+
+                // Look up the function by its ID. If the lookup fails, this
+                // indicates a bug but we're already unrolling an error so just
+                // swallow it
+                let function_name = frame
+                    .function_id
+                    .and_then(|id| match id {
+                        FunctionId::User(id) => {
+                            let function = self
+                                .program()
+                                .function_table()
+                                .get(id.definition_id)
+                                .ok()?;
+                            let name = function.name.as_ref()?;
+                            Some(name.as_str().to_owned())
+                        }
+                        FunctionId::Native(_) => {
+                            // TODO native function definitions should have
+                            // names!!
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "<root>".to_owned());
+
+                StackTraceFrame {
+                    span,
+                    function_name,
+                }
+            })
             .collect();
         TracedError { error, trace }
-    }
-
-    /// Map the raw byte offsets in each span of an error's the stack trace to
-    /// lines and columns. This allows the error to be displayed prettily to
-    /// the user.
-    pub fn qualify_error(&self, error: TracedError) -> Error {
-        let TracedError { error, trace } = error;
-        Error::Runtime {
-            error,
-            trace: trace
-                .into_iter()
-                .map(|span| span.qualify(self.program().source()))
-                .collect(),
-        }
     }
 
     /// TODO
@@ -135,13 +159,21 @@ impl<'process> ThreadState<'process> {
     }
 
     /// Execute a function within a new frame on the stack
+    ///
+    /// ## Arguments
+    ///
+    /// - `scope` - New scope for the function execution
+    /// - `call_site` - Source location from which this function was invoked
+    /// - `function_id` - ID of the invoked function
+    /// - `f` - Rust closure executing the PetitScript function
     pub fn with_frame<T>(
         &mut self,
         scope: Scope,
         call_site: Span,
+        function_id: FunctionId,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        self.call_stack.push(scope, call_site);
+        self.call_stack.push(scope, call_site, function_id);
         let value = f(self);
         self.call_stack.pop();
         value
@@ -174,12 +206,20 @@ impl CallStack {
         // This root frame can never be popped
         Self(vec![CallFrame {
             call_site: Span::Native,
+            function_id: None, // This is the entrypoint, so there's no fn yet
             scope: globals.child(),
         }])
     }
 
-    fn push(&mut self, scope: Scope, call_site: Span) {
-        self.0.push(CallFrame { call_site, scope });
+    /// Push a new frame onto the stack, indicating a new function invocation
+    fn push(&mut self, scope: Scope, call_site: Span, function_id: FunctionId) {
+        self.0.push(CallFrame {
+            call_site,
+            // All stacks after the first must be function calls, so the ID is
+            // always present
+            function_id: Some(function_id),
+            scope,
+        });
     }
 
     fn pop(&mut self) {
@@ -213,8 +253,11 @@ impl CallStack {
 struct CallFrame {
     /// Scope inside the function, including captured variables
     scope: Scope,
-    /// The location from which this function was invoked, i.e. the location
+    /// The ID of the *invoked* function. `None` only for the root frame, i.e.
+    /// top-level module code. Used to get the function name for stack traces
+    function_id: Option<FunctionId>,
+    /// The location from which this function *was invoked*, i.e. the location
     /// we'll return to when this frame is popped. Used to print the stack
-    /// trace during unwinding
+    /// trace
     call_site: Span,
 }

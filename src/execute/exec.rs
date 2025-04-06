@@ -181,7 +181,7 @@ impl Execute for Spanned<ImportModule> {
                 .map(Cow::Borrowed)
                 .map_err(|error| state.trace_error(error, self.span)),
             ImportModule::Local(ast) => {
-                let mut thread_state = state.process().chungus();
+                let mut thread_state = state.process().create_thread();
                 ast.exec(&mut thread_state)?;
                 let exports = thread_state.into_exports().unwrap();
                 Ok(Cow::Owned(exports))

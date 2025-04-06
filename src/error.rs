@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        source::{QualifiedSpan, Span, StackTrace},
+        source::{QualifiedSpan, StackTrace},
         NativeModuleName,
     },
     compile::FunctionDefinitionId,
@@ -48,7 +48,7 @@ pub enum Error {
     Runtime {
         error: RuntimeError,
         /// A trace showing every function call leading up to the error
-        trace: StackTrace<QualifiedSpan>,
+        trace: StackTrace,
     },
 
     /// Requested app data of a type that has not been set
@@ -98,6 +98,15 @@ impl From<ModuleNameError> for Error {
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Self {
         Self::Parse(error)
+    }
+}
+
+impl From<TracedError> for Error {
+    fn from(error: TracedError) -> Self {
+        Self::Runtime {
+            error: error.error,
+            trace: error.trace,
+        }
     }
 }
 
@@ -293,10 +302,14 @@ impl From<ValueError> for RuntimeError {
     }
 }
 
-/// TODO
+/// A runtime error paired with its stack trace. This is only for internal use,
+/// to pack the two together. It's much easier than including the stack trace
+/// on every variant of [RuntimeError]. We unpack this into [Error::Runtime]
+/// before returning it to the user, to remove an unnecessary layer of
+/// indirection.
 pub(crate) struct TracedError {
     pub error: RuntimeError,
-    pub trace: StackTrace<Span>,
+    pub trace: StackTrace,
 }
 
 /// An error that can occur while converting to/from [Value](crate::Value)

@@ -8,7 +8,7 @@ use crate::{
         ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
         TemplateChunk, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
-    error::{ResultExt, RuntimeError, ValueError},
+    error::{RuntimeError, TracedError, ValueError},
     execute::{
         exec::{Execute, Terminate},
         ThreadState,
@@ -22,20 +22,14 @@ use std::{borrow::Cow, iter, sync::Arc};
 pub trait Evaluate {
     /// Evaluate an AST node into a runtime [Value]. Errors are returned wrapped
     /// with the source span of the AST node from which the error originated.
-    /// We use `Spanned<RuntimeError>` instead of `Error::Runtime` because we
-    /// don't have the context needed here to qualify the spans.
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>>;
+    /// We use `Traced<RuntimeError,Span>` instead of `Error::Runtime` because
+    /// we don't have the context needed here to qualify the spans.
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         match self {
             Expression::Parenthesized(expression) => expression.eval(state),
             Expression::Literal(literal) => literal.eval(state),
@@ -45,7 +39,7 @@ impl Evaluate for Expression {
             Expression::Identifier(identifier) => state
                 .scope()
                 .get(identifier.as_str())
-                .spanned_err(identifier.span),
+                .map_err(|error| state.trace_error(error, identifier.span)),
             Expression::ArrowFunction(function) => function.eval(state),
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
@@ -64,10 +58,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for Literal {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         match self {
             Self::Null => Ok(Value::Null),
             Self::Undefined => Ok(Value::Undefined),
@@ -82,10 +73,7 @@ impl Evaluate for Literal {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut array = Array::default();
         for element in &self.elements {
             match &element.data {
@@ -99,7 +87,9 @@ impl Evaluate for ArrayLiteral {
                     let new = expression
                         .eval(state)?
                         .try_into_array()
-                        .spanned_err(expression.span)?;
+                        .map_err(|error| {
+                            state.trace_error(error.into(), expression.span)
+                        })?;
                     array = array.concat(new);
                 }
             }
@@ -109,10 +99,7 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut object = Object::default();
         for property in &self.properties {
             match &property.data {
@@ -138,17 +125,18 @@ impl Evaluate for ObjectLiteral {
                 ObjectProperty::Identifier(identifier) => {
                     // Shorthand notation: { field }
                     let name = identifier.as_str().to_owned();
-                    let value = state
-                        .scope()
-                        .get(&name)
-                        .spanned_err(identifier.span)?;
+                    let value = state.scope().get(&name).map_err(|error| {
+                        state.trace_error(error, identifier.span)
+                    })?;
                     object = object.insert(name, value);
                 }
                 ObjectProperty::Spread(expression) => {
                     let new = expression
                         .eval(state)?
                         .try_into_object()
-                        .spanned_err(expression.span)?;
+                        .map_err(|error| {
+                            state.trace_error(error.into(), expression.span)
+                        })?;
                     object = object.insert_all(new);
                 }
             }
@@ -158,10 +146,7 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         self.chunks
             .iter()
             .map(|chunk| match &chunk.data {
@@ -178,17 +163,14 @@ impl Evaluate for TemplateLiteral {
 }
 
 impl Evaluate for Spanned<FunctionPointer> {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
         match &self.data {
             FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
                 format!("Function definition {definition:?} was not lifted"),
             ))
-            .spanned_err(self.span),
+            .map_err(|error| state.trace_error(error, self.span)),
             FunctionPointer::Lifted(definition_id) => {
                 let id = UserFunctionId {
                     process_id: state.process().id(),
@@ -202,14 +184,14 @@ impl Evaluate for Spanned<FunctionPointer> {
                     .program
                     .function_table()
                     .get(id.definition_id)
-                    .spanned_err(self.span)?;
+                    .map_err(|error| state.trace_error(error, self.span))?;
                 let name =
                     definition.name.as_ref().map(|name| name.data.to_string());
 
                 let scope = state.scope();
                 let captures = scope
                     .captures(&definition.captures)
-                    .spanned_err(self.span)?;
+                    .map_err(|error| state.trace_error(error, self.span))?;
 
                 Ok(Function::user(id, name, captures).into())
             }
@@ -218,10 +200,7 @@ impl Evaluate for Spanned<FunctionPointer> {
 }
 
 impl Evaluate for Spanned<FunctionCall> {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let function = self.function.eval(state)?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
         for argument in &self.arguments {
@@ -237,30 +216,26 @@ impl Evaluate for Spanned<FunctionCall> {
                 expected: ValueType::Function,
                 actual: function.type_(),
             })
-            .spanned_err(self.span),
+            .map_err(|error| state.trace_error(error.into(), self.span)),
         }
     }
 }
 
 impl Evaluate for Spanned<PropertyAccess> {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let value = self.expression.eval(state)?;
         let key: Value = match &self.property.data {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
         };
-        value.get(&key).spanned_err(self.span)
+        value
+            .get(&key)
+            .map_err(|error| state.trace_error(error, self.span))
     }
 }
 
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let target = self.expression.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
@@ -277,10 +252,7 @@ impl Evaluate for OptionalPropertyAccess {
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let value = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => Ok(!value),
@@ -290,10 +262,7 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(
-        &self,
-        state: &mut ThreadState<'_>,
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let lhs = self.lhs.eval(state)?;
         let rhs = self.rhs.eval(state)?;
         match self.operator {
@@ -324,7 +293,7 @@ impl Function {
         state: &mut ThreadState<'_>,
         call_site: Span,
         arguments: &[Value],
-    ) -> Result<Value, Spanned<RuntimeError>> {
+    ) -> Result<Value, TracedError> {
         match &self.0 {
             FunctionInner::User { id, captures, .. } => {
                 let definition = Arc::clone(
@@ -332,7 +301,7 @@ impl Function {
                         .program()
                         .function_table()
                         .get(id.definition_id)
-                        .spanned_err(call_site)?,
+                        .map_err(|error| state.trace_error(error, call_site))?,
                 );
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
@@ -364,9 +333,11 @@ impl Function {
                         // No init expression, use undefined
                         Value::Undefined
                     };
-                    scope
-                        .bind(&parameter.variable.binding, value)
-                        .spanned_err(parameter.variable.span)?;
+                    scope.bind(&parameter.variable.binding, value).map_err(
+                        |error| {
+                            state.trace_error(error, parameter.variable.span)
+                        },
+                    )?;
                 }
 
                 // Push the new frame onto the stack and execute the function
@@ -385,10 +356,10 @@ impl Function {
                     .process()
                     .native_functions
                     .get(*id)
-                    .spanned_err(call_site)?;
+                    .map_err(|error| state.trace_error(error, call_site))?;
                 definition
                     .call(state.process(), arguments)
-                    .spanned_err(call_site)
+                    .map_err(|error| state.trace_error(error, call_site))
             }
         }
     }

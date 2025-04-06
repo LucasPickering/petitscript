@@ -1,13 +1,15 @@
 //! Program state management
 
 use crate::{
-    ast::source::{Span, Spanned},
+    ast::source::Span,
     compile::Program,
+    error::TracedError,
     scope::Scope,
     value::{Exports, Value},
     Error, Process, RuntimeError,
 };
 use indexmap::map::Entry;
+use std::iter;
 
 /// TODO
 #[derive(Debug)]
@@ -90,13 +92,35 @@ impl<'process> ThreadState<'process> {
         }
     }
 
-    /// Map an error with a raw byte span to lines and columns, bound to a
-    /// particular source. This allows the error to be returned to the user and
-    /// displayed prettily.
-    pub fn qualify_error(&self, error: Spanned<RuntimeError>) -> Error {
+    /// Attach a stack trace to the given error, including the given span as the
+    /// most recent location in the trace.
+    pub fn trace_error(
+        &self,
+        error: RuntimeError,
+        current: Span,
+    ) -> TracedError {
+        let trace = self
+            .call_stack
+            .0
+            .iter()
+            .map(|frame| frame.call_site)
+            // Append the exact error location to the end of the trace
+            .chain(iter::once(current))
+            .collect();
+        TracedError { error, trace }
+    }
+
+    /// Map the raw byte offsets in each span of an error's the stack trace to
+    /// lines and columns. This allows the error to be displayed prettily to
+    /// the user.
+    pub fn qualify_error(&self, error: TracedError) -> Error {
+        let TracedError { error, trace } = error;
         Error::Runtime {
-            error: error.data,
-            span: error.span.qualify(self.program().source()),
+            error,
+            trace: trace
+                .into_iter()
+                .map(|span| span.qualify(self.program().source()))
+                .collect(),
         }
     }
 
@@ -133,7 +157,8 @@ impl<'process> ThreadState<'process> {
     }
 }
 
-/// The function call stack. In our machine, a stack frame is mainly just a
+/// The function call stack. The most recent call is always the last element,
+/// i.e. on _top_ of the stack. In our machine, a stack frame is mainly just a
 /// scope of names. This should not be confused with the hierarchical
 /// parent/child structure of scopes. Pushing a new frame is *not* the same as
 /// creating a subscope of the current scope.
@@ -188,7 +213,8 @@ impl CallStack {
 struct CallFrame {
     /// Scope inside the function, including captured variables
     scope: Scope,
-    /// The location from which this function was invoked. Used to print the
-    /// stack trace during unwinding
+    /// The location from which this function was invoked, i.e. the location
+    /// we'll return to when this frame is popped. Used to print the stack
+    /// trace during unwinding
     call_site: Span,
 }

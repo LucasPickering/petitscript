@@ -6,7 +6,7 @@ use crate::{
         ForOfLoop, FunctionDeclaration, If, ImportDeclaration, ImportModule,
         LexicalDeclaration, Module, Statement, WhileLoop,
     },
-    error::{ResultExt, RuntimeError},
+    error::TracedError,
     execute::{eval::Evaluate, ThreadState},
     value::Value,
     Exports,
@@ -18,13 +18,13 @@ pub trait Execute {
     type Output<'process>;
 
     /// TODO. Errors are returned wrapped with the source span of the AST node
-    /// from which the error originated. We use `Spanned<RuntimeError>` instead
-    /// of `Error::Runtime` because we don't have the context needed here to
-    /// qualify the spans.
+    /// from which the error originated. We use `Traced<RuntimeError,Span>`
+    /// instead of `Error::Runtime` because we don't have the context needed
+    /// here to qualify the spans.
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,
-    ) -> Result<Self::Output<'process>, Spanned<RuntimeError>>;
+    ) -> Result<Self::Output<'process>, TracedError>;
 }
 
 impl<T, O> Execute for [T]
@@ -33,10 +33,7 @@ where
 {
     type Output<'process> = Option<O>;
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<O>, Spanned<RuntimeError>> {
+    fn exec(&self, state: &mut ThreadState) -> Result<Option<O>, TracedError> {
         for statement in self {
             let output = statement.exec(state)?;
             if let Some(output) = output {
@@ -50,10 +47,7 @@ where
 impl Execute for Module {
     type Output<'process> = ();
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<(), Spanned<RuntimeError>> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
         self.statements.exec(state)?;
         Ok(())
     }
@@ -66,7 +60,7 @@ impl Execute for Spanned<Statement> {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         match &self.data {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
@@ -118,7 +112,7 @@ impl Execute for Block {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -131,10 +125,7 @@ impl Execute for Block {
 impl Execute for Spanned<ImportDeclaration> {
     type Output<'process> = ();
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<(), Spanned<RuntimeError>> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
         let module_specifier = match &self.data {
             ImportDeclaration::Named { module, .. }
             | ImportDeclaration::Namespace { module, .. } => module,
@@ -182,13 +173,13 @@ impl Execute for Spanned<ImportModule> {
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,
-    ) -> Result<Cow<'process, Exports>, Spanned<RuntimeError>> {
+    ) -> Result<Cow<'process, Exports>, TracedError> {
         match &self.data {
             ImportModule::Native(name) => state
                 .process()
                 .native_module(name)
                 .map(Cow::Borrowed)
-                .spanned_err(self.span),
+                .map_err(|error| state.trace_error(error, self.span)),
             ImportModule::Local(ast) => {
                 let mut thread_state = state.process().chungus();
                 ast.exec(&mut thread_state)?;
@@ -202,15 +193,14 @@ impl Execute for Spanned<ImportModule> {
 impl Execute for Spanned<ExportDeclaration> {
     type Output<'process> = ();
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<(), Spanned<RuntimeError>> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
         match &self.data {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
-                    state.export(name).spanned_err(declaration.span)?;
+                    state.export(name).map_err(|error| {
+                        state.trace_error(error, declaration.span)
+                    })?;
                 }
                 Ok(())
             }
@@ -219,15 +209,19 @@ impl Execute for Spanned<ExportDeclaration> {
             ) => {
                 let name = function_declaration.exec(state)?.expect("TODO");
                 // Fetch the function we just declared. Should never fail
-                let value = state
-                    .scope()
-                    .get(name.as_str())
-                    .spanned_err(function_declaration.span)?;
-                state.export_default(value).spanned_err(self.span)
+                let value =
+                    state.scope().get(name.as_str()).map_err(|error| {
+                        state.trace_error(error, function_declaration.span)
+                    })?;
+                state
+                    .export_default(value)
+                    .map_err(|error| state.trace_error(error, self.span))
             }
             ExportDeclaration::DefaultExpression(expression) => {
                 let value = expression.eval(state)?;
-                state.export_default(value).spanned_err(self.span)
+                state
+                    .export_default(value)
+                    .map_err(|error| state.trace_error(error, self.span))
             }
         }
     }
@@ -240,7 +234,7 @@ impl Execute for Declaration {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Vec<String>, Spanned<RuntimeError>> {
+    ) -> Result<Vec<String>, TracedError> {
         match self {
             Self::Lexical(lexical_declaration) => {
                 lexical_declaration.exec(state)
@@ -259,7 +253,7 @@ impl Execute for If {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         if self.condition.eval(state)?.to_bool() {
             self.body.exec(state)
         } else if let Some(statement) = &self.else_body {
@@ -276,7 +270,7 @@ impl Execute for DoWhileLoop {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         loop {
             self.body.exec(state)?;
             if !self.condition.eval(state)?.to_bool() {
@@ -293,7 +287,7 @@ impl Execute for WhileLoop {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         while self.condition.eval(state)?.to_bool() {
             self.body.exec(state)?;
         }
@@ -307,7 +301,7 @@ impl Execute for ForOfLoop {
     fn exec(
         &self,
         _state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, Spanned<RuntimeError>> {
+    ) -> Result<Option<Terminate>, TracedError> {
         todo!()
     }
 }
@@ -319,7 +313,7 @@ impl Execute for Spanned<LexicalDeclaration> {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Vec<String>, Spanned<RuntimeError>> {
+    ) -> Result<Vec<String>, TracedError> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -331,7 +325,7 @@ impl Execute for Spanned<LexicalDeclaration> {
             let names = state
                 .scope_mut()
                 .bind(&variable.binding, value)
-                .spanned_err(self.span)?;
+                .map_err(|error| state.trace_error(error, self.span))?;
             declared.extend(names);
         }
 
@@ -346,7 +340,7 @@ impl Execute for Spanned<FunctionDeclaration> {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<String>, Spanned<RuntimeError>> {
+    ) -> Result<Option<String>, TracedError> {
         let function = self
             .pointer
             .eval(state)?

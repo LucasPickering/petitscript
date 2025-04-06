@@ -275,6 +275,38 @@ impl<T> IntoSpanned for T {
     }
 }
 
+/// A list of source locations representing the function call stack at a
+/// particular moment in time. Most recent call is _last_ on this stack.
+/// TODO include function names
+#[derive(Debug)]
+pub struct StackTrace<S>(Vec<S>);
+
+impl Display for StackTrace<QualifiedSpan> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO reverse order?
+        writeln!(f, "Error (most recent call last)")?;
+        for span in &self.0 {
+            writeln!(f, "  at {span}")?;
+        }
+        Ok(())
+    }
+}
+
+impl<S> IntoIterator for StackTrace<S> {
+    type Item = S;
+    type IntoIter = <Vec<S> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<S> FromIterator<S> for StackTrace<S> {
+    fn from_iter<T: IntoIterator<Item = S>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

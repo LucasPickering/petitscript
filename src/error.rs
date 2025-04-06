@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        source::{IntoSpanned, QualifiedSpan, Span, Spanned},
+        source::{QualifiedSpan, Span, StackTrace},
         NativeModuleName,
     },
     compile::FunctionDefinitionId,
@@ -47,8 +47,8 @@ pub enum Error {
     /// program where the error occurred.
     Runtime {
         error: RuntimeError,
-        /// The source location of the code that failed
-        span: QualifiedSpan,
+        /// A trace showing every function call leading up to the error
+        trace: StackTrace<QualifiedSpan>,
     },
 
     /// Requested app data of a type that has not been set
@@ -65,8 +65,8 @@ impl Display for Error {
             Self::Transform { error, span } => {
                 write!(f, "Error transforming AST at {span}: {error}")
             }
-            Self::Runtime { error, span } => {
-                write!(f, "Error at {span}: {error}")
+            Self::Runtime { error, trace } => {
+                write!(f, "{trace}{error}")
             }
             Self::UnknownAppData { type_name } => {
                 write!(f, "No app data of type `{type_name}` is registered")
@@ -293,6 +293,12 @@ impl From<ValueError> for RuntimeError {
     }
 }
 
+/// TODO
+pub(crate) struct TracedError {
+    pub error: RuntimeError,
+    pub trace: StackTrace<Span>,
+}
+
 /// An error that can occur while converting to/from [Value](crate::Value)
 #[derive(Debug)]
 pub enum ValueError {
@@ -365,18 +371,6 @@ impl StdError for ValueError {
 impl From<FromUtf8Error> for ValueError {
     fn from(error: FromUtf8Error) -> Self {
         Self::InvalidUtf8(error)
-    }
-}
-
-pub(crate) trait ResultExt<T, E> {
-    /// Convert a `Result<T, E>` to a `Result<T, Spanned<E>>` by attaching a
-    /// span to the error
-    fn spanned_err(self, span: Span) -> Result<T, Spanned<RuntimeError>>;
-}
-
-impl<T, E: Into<RuntimeError>> ResultExt<T, E> for Result<T, E> {
-    fn spanned_err(self, span: Span) -> Result<T, Spanned<RuntimeError>> {
-        self.map_err(|error| error.into().into_spanned(span))
     }
 }
 

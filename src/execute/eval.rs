@@ -177,18 +177,18 @@ impl Evaluate for TemplateLiteral {
     }
 }
 
-impl Evaluate for FunctionPointer {
+impl Evaluate for Spanned<FunctionPointer> {
     fn eval(
         &self,
         state: &mut ThreadState<'_>,
     ) -> Result<Value, Spanned<RuntimeError>> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
-        match self {
+        match &self.data {
             FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
                 format!("Function definition {definition:?} was not lifted"),
             ))
-            .spanned_err(definition.span),
+            .spanned_err(self.span),
             FunctionPointer::Lifted(definition_id) => {
                 let id = UserFunctionId {
                     process_id: state.process().id(),
@@ -202,16 +202,14 @@ impl Evaluate for FunctionPointer {
                     .program
                     .function_table()
                     .get(id.definition_id)
-                    // TODO use a real span
-                    .spanned_err(Span::default())?;
+                    .spanned_err(self.span)?;
                 let name =
                     definition.name.as_ref().map(|name| name.data.to_string());
 
                 let scope = state.scope();
                 let captures = scope
                     .captures(&definition.captures)
-                    // TODO use a real span
-                    .spanned_err(Span::default())?;
+                    .spanned_err(self.span)?;
 
                 Ok(Function::user(id, name, captures).into())
             }
@@ -233,7 +231,7 @@ impl Evaluate for Spanned<FunctionCall> {
 
         match function {
             Value::Function(function) => {
-                function.call(self.span, state, &arguments)
+                function.call(state, self.span, &arguments)
             }
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
@@ -323,8 +321,8 @@ impl Function {
     /// Call this function with some arguments
     pub(super) fn call(
         &self,
-        span: Span,
         state: &mut ThreadState<'_>,
+        call_site: Span,
         arguments: &[Value],
     ) -> Result<Value, Spanned<RuntimeError>> {
         match &self.0 {
@@ -334,7 +332,7 @@ impl Function {
                         .program()
                         .function_table()
                         .get(id.definition_id)
-                        .spanned_err(span)?,
+                        .spanned_err(call_site)?,
                 );
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
@@ -373,7 +371,7 @@ impl Function {
 
                 // Push the new frame onto the stack and execute the function
                 // body
-                state.with_frame(scope, |state| {
+                state.with_frame(scope, call_site, |state| {
                     match definition.body.exec(state)? {
                         Some(Terminate::Return {
                             return_value: Some(return_value),
@@ -387,10 +385,10 @@ impl Function {
                     .process()
                     .native_functions
                     .get(*id)
-                    .spanned_err(span)?;
+                    .spanned_err(call_site)?;
                 definition
                     .call(state.process(), arguments)
-                    .spanned_err(span)
+                    .spanned_err(call_site)
             }
         }
     }

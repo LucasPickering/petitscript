@@ -178,8 +178,7 @@ fn test_function_lift() {
                 Declaration::Function(
                     FunctionDeclaration {
                         name: Identifier::new("f").s(),
-                        // TODO ID should be 2
-                        pointer: FunctionPointer::Lifted(2.into())
+                        pointer: FunctionPointer::Lifted(2.into()).s()
                     }
                     .s()
                 )
@@ -222,7 +221,7 @@ fn test_function_lift() {
                     Declaration::Function(
                         FunctionDeclaration {
                             name: Identifier::new("g").s(),
-                            pointer: FunctionPointer::Lifted(1.into())
+                            pointer: FunctionPointer::Lifted(1.into()).s()
                         }
                         .s()
                     )

@@ -80,18 +80,31 @@ impl Source for PathBuf {
 ///
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
-#[derive(Copy, Clone, Debug, Default)]
-pub struct Span {
-    /// Byte offset for the beginning of this span (inclusize). Always <=
-    /// end_span.
-    pub start_offset: usize,
-    /// Byte offset for the end of this span (inclusive). Always >= start_span.
-    pub end_offset: usize,
+#[derive(Copy, Clone, Debug)]
+pub enum Span {
+    /// A location in PetitScript source code
+    Source {
+        /// Byte offset for the beginning of this span (inclusize). Always <=
+        /// end_span.
+        start_offset: usize,
+        /// Byte offset for the end of this span (inclusive). Always >=
+        /// start_span.
+        end_offset: usize,
+    },
+    /// A location in Rust native code. This carries no actual data because we
+    /// don't track Rust source locations.
+    /// TODO maybe we _can_ track native code too? look into it
+    Native,
+    /// A test-only variant that is considered equal to any other span. Useful
+    /// for creating assertions that don't care about source spans
+    #[cfg(test)]
+    Any,
 }
 
 impl Span {
+    /// Create a new source span
     pub fn new(start_offset: usize, end_offset: usize) -> Self {
-        Self {
+        Self::Source {
             start_offset,
             end_offset,
         }
@@ -100,61 +113,60 @@ impl Span {
     /// Map this span to source code. This converts byte offsets into
     /// lines/columns, so it can be displayed to the user.
     pub fn qualify(self, source: &dyn Source) -> QualifiedSpan {
-        let text = &source.text().expect("TODO");
-        // Lines/columns are 1-indexed, because reasons
-        let mut line = 1;
-        let mut column = 1;
-        let mut span = QualifiedSpan {
-            source_name: source.name().unwrap_or("").to_owned(),
-            start_line: 0,
-            start_column: 0,
-            end_line: 0,
-            end_column: 0,
-        };
-        for (index, c) in text.char_indices() {
-            if index == self.start_offset {
-                span.start_line = line;
-                span.start_column = column;
-            }
-            if index == self.end_offset {
-                span.end_line = line;
-                span.end_column = column;
-            }
-            if index > self.end_offset {
-                break;
-            }
+        match self {
+            Self::Source {
+                start_offset,
+                end_offset,
+            } => {
+                let text = &source.text().expect("TODO");
+                // Lines/columns are 1-indexed, because reasons
+                let mut line = 1;
+                let mut column = 1;
+                let mut start_line = 0;
+                let mut start_column = 0;
+                let mut end_line = 0;
+                let mut end_column = 0;
+                for (index, c) in text.char_indices() {
+                    if index == start_offset {
+                        start_line = line;
+                        start_column = column;
+                    }
+                    if index == end_offset {
+                        end_line = line;
+                        end_column = column;
+                    }
+                    if index > end_offset {
+                        break;
+                    }
 
-            // Reset at the end of the line
-            if c == '\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += 1;
+                    // Reset at the end of the line
+                    if c == '\n' {
+                        line += 1;
+                        column = 1;
+                    } else {
+                        column += 1;
+                    }
+                }
+
+                QualifiedSpan::Source {
+                    source_name: source.name().unwrap_or("").to_owned(),
+                    start_line,
+                    start_column,
+                    end_line,
+                    end_column,
+                }
             }
+            Self::Native => QualifiedSpan::Native,
+            #[cfg(test)]
+            Self::Any => unimplemented!("`Any` spans cannot be qualified"),
         }
-        span
     }
-}
-
-#[cfg(test)]
-impl Span {
-    /// A span that matches any other span. Useful for tests where you need
-    /// to compare two spanned AST nodes, but don't care about the actual spans
-    pub const ANY: Span = Span {
-        start_offset: usize::MAX,
-        end_offset: usize::MAX,
-    };
 }
 
 #[cfg(test)]
 impl PartialEq for Span {
     fn eq(&self, other: &Self) -> bool {
-        (self.start_offset == other.start_offset
-            && self.end_offset == other.end_offset)
-            || (self.start_offset == Self::ANY.start_offset
-                && self.end_offset == Self::ANY.end_offset)
-            || (other.start_offset == Self::ANY.start_offset
-                && other.end_offset == Self::ANY.end_offset)
+        todo!()
     }
 }
 
@@ -163,23 +175,33 @@ impl PartialEq for Span {
 ///
 /// TODO should this just be "Span" since it's external-facing?
 #[derive(Debug)]
-pub struct QualifiedSpan {
-    // TODO comments
-    pub source_name: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+pub enum QualifiedSpan {
+    /// A location in PetitScript source code
+    Source {
+        // TODO comments
+        source_name: String,
+        start_line: usize,
+        start_column: usize,
+        end_line: usize,
+        end_column: usize,
+    },
+    /// A location in Rust native code
+    Native,
 }
 
 impl Display for QualifiedSpan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO should we show end line/column as well?
-        write!(
-            f,
-            "{}:{}:{}",
-            self.source_name, self.start_line, self.start_column
-        )
+        match self {
+            QualifiedSpan::Source {
+                source_name,
+                start_line,
+                start_column,
+                ..
+            } => {
+                write!(f, "{}:{}:{}", source_name, start_line, start_column)
+            }
+            QualifiedSpan::Native => write!(f, "<native code>"),
+        }
     }
 }
 
@@ -248,7 +270,7 @@ impl<T> IntoSpanned for T {
     fn s(self) -> Spanned<Self> {
         Spanned {
             data: self,
-            span: Span::ANY,
+            span: Span::Any,
         }
     }
 }
@@ -260,11 +282,11 @@ mod tests {
     #[test]
     fn test_span_any() {
         assert_eq!(
-            Span {
+            Span::Source {
                 start_offset: 0,
                 end_offset: 0
             },
-            Span::ANY
+            Span::Any
         );
     }
 }

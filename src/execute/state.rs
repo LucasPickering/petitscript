@@ -1,7 +1,7 @@
 //! Program state management
 
 use crate::{
-    ast::source::Spanned,
+    ast::source::{Span, Spanned},
     compile::Program,
     scope::Scope,
     value::{Exports, Value},
@@ -114,9 +114,10 @@ impl<'process> ThreadState<'process> {
     pub fn with_frame<T>(
         &mut self,
         scope: Scope,
+        call_site: Span,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        self.call_stack.push(scope);
+        self.call_stack.push(scope, call_site);
         let value = f(self);
         self.call_stack.pop();
         value
@@ -132,25 +133,28 @@ impl<'process> ThreadState<'process> {
     }
 }
 
-/// The function call stack. In our machine, a stack frame is simply a
+/// The function call stack. In our machine, a stack frame is mainly just a
 /// scope of names. This should not be confused with the hierarchical
-/// parent/child structure of frames. Pushing a new frame is *not* the same
-/// as creating a subscope of the current scope.
+/// parent/child structure of scopes. Pushing a new frame is *not* the same as
+/// creating a subscope of the current scope.
 ///
 /// Invariant: A call stack can never be empty! The root scope is always the
 /// bottom frame of the stack. For root processes, this is the root scope of
 /// the program. For function calls, it's the scope of the entrypoint function.
 #[derive(Debug)]
-pub struct CallStack(Vec<Scope>);
+pub struct CallStack(Vec<CallFrame>);
 
 impl CallStack {
     pub fn new(globals: Scope) -> Self {
         // This root frame can never be popped
-        Self(vec![globals.child()])
+        Self(vec![CallFrame {
+            call_site: Span::Native,
+            scope: globals.child(),
+        }])
     }
 
-    fn push(&mut self, scope: Scope) {
-        self.0.push(scope);
+    fn push(&mut self, scope: Scope, call_site: Span) {
+        self.0.push(CallFrame { call_site, scope });
     }
 
     fn pop(&mut self) {
@@ -164,12 +168,27 @@ impl CallStack {
     /// Get the frame on top of the stack. As the stack can never be empty, this
     /// always returns something
     fn top(&self) -> &Scope {
-        self.0.last().expect("Call stack can never be empty")
+        &self.0.last().expect("Call stack can never be empty").scope
     }
 
     /// Get a mutable reference to the frame on top of the stack. As the stack
     /// can never be empty, this always returns something
     fn top_mut(&mut self) -> &mut Scope {
-        self.0.last_mut().expect("Call stack can never be empty")
+        &mut self
+            .0
+            .last_mut()
+            .expect("Call stack can never be empty")
+            .scope
     }
+}
+
+/// A single frame in the call stack. This holds the frame's scope, as well as
+/// metadata about the call
+#[derive(Debug)]
+struct CallFrame {
+    /// Scope inside the function, including captured variables
+    scope: Scope,
+    /// The location from which this function was invoked. Used to print the
+    /// stack trace during unwinding
+    call_site: Span,
 }

@@ -128,8 +128,7 @@ impl Process {
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
         function
-            // TODO can we do better with the span?
-            .call(Span::default(), &mut thread_state, arguments)
+            .call(&mut thread_state, Span::Native, arguments)
             .map_err(|error| thread_state.qualify_error(error))
     }
 

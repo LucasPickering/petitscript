@@ -606,15 +606,13 @@ impl Transform for ext::FnDecl {
             .required(self.range())?
             .transform(context)?
             .statements;
-        let pointer = FunctionPointer::Inline(
-            FunctionDefinition {
-                name: Some(name.clone()),
-                parameters,
-                body,
-                captures: [].into(), // Will be filled out later
-            }
-            .into_spanned(self.range()),
-        );
+        let pointer = FunctionPointer::Inline(FunctionDefinition {
+            name: Some(name.clone()),
+            parameters,
+            body,
+            captures: [].into(), // Will be filled out later
+        })
+        .into_spanned(self.range());
         Ok(FunctionDeclaration { name, pointer })
     }
 }
@@ -657,15 +655,12 @@ impl Transform for ext::ArrowExpr {
                 block_stmt.transform(context)?.statements
             }
         };
-        Ok(FunctionPointer::Inline(
-            FunctionDefinition {
-                name: None,
-                parameters,
-                body,
-                captures: [].into(), // Will be filled out later
-            }
-            .into_spanned(self.range()),
-        ))
+        Ok(FunctionPointer::Inline(FunctionDefinition {
+            name: None,
+            parameters,
+            body,
+            captures: [].into(), // Will be filled out later in the pipeline
+        }))
     }
 }
 
@@ -881,7 +876,12 @@ impl Transform for ext::Template {
             })
             .chain(self.elements().transform_all(context)?)
             .collect();
-        chunks.sort_by_key(|chunk| chunk.span.start_offset);
+        chunks.sort_by_key(|chunk| {
+            let Span::Source { start_offset, .. } = chunk.span else {
+                unreachable!("Span must be source: we just created it")
+            };
+            start_offset
+        });
         Ok(TemplateLiteral {
             chunks: chunks.into(),
         })

@@ -295,7 +295,7 @@ impl AstVisitor for FunctionTable {
             // Compiler bug!
             panic!("Function {id:?} has already been lifted!")
         };
-        self.functions.push(Arc::new(definition.data));
+        self.functions.push(Arc::new(definition));
     }
 }
 

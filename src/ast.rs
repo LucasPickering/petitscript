@@ -83,26 +83,35 @@ pub struct Variable {
     pub init: Option<Box<Spanned<Expression>>>,
 }
 
+/// A declaration of a function:
+/// ```notrust
+/// function f() {
+///   // Body
+/// }
+/// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDeclaration {
     pub name: Spanned<Identifier>,
-    pub pointer: FunctionPointer,
+    pub pointer: Spanned<FunctionPointer>,
 }
 
-/// TODO rename this
+/// A form of indirection for a function definition. Immediately after parsing,
+/// this is the actual function definition. During lifting, the definition is
+/// interned and replaced with an ID pointing to the definition.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
-    Inline(Spanned<FunctionDefinition>),
+    Inline(FunctionDefinition),
     /// Function definition has been lifted to the top of the program, and this
     /// is just a pointer to the definition
     Lifted(FunctionDefinitionId),
 }
 
-/// TODO
+/// The parameters, body, and captures that constitute a PetitScript (i.e *not*
+/// native) function definition.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDefinition {
@@ -550,18 +559,16 @@ mod tests {
                 Declaration::Function(
                     FunctionDeclaration {
                         name: Identifier::new(name).s(),
-                        pointer: FunctionPointer::Inline(
-                            FunctionDefinition {
-                                name: Some(Identifier::new(name).s()),
-                                parameters: parameters.into(),
-                                body: body.into(),
-                                captures: captures
-                                    .into_iter()
-                                    .map(Identifier::new)
-                                    .collect(),
-                            }
-                            .s(),
-                        ),
+                        pointer: FunctionPointer::Inline(FunctionDefinition {
+                            name: Some(Identifier::new(name).s()),
+                            parameters: parameters.into(),
+                            body: body.into(),
+                            captures: captures
+                                .into_iter()
+                                .map(Identifier::new)
+                                .collect(),
+                        })
+                        .s(),
                     }
                     .s(),
                 )
@@ -617,18 +624,15 @@ mod tests {
             captures: Vec<&str>,
         ) -> Spanned<Self> {
             Self::ArrowFunction(
-                FunctionPointer::Inline(
-                    FunctionDefinition {
-                        name: name.map(|name| Identifier::new(name).s()),
-                        parameters: parameters.into(),
-                        body: body.into(),
-                        captures: captures
-                            .into_iter()
-                            .map(Identifier::new)
-                            .collect(),
-                    }
-                    .s(),
-                )
+                FunctionPointer::Inline(FunctionDefinition {
+                    name: name.map(|name| Identifier::new(name).s()),
+                    parameters: parameters.into(),
+                    body: body.into(),
+                    captures: captures
+                        .into_iter()
+                        .map(Identifier::new)
+                        .collect(),
+                })
                 .s(),
             )
             .s()

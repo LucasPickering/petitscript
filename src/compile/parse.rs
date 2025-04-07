@@ -10,8 +10,8 @@ use crate::{
         FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
         ImportModule, ImportNamed, LexicalDeclaration, Literal, Module,
         ObjectLiteral, ObjectPatternElement, ObjectProperty, PropertyAccess,
-        PropertyName, Statement, TemplateChunk, TemplateLiteral, Variable,
-        WhileLoop,
+        PropertyName, Statement, TemplateChunk, TemplateLiteral,
+        UnaryOperation, UnaryOperator, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     Source,
@@ -837,7 +837,9 @@ impl Transform for ext::Expr {
             Self::CallExpr(call_expr) => {
                 call_expr.transform_spanned(context).map(Expression::Call)
             }
-            Self::UnaryExpr(_) => todo!(),
+            Self::UnaryExpr(unary_expr) => {
+                unary_expr.transform_spanned(context).map(Expression::Unary)
+            }
             Self::BinExpr(bin_expr) => {
                 bin_expr.transform_spanned(context).map(Expression::Binary)
             }
@@ -1160,6 +1162,51 @@ impl Transform for ext::DotExpr {
     }
 }
 
+impl Transform for ext::UnaryExpr {
+    type Output = UnaryOperation;
+
+    fn transform(
+        self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Spanned<TransformError>> {
+        let span = context.span(self.range());
+        let operator = match self.op().required(span)? {
+            ext::UnaryOp::LogicalNot => UnaryOperator::BooleanNot,
+            ext::UnaryOp::Plus => UnaryOperator::Plus,
+            ext::UnaryOp::Minus => UnaryOperator::Minus,
+            ext::UnaryOp::Typeof => UnaryOperator::Typeof,
+            ext::UnaryOp::Increment => {
+                unsupported(span, "`++`", "Variable mutation is not supported")?
+            }
+            ext::UnaryOp::Decrement => {
+                unsupported(span, "`--`", "Variable mutation is not supported")?
+            }
+            ext::UnaryOp::Delete => unsupported(
+                span,
+                "`delete`",
+                "Object mutation is not supported",
+            )?,
+            ext::UnaryOp::Void => {
+                unsupported(span, "`void`", "Void operator is not supported")?
+            }
+            ext::UnaryOp::BitwiseNot => unsupported(
+                span,
+                "`~`",
+                "Bitwise operations are not supported",
+            )?,
+            ext::UnaryOp::Await => {
+                unsupported(span, "`await`", "Async-await is not supported")?
+            }
+        };
+        let expression =
+            self.expr().required(span)?.transform_spanned(context)?;
+        Ok(UnaryOperation {
+            operator,
+            expression: expression.into(),
+        })
+    }
+}
+
 impl Transform for ext::BinExpr {
     type Output = BinaryOperation;
 
@@ -1168,7 +1215,34 @@ impl Transform for ext::BinExpr {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let span = context.span(self.range());
-        let operator = self.op().required(span)?.transform(context)?;
+        let operator = match self.op().required(span)? {
+            ext::BinOp::LessThan => BinaryOperator::LessThan,
+            ext::BinOp::LessThanOrEqual => BinaryOperator::LessThanEqual,
+            ext::BinOp::GreaterThan => BinaryOperator::GreaterThan,
+            ext::BinOp::GreaterThanOrEqual => BinaryOperator::GreaterThanEqual,
+            ext::BinOp::StrictEquality => BinaryOperator::Equal,
+            ext::BinOp::StrictInequality => BinaryOperator::NotEqual,
+            ext::BinOp::Plus => BinaryOperator::Add,
+            ext::BinOp::Minus => BinaryOperator::Sub,
+            ext::BinOp::Times => BinaryOperator::Mul,
+            ext::BinOp::Divide => BinaryOperator::Div,
+            ext::BinOp::Remainder => BinaryOperator::Mod,
+            ext::BinOp::LogicalOr => BinaryOperator::BooleanOr,
+            ext::BinOp::LogicalAnd => BinaryOperator::BooleanAnd,
+            ext::BinOp::NullishCoalescing => BinaryOperator::NullishCoalesce,
+
+            ext::BinOp::Exponent => todo!(),
+            ext::BinOp::LeftShift => todo!(),
+            ext::BinOp::RightShift => todo!(),
+            ext::BinOp::Equality => todo!(),
+            ext::BinOp::Inequality => todo!(),
+            ext::BinOp::UnsignedRightShift => todo!(),
+            ext::BinOp::BitwiseAnd => todo!(),
+            ext::BinOp::BitwiseOr => todo!(),
+            ext::BinOp::BitwiseXor => todo!(),
+            ext::BinOp::In => todo!(),
+            ext::BinOp::Instanceof => todo!(),
+        };
         let lhs = self.lhs().required(span)?.transform_spanned(context)?;
         let rhs = self.rhs().required(span)?.transform_spanned(context)?;
         Ok(BinaryOperation {
@@ -1176,45 +1250,6 @@ impl Transform for ext::BinExpr {
             lhs: lhs.into(),
             rhs: rhs.into(),
         })
-    }
-}
-
-impl Transform for ext::BinOp {
-    type Output = BinaryOperator;
-
-    fn transform(
-        self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, Spanned<TransformError>> {
-        let operator = match self {
-            Self::LessThan => BinaryOperator::LessThan,
-            Self::LessThanOrEqual => BinaryOperator::LessThanEqual,
-            Self::GreaterThan => BinaryOperator::GreaterThan,
-            Self::GreaterThanOrEqual => BinaryOperator::GreaterThanEqual,
-            Self::StrictEquality => BinaryOperator::Equal,
-            Self::StrictInequality => BinaryOperator::NotEqual,
-            Self::Plus => BinaryOperator::Add,
-            Self::Minus => BinaryOperator::Sub,
-            Self::Times => BinaryOperator::Mul,
-            Self::Divide => BinaryOperator::Div,
-            Self::Remainder => BinaryOperator::Mod,
-            Self::LogicalOr => BinaryOperator::BooleanOr,
-            Self::LogicalAnd => BinaryOperator::BooleanAnd,
-            Self::NullishCoalescing => BinaryOperator::NullishCoalesce,
-
-            Self::Exponent => todo!(),
-            Self::LeftShift => todo!(),
-            Self::RightShift => todo!(),
-            Self::Equality => todo!(),
-            Self::Inequality => todo!(),
-            Self::UnsignedRightShift => todo!(),
-            Self::BitwiseAnd => todo!(),
-            Self::BitwiseOr => todo!(),
-            Self::BitwiseXor => todo!(),
-            Self::In => todo!(),
-            Self::Instanceof => todo!(),
-        };
-        Ok(operator)
     }
 }
 

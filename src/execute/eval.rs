@@ -256,7 +256,11 @@ impl Evaluate for UnaryOperation {
         let value = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => Ok(!value),
-            UnaryOperator::Negate => Ok(-value),
+            UnaryOperator::Plus => {
+                Ok(value.to_number().unwrap_or(Number::NAN).into())
+            }
+            UnaryOperator::Minus => Ok(-value),
+            UnaryOperator::Typeof => Ok(value.type_().to_string().into()),
         }
     }
 }

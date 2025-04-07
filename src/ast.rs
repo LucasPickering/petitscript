@@ -401,11 +401,14 @@ pub struct UnaryOperation {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum UnaryOperator {
-    /// `!`
+    /// `!`: Boolean negation
     BooleanNot,
-    /// `-`
-    Negate,
-    // TODO bitwise operations
+    /// `+`: Arithmetic plusification. This is essentially a cast to number
+    Plus,
+    /// `-`: Arithmetic negation
+    Minus,
+    /// `typeof`: Get the type of a value, as a string
+    Typeof,
 }
 
 #[derive(Clone, Debug)]

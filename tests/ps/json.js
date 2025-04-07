@@ -8,5 +8,5 @@ const s = JSON.stringify(o);
 console.log(s);
 const o2 = JSON.parse(s);
 
-console.log(o, o2);
+console.log(typeof o, typeof o2);
 export default o === o2;

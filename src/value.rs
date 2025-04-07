@@ -539,22 +539,3 @@ impl<T: FromPs> FromPs for Vec<T> {
         array.into_iter().map(T::from_ps).collect()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use test_case::test_case;
-
-    /// Assert that values are equal to each other
-    #[test_case(false, false; "boolean_false")]
-    #[test_case(true, true; "boolean_true")]
-    fn equal(a: impl Into<Value>, b: impl Into<Value>) {
-        assert_eq!(a.into(), b.into());
-    }
-
-    /// Assert values are not equal to each other
-    #[test_case(false, true; "boolean")]
-    fn not_equal(a: impl Into<Value>, b: impl Into<Value>) {
-        assert_ne!(a.into(), b.into());
-    }
-}

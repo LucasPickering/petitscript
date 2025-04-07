@@ -23,8 +23,8 @@ impl Array {
     }
 
     /// Append a single value to the end of the array.
-    pub fn push(self, value: Value) -> Self {
-        self.with_inner(|vec| vec.push(value))
+    pub fn push(self, value: impl Into<Value>) -> Self {
+        self.with_inner(|vec| vec.push(value.into()))
     }
 
     /// Insert all elements from another array into this one.

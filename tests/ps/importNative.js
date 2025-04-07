@@ -6,7 +6,7 @@ function add2(a, b) {
 }
 
 function call(f, ...args) {
-  return f(args);
+  return f(...args);
 }
 
 export default add(1, 2) + add2(1, 2) + call(add, 1, 2);

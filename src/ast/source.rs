@@ -85,7 +85,7 @@ impl Source for PathBuf {
 }
 
 /// TODO
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SourceId(u32);
 
 /// TODO
@@ -220,7 +220,23 @@ impl Span {
 #[cfg(test)]
 impl PartialEq for Span {
     fn eq(&self, other: &Self) -> bool {
-        todo!()
+        match (self, other) {
+            (
+                Self::Source {
+                    source_id: source1,
+                    start_offset: start1,
+                    end_offset: end1,
+                },
+                Self::Source {
+                    source_id: source2,
+                    start_offset: start2,
+                    end_offset: end2,
+                },
+            ) => source1 == source2 && start1 == start2 && end1 == end2,
+            (Self::Native, Self::Native) => true,
+            (Self::Any, _) | (_, Self::Any) => true,
+            _ => false,
+        }
     }
 }
 

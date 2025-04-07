@@ -16,7 +16,7 @@ use crate::{
     function::{Function, FunctionInner, UserFunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 /// Evaluate an expression into a value
 pub trait Evaluate {
@@ -287,7 +287,9 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    /// Call this function with some arguments
+    /// Call this function with some arguments. `call_site` is the source
+    /// location from which the function is being invoked. We track this for a
+    /// potential stack trace
     pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,
@@ -312,22 +314,25 @@ impl Function {
 
                 // Add args to scope
                 // If we got fewer args than the function has defined, we'll pad
-                // it out with undefineds (or use the init
-                // expression defined in the func)
-                let args_iter = arguments
-                    .iter()
-                    .cloned()
-                    .map(Some)
-                    .chain(iter::repeat(None));
-                for (parameter, value) in
-                    definition.parameters.iter().zip(args_iter)
-                {
-                    let value = if let Some(value) = value {
-                        value
+                // it out with undefineds (or use the init expression defined in
+                // the func)
+                for (i, parameter) in definition.parameters.iter().enumerate() {
+                    let value = if let Some(value) = arguments.get(i) {
+                        // ... parameters get all the remaining args
+                        if parameter.varargs {
+                            if i < arguments.len() {
+                                Array::from(arguments[i..].to_owned())
+                            } else {
+                                Array::new()
+                            }
+                            .into()
+                        } else {
+                            value.clone()
+                        }
                     } else if let Some(init) = &parameter.variable.init {
                         // If the arg wasn't given, fall back to the init
-                        // expression TODO make sure
-                        // previous args are available here
+                        // expression
+                        // TODO make sure previous args are available here
                         init.eval(state)?
                     } else {
                         // No init expression, use undefined

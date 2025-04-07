@@ -1226,6 +1226,8 @@ impl Transform for ext::CallExpr {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Spanned<TransformError>> {
         let span = context.span(self.range());
+        // TODO handle spread operator here. Doesn't look like rslint supports
+        // it
         let arguments = self
             .arguments()
             .required(span)?

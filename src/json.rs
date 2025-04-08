@@ -1,9 +1,6 @@
 //! JSON parsing and stringification
 
-use crate::{
-    error::RuntimeError, Array, NativeFunctionTable, Number, Object, Process,
-    Value,
-};
+use crate::{Array, Number, Object, Value};
 use std::{fmt::Write, str};
 use winnow::{
     ascii::{dec_int, float},
@@ -16,28 +13,8 @@ use winnow::{
     Parser,
 };
 
-/// `JSON` module
-/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON
-pub fn json(functions: &mut NativeFunctionTable) -> Object {
-    Object::default()
-        .insert("parse", functions.create_fn(json_parse))
-        .insert("stringify", functions.create_fn(json_stringify))
-}
-
-/// Stringify a value to JSON
-/// TODO accept &Value
-fn json_stringify(
-    _: &Process,
-    value: Value,
-    // TODO support `replace` and `space` args
-) -> String {
-    let mut buf = String::new();
-    write_json(&mut buf, &value);
-    buf
-}
-
 /// Recursively write a JSON value into a string buffer
-fn write_json(buf: &mut String, value: &Value) {
+pub fn write_json(buf: &mut String, value: &Value) {
     // Errors aren't possible in any of these writes because we're writing to
     // a string
     match value {
@@ -75,20 +52,10 @@ fn write_json(buf: &mut String, value: &Value) {
     }
 }
 
-/// Parse a JSON string
-/// TODO can we accept a &str?
-fn json_parse(
-    _: &Process,
-    input: String,
-    // TODO support `reviver` arg
-) -> Result<Value, RuntimeError> {
-    parse_json(&input).map_err(|error| RuntimeError::JsonParse { error })
-}
-
 type Stream<'i> = &'i str;
 
-/// Internal helper for parsing json
-fn parse_json(mut input: &str) -> Result<Value, ContextError> {
+/// Parse a JSON string to a [Value]
+pub fn parse_json(mut input: &str) -> Result<Value, ContextError> {
     delimited(ws, json_value, ws).parse_next(&mut input)
 }
 

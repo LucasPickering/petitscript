@@ -5,6 +5,7 @@ mod ast;
 mod compile;
 pub mod error;
 mod execute;
+mod json;
 mod scope;
 #[cfg(feature = "serde")]
 pub mod serde;

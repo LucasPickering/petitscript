@@ -17,6 +17,7 @@ pub use object::Object;
 
 use crate::{
     error::{RuntimeError, ValueError},
+    json,
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
         impl_value_numeric_binary_op,
@@ -103,6 +104,13 @@ impl Value {
             #[cfg(feature = "bytes")]
             Self::Buffer(_) => None,
         }
+    }
+
+    /// Generate a JSON string representing this value
+    pub fn to_json(&self) -> String {
+        let mut s = String::new();
+        json::write_json(&mut s, self);
+        s
     }
 
     /// If this value is a string, get the inner string. Otherwise return a type

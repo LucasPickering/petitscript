@@ -1,4 +1,4 @@
-import { add } from "./common";
+import { add } from "./common.js";
 
 function add2(a, b) {
   // Make sure the imported name is captured

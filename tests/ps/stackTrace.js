@@ -1,4 +1,4 @@
-import { error } from "./common";
+import { error } from "./common.js";
 
 function f() {
   return error();

@@ -21,12 +21,13 @@ use rslint_parser::{
     AstNode, TextRange,
 };
 use std::{
-    any, env, fs,
+    any, env,
+    ffi::OsStr,
     path::{Path, PathBuf},
 };
 
 /// File extensions that can be imported as a local module
-const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 
 /// Parse source code into an Abstract Syntax Tree. Collect all imported sources
 /// along the way as well, inserting them into the source table. This assumes
@@ -241,10 +242,13 @@ impl Transform for ext::ImportDecl {
     }
 }
 
-/// Resolve a local module specifier into a path. This will:
-/// - Add an extension if it lacks one
-/// - Resolve relative paths to absolute, relative to the parent location
-/// - Resolve links
+/// Resolve a local module specifier into a path. This will resolve relative
+/// paths to be relative to the importing module. This does not guarantee the
+/// file is actually present!
+///
+/// ## Errors
+///
+/// Error if the file
 fn resolve_module(
     specifier: String,
     parent_source: &dyn Source,
@@ -255,22 +259,22 @@ fn resolve_module(
         todo!("error");
     }
 
-    let cwd = env::current_dir().expect("TODO");
-    let root_path = parent_source
-        .import_root()
-        .and_then(Path::parent)
-        .unwrap_or(&cwd);
-    let mut path = root_path.join(path);
+    let path =
+        if let Some(dir) = parent_source.import_root().and_then(Path::parent) {
+            dir.join(path)
+        } else {
+            env::current_dir()
+                .map_err(|error| Error::Io { error, path: None })?
+                .join(path)
+        };
 
-    if path.extension().is_none() {
-        // Path doesn't have an extension - try all supported extensions
-        // TODO better error if none match
-        for extension in SUPPORTED_EXTENSIONS {
-            path.set_extension(extension);
-            if fs::exists(&path).unwrap_or(false) {
-                break;
-            }
-        }
+    // Ensure the path is a file with a supported extension
+    if path
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_none_or(|extension| !SUPPORTED_EXTENSIONS.contains(&extension))
+    {
+        todo!("error")
     }
     Ok(path)
 }

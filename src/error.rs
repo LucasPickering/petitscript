@@ -3,7 +3,7 @@ use crate::{
         source::{QualifiedSpan, StackTrace},
         NativeModuleName,
     },
-    compile::FunctionDefinitionId,
+    compile::{FunctionDefinitionId, SUPPORTED_EXTENSIONS},
     value::ValueType,
     Number,
 };
@@ -23,11 +23,17 @@ pub enum Error {
     /// Attempted to register two values of the same type as app data
     DuplicateAppData { type_name: &'static str },
 
+    /// Attempted to import a module with an unrecognized file extension
+    InvalidExtension { path: PathBuf },
+
     /// Attempted to register a native module with an invalid name
     InvalidModuleName(ModuleNameError),
 
     /// Error occurred while loading source code from a file
-    Io { error: io::Error, path: PathBuf },
+    Io {
+        error: io::Error,
+        path: Option<PathBuf>,
+    },
 
     /// Error occurred while parsing source code. This indicates the source is
     /// not valid ECMAScript code
@@ -58,9 +64,21 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DuplicateAppData { type_name } => write!(f,"Multiple app data values of type `{type_name}` were registered"),
-            Self::InvalidModuleName(error) => write!(f,"{error}"),
-            Self::Io { error, path } => write!(f,"Error loading {path:?}: {error}"),
+            Self::DuplicateAppData { type_name } => write!(
+                f,
+                "Multiple app data values of type `{type_name}` were registered"
+            ),
+            Self::InvalidModuleName(error) => write!(f, "{error}"),
+            Self::InvalidExtension { path } => write!(
+                f,
+                "Unsupported extension for imported module at path {path:?}. \
+                Supported extensions are: {SUPPORTED_EXTENSIONS:?}"
+            ),
+            Self::Io {
+                error,
+                path: Some(path),
+            } => write!(f, "Error loading {path:?}: {error}"),
+            Self::Io { error, path: None } => write!(f, "I/O error: {error}"),
             Self::Parse(error) => write!(f, "{error}"),
             Self::Transform { error, span } => {
                 write!(f, "Error transforming AST at {span}: {error}")
@@ -80,6 +98,7 @@ impl StdError for Error {
         match self {
             Self::DuplicateAppData { .. } => None,
             Self::InvalidModuleName(error) => Some(error),
+            Self::InvalidExtension { .. } => None,
             Self::Io { error, .. } => Some(error),
             Self::Parse(error) => Some(error),
             Self::Transform { error, .. } => Some(error),

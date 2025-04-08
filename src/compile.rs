@@ -4,6 +4,7 @@ mod function;
 mod parse;
 
 pub use function::FunctionDefinitionId;
+pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
     ast::{source::SourceTable, walk::Walk, Module},

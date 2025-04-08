@@ -1,4 +1,4 @@
-import commonDefault, { add } from "./common";
+import commonDefault, { add } from "./common.js";
 
 commonDefault();
 console.log(add(1, 2));

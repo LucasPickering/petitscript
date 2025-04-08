@@ -77,7 +77,7 @@ impl Source for PathBuf {
     fn text(&self) -> Result<Cow<'_, str>, Error> {
         Ok(fs::read_to_string(self)
             .map_err(|error| Error::Io {
-                path: self.clone(),
+                path: Some(self.clone()),
                 error,
             })?
             .into())

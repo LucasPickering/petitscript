@@ -293,6 +293,12 @@ impl<T: Debug> Debug for Spanned<T> {
     }
 }
 
+impl<T: Display> Display for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.data.fmt(f)
+    }
+}
+
 impl<T> Deref for Spanned<T> {
     type Target = T;
 

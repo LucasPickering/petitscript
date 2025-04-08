@@ -8,6 +8,7 @@
 
 // TODO comments on everything
 
+mod display;
 pub mod source;
 pub mod walk;
 
@@ -17,8 +18,6 @@ use crate::{
 use std::{
     fmt::{self, Display},
     hash::Hash,
-    ops::Deref,
-    path::PathBuf,
     str::FromStr,
 };
 
@@ -225,12 +224,6 @@ pub enum ImportModule {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct NativeModuleName(String);
 
-impl Display for NativeModuleName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
 impl TryFrom<String> for NativeModuleName {
     type Error = ModuleNameError;
 
@@ -297,12 +290,6 @@ impl Identifier {
 
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-}
-
-impl Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
     }
 }
 

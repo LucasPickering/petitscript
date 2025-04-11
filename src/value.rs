@@ -547,3 +547,35 @@ impl<T: FromPs> FromPs for Vec<T> {
         array.into_iter().map(T::from_ps).collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_case::test_case;
+
+    /// Test value equality
+    #[test_case(Value::Undefined, Value::Undefined; "undefined")]
+    #[test_case(Value::Null, Value::Null; "null")]
+    #[test_case(false, false; "bool_false")]
+    #[test_case(true, true; "bool_true")]
+    #[test_case(3, 3; "int")]
+    #[test_case(3.5, 3.5; "float")]
+    #[test_case(3, 3.0; "int_float")]
+    #[test_case("", ""; "string_empty")]
+    #[test_case("hello", "hello"; "string")]
+    // TODO more test cases
+    fn equal(a: impl Into<Value>, b: impl Into<Value>) {
+        assert_eq!(a.into(), b.into());
+    }
+
+    /// Test value inequality
+    #[test_case(Value::Undefined, Value::Null; "undefined_null")]
+    #[test_case(Value::Null, "null"; "null_string")]
+    #[test_case(true, "true"; "bool_string")]
+    #[test_case(Number::NAN, Number::NAN; "nan")]
+    #[test_case("hello", "HELLO"; "string")]
+    // TODO more test cases
+    fn unequal(a: impl Into<Value>, b: impl Into<Value>) {
+        assert_ne!(a.into(), b.into());
+    }
+}

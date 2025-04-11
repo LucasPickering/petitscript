@@ -11,7 +11,7 @@ use crate::{
 /// Test that functions declared with an obvious associated name get
 /// labelled with that name.
 #[test]
-fn test_function_label() {
+fn function_label() {
     let LabelledAst(ast) = Compiler::new(
         "
         const f = () => {};
@@ -77,7 +77,7 @@ fn test_function_label() {
 
 /// Test closure capturing
 #[test]
-fn test_function_capture() {
+fn function_capture() {
     let CapturedAst(ast) = Compiler::new(
         "
         import { add } from 'math';
@@ -150,7 +150,7 @@ fn test_function_capture() {
 
 /// Test that functions get lifted from the AST to the function table
 #[test]
-fn test_function_lift() {
+fn function_lift() {
     let Lifted {
         module: ast,
         function_table,

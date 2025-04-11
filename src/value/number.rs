@@ -41,8 +41,9 @@ impl PartialEq for Number {
         match (self, other) {
             (Self::Int(l0), Self::Int(r0)) => l0 == r0,
             (Self::Float(l0), Self::Float(r0)) => l0 == r0,
-            // TODO handle int-float equality
-            _ => false,
+            (Self::Float(f), Self::Int(i)) | (Self::Int(i), Self::Float(f)) => {
+                (*i as f64) == *f
+            }
         }
     }
 }
@@ -70,56 +71,34 @@ impl Neg for Number {
     }
 }
 
-impl Add for Number {
-    type Output = Self;
+/// Implement a numeric binary operator for `Number`
+macro_rules! impl_numeric_binary_op {
+    ($trait:ident, $func:ident, $op:tt) => {
+        /// Apply this arithmetic operation between two numbers. If both numbers
+        /// are ints, keep them as ints. If either is a float, cast both to
+        /// floats and apply the operation.
+        impl $trait for Number {
+            type Output = Self;
 
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Number::Int(lhs), Number::Int(rhs)) => {
-                lhs.wrapping_add(rhs).into()
+            fn $func(self, rhs: Self) -> Self::Output {
+                match (self, rhs) {
+                    (Number::Int(lhs), Number::Int(rhs)) => {
+                        // TODO handle overflow/underflow
+                        (lhs $op rhs).into()
+                    }
+                    (Number::Int(lhs), Number::Float(rhs)) => {
+                        ((lhs as f64) $op rhs).into()
+                    }
+                    (Number::Float(lhs), Number::Int(rhs)) => {
+                        (lhs $op (rhs as f64)).into()
+                    }
+                    (Number::Float(lhs), Number::Float(rhs)) => {
+                        (lhs $op rhs).into()
+                    }
+                }
             }
-            // TODO handle overflow or w/e
-            (Number::Int(lhs), Number::Float(rhs)) => {
-                ((lhs as f64) + rhs).into()
-            }
-            (Number::Float(lhs), Number::Int(rhs)) => {
-                (lhs + (rhs as f64)).into()
-            }
-            (Number::Float(lhs), Number::Float(rhs)) => (lhs + rhs).into(),
         }
-    }
-}
-
-impl Sub for Number {
-    type Output = Self;
-
-    fn sub(self, _: Self) -> Self::Output {
-        todo!()
-    }
-}
-
-impl Mul for Number {
-    type Output = Self;
-
-    fn mul(self, _: Self) -> Self::Output {
-        todo!()
-    }
-}
-
-impl Div for Number {
-    type Output = Self;
-
-    fn div(self, _: Self) -> Self::Output {
-        todo!()
-    }
-}
-
-impl Rem for Number {
-    type Output = Self;
-
-    fn rem(self, _: Self) -> Self::Output {
-        todo!()
-    }
+    };
 }
 
 /// Implement `From<T> for Number`, for infallible conversions
@@ -196,6 +175,12 @@ macro_rules! impl_try_from_number {
     };
 }
 
+impl_numeric_binary_op!(Add, add, +);
+impl_numeric_binary_op!(Sub, sub, -);
+impl_numeric_binary_op!(Mul, mul, *);
+impl_numeric_binary_op!(Div, div, /);
+impl_numeric_binary_op!(Rem, rem, %);
+
 impl_from!(i8, Int);
 impl_from!(u8, Int);
 impl_from!(i16, Int);
@@ -232,7 +217,7 @@ mod tests {
     #[test_case(3i64, 7.0f64, 10.0f64; "int float")]
     #[test_case(3.0f64, 7i64, 10.0f64; "float int")]
     #[test_case(3.0f64, 7.0f64, 10.0f64; "float float")]
-    fn test_add(
+    fn add(
         a: impl Into<Number>,
         b: impl Into<Number>,
         expected: impl Into<Number>,

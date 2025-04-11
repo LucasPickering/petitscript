@@ -18,7 +18,7 @@ fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
 #[test_case("importLocal", 6; "import_local")]
 #[test_case("importNative", 6; "import_native")]
 #[test_case("json", true; "json")]
-fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
+fn execution(file_name: &'static str, expected: impl Into<Value>) {
     let mut engine = Engine::new();
     let module = Exports::named([("add", engine.create_fn(add))]);
     engine.register_module("math", module).unwrap();
@@ -40,7 +40,7 @@ fn test_execution(file_name: &'static str, expected: impl Into<Value>) {
   in error at $CWD/tests/ps/common.js:3:10
 `x` is not defined";
     "stack_trace")]
-fn test_error(file_name: &'static str, expected_error: &'static str) {
+fn error(file_name: &'static str, expected_error: &'static str) {
     let mut engine = Engine::new();
     let module = Exports::named([("add", engine.create_fn(add))]);
     engine.register_module("math", module).unwrap();

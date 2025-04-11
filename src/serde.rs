@@ -66,7 +66,7 @@ mod tests {
         None,
         indexmap! {"cap".to_owned() => 32.into()},
     ); "function")]
-    fn test_identity(value: impl Into<Value>) {
+    fn identity(value: impl Into<Value>) {
         let value = value.into();
         let deserialized: Value = from_value(value.clone()).unwrap();
         assert_eq!(deserialized, value, "Deserialization did not math");

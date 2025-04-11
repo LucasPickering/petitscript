@@ -399,7 +399,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_span_any() {
+    fn span_any() {
         assert_eq!(
             Span::Source {
                 source_id: SourceId(0),

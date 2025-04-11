@@ -80,23 +80,15 @@ impl Value {
     }
 
     /// Coernce this value to a number.
-    /// | Type        | Value   | Coercion |
-    /// | ----------- | ------- | -------- |
-    /// | `undefined` |         | `NaN`    |
-    /// | `null`      |         | `0`      |
-    /// | `boolean`   | `false` | `0`      |
-    /// | `boolean`   | `true`  | `1`      |
-    /// | `number`    |         | Itself   |
-    /// | `string`    |         | `None`   |
-    /// | `array`     |         | `None`   |
-    /// | `object`    |         | `None`   |
-    /// | `function`  |         | `None`   |
+    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion
     pub fn to_number(&self) -> Option<Number> {
         match self {
-            Self::Undefined => Some(f64::NAN.into()),
-            Self::Null | Self::Boolean(false) => Some(0.into()),
+            Self::Undefined => Some(Number::NAN),
+            Self::Null => Some(0.into()),
+            Self::Boolean(false) => Some(0.into()),
             Self::Boolean(true) => Some(1.into()),
             Self::Number(number) => Some(*number),
+            // TODO try parsing string as number
             Self::String(_)
             | Self::Array(_)
             | Self::Object(_)
@@ -332,6 +324,7 @@ impl_value_conversions!(u128, Number, to_ps: fallible, from_ps: fallible);
 impl_value_conversions!(f32, Number, to_ps: infallible, from_ps: fallible);
 impl_value_conversions!(f64, Number, to_ps: infallible, from_ps: fallible);
 impl_value_conversions!(String, String);
+impl_value_conversions!(PetitString, String);
 impl_value_conversions!(Array, Array);
 impl_value_conversions!(Object, Object);
 impl_value_conversions!(IndexMap<String, Value>, Object);

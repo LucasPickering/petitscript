@@ -165,7 +165,6 @@ impl SourceTable {
                 }
             }
             Span::Native => QualifiedSpan::Native,
-            #[cfg(test)]
             Span::Any => unimplemented!("`Any` spans cannot be qualified"),
         }
     }
@@ -198,7 +197,6 @@ pub enum Span {
     Native,
     /// A test-only variant that is considered equal to any other span. Useful
     /// for creating assertions that don't care about source spans
-    #[cfg(test)]
     Any,
 }
 
@@ -330,7 +328,6 @@ pub trait IntoSpanned: Sized {
     /// Wrap an AST node in a [Spanned], with a wildcard span that will
     /// match anything in quality checking. For AST comparisons
     /// where you don't care about source spans
-    #[cfg(test)]
     fn s(self) -> Spanned<Self>;
 }
 
@@ -339,7 +336,6 @@ impl<T> IntoSpanned for T {
         Spanned { data: self, span }
     }
 
-    #[cfg(test)]
     fn s(self) -> Spanned<Self> {
         Spanned {
             data: self,

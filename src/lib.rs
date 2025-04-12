@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
-mod ast;
+pub mod ast;
 mod compile;
 pub mod error;
 mod execute;

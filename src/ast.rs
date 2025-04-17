@@ -6,10 +6,12 @@
 
 // TODO comments on everything
 
-pub mod build;
+mod build;
 mod display;
 pub mod source;
-pub mod walk;
+mod walk;
+
+pub use walk::{AstVisitor, Walk};
 
 use crate::{
     ast::source::{IntoSpanned, Spanned},
@@ -245,6 +247,7 @@ pub enum ExportDeclaration {
         // TODO
     },
     Declaration(Spanned<Declaration>),
+    // TODO do we need this variant? Can we merge it into DefaultExpression?
     DefaultFunctionDeclaration(Spanned<FunctionDeclaration>),
     DefaultExpression(Spanned<Expression>),
 }
@@ -274,6 +277,7 @@ pub enum Expression {
 pub struct Identifier(String);
 
 impl Identifier {
+    /// TODO
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }

@@ -5,11 +5,10 @@ mod tests;
 
 use crate::{
     ast::{
-        source::Spanned,
-        walk::{AstVisitor, Walk as _},
-        Binding, Block, Expression, FunctionDeclaration, FunctionDefinition,
-        FunctionPointer, Identifier, ImportDeclaration, Module, ObjectProperty,
-        PropertyName, Variable,
+        source::Spanned, AstVisitor, Binding, Block, Expression,
+        FunctionDeclaration, FunctionDefinition, FunctionPointer, Identifier,
+        ImportDeclaration, Module, ObjectProperty, PropertyName, Variable,
+        Walk as _,
     },
     error::RuntimeError,
 };

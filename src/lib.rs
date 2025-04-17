@@ -31,6 +31,9 @@ use crate::{
 };
 use indexmap::IndexMap;
 
+// TODO replace all usages of `impl ToString` with `impl Into<String>`? prevent
+// clone when the value is already a String
+
 /// The main entrypoint for executing and evaluating PetitScript programs. An
 /// engine defines how code should be executed. TODO more
 #[derive(Debug)]

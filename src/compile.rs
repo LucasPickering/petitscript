@@ -7,7 +7,7 @@ pub use function::FunctionDefinitionId;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
-    ast::{source::SourceTable, walk::Walk, Module},
+    ast::{source::SourceTable, Module, Walk},
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
 };

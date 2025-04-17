@@ -126,38 +126,27 @@ impl Execute for Spanned<ImportDeclaration> {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
-        let module_specifier = match &self.data {
-            ImportDeclaration::Named { module, .. }
-            | ImportDeclaration::Namespace { module, .. } => module,
-        };
-
-        let exports = module_specifier.exec(state)?;
+        let exports = self.module.exec(state)?;
 
         let scope = state.scope_mut();
-        match &self.data {
-            ImportDeclaration::Named { default, named, .. } => {
-                if let Some(name) = default {
-                    scope.declare(
-                        name.as_str(),
-                        // TODO only clone as needed
-                        exports.default.clone().ok_or_else(|| todo!())?,
-                    );
-                }
-                for named in named {
-                    let name =
-                        named.rename.as_ref().unwrap_or(&named.identifier);
-                    scope.declare(
-                        name.as_str(),
-                        // TODO only clone as needed
-                        exports
-                            .named
-                            .get(named.identifier.as_str())
-                            .expect("TODO")
-                            .clone(),
-                    );
-                }
-            }
-            ImportDeclaration::Namespace { .. } => todo!(),
+        if let Some(name) = &self.default {
+            scope.declare(
+                name.as_str(),
+                // TODO only clone as needed
+                exports.default.clone().ok_or_else(|| todo!())?,
+            );
+        }
+        for named in &self.named {
+            let name = named.rename.as_ref().unwrap_or(&named.identifier);
+            scope.declare(
+                name.as_str(),
+                // TODO only clone as needed
+                exports
+                    .named
+                    .get(named.identifier.as_str())
+                    .expect("TODO")
+                    .clone(),
+            );
         }
 
         Ok(())

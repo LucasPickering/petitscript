@@ -168,25 +168,14 @@ impl Display for DoWhileLoop {
 
 impl Display for ImportDeclaration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Named {
-                default,
-                named,
-                module,
-            } => {
-                write!(f, "import ")?;
-                if let Some(default) = default {
-                    write!(f, "{default}")?;
-                }
-                if !named.is_empty() {
-                    write!(f, "{{ {} }}", CommaSeparated(named))?;
-                }
-                write!(f, " from {module};")
-            }
-            Self::Namespace { identifier, module } => {
-                write!(f, "import * as {identifier} from {module};")
-            }
+        write!(f, "import ")?;
+        if let Some(default) = &self.default {
+            write!(f, "{default}")?;
         }
+        if !self.named.is_empty() {
+            write!(f, "{{ {} }}", CommaSeparated(&self.named))?;
+        }
+        write!(f, " from {};", &self.module)
     }
 }
 

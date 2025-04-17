@@ -3,11 +3,10 @@ use crate::ast::{
     Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
     FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
     FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    Variable, WhileLoop,
+    ImportNamed, LexicalDeclaration, Literal, Module, ObjectLiteral,
+    ObjectPatternElement, ObjectProperty, OptionalPropertyAccess,
+    PropertyAccess, PropertyName, Spanned, Statement, TemplateChunk,
+    TemplateLiteral, TernaryConditional, UnaryOperation, Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -346,21 +345,9 @@ impl Walk for FunctionCall {
 impl Walk for ImportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import(self);
-        match self {
-            ImportDeclaration::Named {
-                default,
-                named,
-                module,
-            } => {
-                default.walk(visitor);
-                named.walk(visitor);
-                module.walk(visitor);
-            }
-            ImportDeclaration::Namespace { identifier, module } => {
-                identifier.walk(visitor);
-                module.walk(visitor);
-            }
-        }
+        self.default.walk(visitor);
+        self.named.walk(visitor);
+        self.module.walk(visitor);
         visitor.exit_import(self);
     }
 }
@@ -378,7 +365,7 @@ impl Walk for ImportModule {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import_module(self);
         match self {
-            ImportModule::Native(module_name) => {
+            ImportModule::Native(_) => {
                 // Nothing to do here. We could add a visit_module_name but
                 // I don't think it would have any value
             }

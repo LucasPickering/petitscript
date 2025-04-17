@@ -202,20 +202,12 @@ impl AstVisitor for CaptureFunctions {
 
     /// Declare names from an import
     fn enter_import(&mut self, import: &mut ImportDeclaration) {
-        match import {
-            ImportDeclaration::Named { default, named, .. } => {
-                if let Some(default) = default {
-                    self.declare(default);
-                }
-                for named in named {
-                    let name =
-                        named.rename.as_ref().unwrap_or(&named.identifier);
-                    self.declare(name);
-                }
-            }
-            ImportDeclaration::Namespace { identifier, .. } => {
-                self.declare(identifier);
-            }
+        if let Some(default) = &import.default {
+            self.declare(default);
+        }
+        for named in &import.named {
+            let name = named.rename.as_ref().unwrap_or(&named.identifier);
+            self.declare(name);
         }
     }
 

@@ -165,7 +165,7 @@ impl SourceTable {
                 }
             }
             Span::Native => QualifiedSpan::Native,
-            Span::Any => unimplemented!("`Any` spans cannot be qualified"),
+            Span::None => unimplemented!("`Any` spans cannot be qualified"),
         }
     }
 }
@@ -195,9 +195,9 @@ pub enum Span {
     /// don't track Rust source locations.
     /// TODO maybe we _can_ track native code too? look into it
     Native,
-    /// A test-only variant that is considered equal to any other span. Useful
-    /// for creating assertions that don't care about source spans
-    Any,
+    /// An empty span. Used only when building ASTs programatically, because
+    /// there's no source code to map to.
+    None,
 }
 
 impl Span {
@@ -232,7 +232,7 @@ impl PartialEq for Span {
                 },
             ) => source1 == source2 && start1 == start2 && end1 == end2,
             (Self::Native, Self::Native) => true,
-            (Self::Any, _) | (_, Self::Any) => true,
+            (Self::None, _) | (_, Self::None) => true,
             _ => false,
         }
     }
@@ -339,7 +339,7 @@ impl<T> IntoSpanned for T {
     fn s(self) -> Spanned<Self> {
         Spanned {
             data: self,
-            span: Span::Any,
+            span: Span::None,
         }
     }
 }
@@ -402,7 +402,7 @@ mod tests {
                 start_offset: 0,
                 end_offset: 0
             },
-            Span::Any
+            Span::None
         );
     }
 }

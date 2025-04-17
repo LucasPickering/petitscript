@@ -226,14 +226,9 @@ impl Transform for ext::ImportDecl {
         }
         .into_spanned(source_span);
 
-        match (wildcard, default, named.as_slice()) {
-            (Some(wildcard), None, &[]) => Ok(ImportDeclaration::Namespace {
-                identifier: wildcard,
-                module,
-            }),
-            (Some(_), _, _) => todo!("error"),
-            (None, None, &[]) => todo!("error no imports specified"),
-            (None, default, _) => Ok(ImportDeclaration::Named {
+        match (default, named.as_slice()) {
+            (None, &[]) => todo!("error no imports specified"),
+            (default, _) => Ok(ImportDeclaration {
                 default,
                 named: named.into(),
                 module,

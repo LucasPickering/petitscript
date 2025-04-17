@@ -4,22 +4,19 @@
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
 //! allocate more memory than needed.
 
-#![allow(unused)] // TODO remove
-
 // TODO comments on everything
 
+pub mod build;
 mod display;
 pub mod source;
 pub mod walk;
 
 use crate::{
-    ast::source::Spanned, compile::FunctionDefinitionId, error::ModuleNameError,
+    ast::source::{IntoSpanned, Spanned},
+    compile::FunctionDefinitionId,
+    error::ModuleNameError,
 };
-use std::{
-    fmt::{self, Display},
-    hash::Hash,
-    str::FromStr,
-};
+use std::{hash::Hash, str::FromStr};
 
 /// The root AST node for a single source file. This is the outcome of parsing a
 /// file, and may contain nested modules from local imports.
@@ -170,25 +167,18 @@ pub struct DoWhileLoop {
     pub body: Box<Spanned<Statement>>,
 }
 
+/// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
+/// No other import formats are supported
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub enum ImportDeclaration {
-    /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
-    Named {
-        /// `exportDefault`
-        default: Option<Spanned<Identifier>>,
-        /// `{ export1, export2 as ex2 }`
-        named: Box<[Spanned<ImportNamed>]>,
-        /// `"module-name"`
-        module: Spanned<ImportModule>,
-    },
-    /// `import * as name from "module-name"`
-    Namespace {
-        identifier: Spanned<Identifier>,
-        module: Spanned<ImportModule>,
-    },
-    // Side-effect imports not supported - we're a functional lang!!
+pub struct ImportDeclaration {
+    /// `exportDefault`
+    pub default: Option<Spanned<Identifier>>,
+    /// `{ export1, export2 as ex2 }`
+    pub named: Box<[Spanned<ImportNamed>]>,
+    /// `"module-name"`
+    pub module: Spanned<ImportModule>,
 }
 
 /// One identifier in a named import clause. In this import:
@@ -497,211 +487,4 @@ pub enum ObjectPatternElement {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayPatternElement {
     // TODO
-}
-
-/// Helpers for constructing AST nodes in tests
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ast::source::IntoSpanned;
-
-    // These helpers all take `Vec<T>` instead of `impl IntoIterator<Item = T>`
-    // to cut down on compile time/code dupe
-
-    impl Module {
-        pub fn new(statements: Vec<Spanned<Statement>>) -> Self {
-            Self {
-                statements: statements.into_iter().collect(),
-            }
-        }
-    }
-
-    impl Statement {
-        /// Create a lexical declaration statement: `const x = <expression>`
-        pub fn const_assign(
-            name: &str,
-            expression: Spanned<Expression>,
-        ) -> Spanned<Self> {
-            Statement::Declaration(
-                Declaration::Lexical(
-                    LexicalDeclaration {
-                        variables: [Variable::identifier(
-                            name,
-                            Some(expression),
-                        )]
-                        .into(),
-                    }
-                    .s(),
-                )
-                .s(),
-            )
-            .s()
-        }
-
-        /// Create a function declaration: `function f() {}`
-        pub fn function(
-            name: &str,
-            parameters: Vec<Spanned<FunctionParameter>>,
-            body: Vec<Spanned<Statement>>,
-            captures: Vec<&str>,
-        ) -> Spanned<Self> {
-            Statement::Declaration(
-                Declaration::Function(
-                    FunctionDeclaration {
-                        name: Identifier::new(name).s(),
-                        pointer: FunctionPointer::Inline(FunctionDefinition {
-                            name: Some(Identifier::new(name).s()),
-                            parameters: parameters.into(),
-                            body: body.into(),
-                            captures: captures
-                                .into_iter()
-                                .map(Identifier::new)
-                                .collect(),
-                        })
-                        .s(),
-                    }
-                    .s(),
-                )
-                .s(),
-            )
-            .s()
-        }
-
-        /// Create a native import declaration: `import default, { named } from
-        /// 'math'`
-        pub fn import_native(
-            default: Option<&str>,
-            named: Vec<&str>,
-            module: &str,
-        ) -> Spanned<Self> {
-            Self::Import(
-                ImportDeclaration::Named {
-                    default: default.map(|name| Identifier::new(name).s()),
-                    named: named
-                        .into_iter()
-                        .map(|name| {
-                            ImportNamed {
-                                identifier: Identifier::new(name).s(),
-                                rename: None,
-                            }
-                            .s()
-                        })
-                        .collect(),
-                    module: ImportModule::Native("math".parse().unwrap()).s(),
-                }
-                .s(),
-            )
-            .s()
-        }
-    }
-
-    impl Expression {
-        /// Create a simple identifier expression: `x`
-        pub fn identifier(name: &str) -> Spanned<Self> {
-            Self::Identifier(Identifier::new(name).s()).s()
-        }
-
-        /// Create an integer literal
-        pub fn int(i: i64) -> Spanned<Self> {
-            Self::Literal(Literal::Int(i).s()).s()
-        }
-
-        /// Create a lambda expression
-        pub fn function(
-            name: Option<&str>,
-            parameters: Vec<Spanned<FunctionParameter>>,
-            body: Vec<Spanned<Statement>>,
-            captures: Vec<&str>,
-        ) -> Spanned<Self> {
-            Self::ArrowFunction(
-                FunctionPointer::Inline(FunctionDefinition {
-                    name: name.map(|name| Identifier::new(name).s()),
-                    parameters: parameters.into(),
-                    body: body.into(),
-                    captures: captures
-                        .into_iter()
-                        .map(Identifier::new)
-                        .collect(),
-                })
-                .s(),
-            )
-            .s()
-        }
-
-        /// Create a function call expression
-        pub fn call(
-            function: Spanned<Self>,
-            arguments: Vec<Spanned<Self>>,
-        ) -> Spanned<Self> {
-            Self::Call(
-                FunctionCall {
-                    function: function.into(),
-                    arguments: arguments.into(),
-                }
-                .s(),
-            )
-            .s()
-        }
-
-        pub fn binary(
-            operator: BinaryOperator,
-            lhs: Spanned<Self>,
-            rhs: Spanned<Self>,
-        ) -> Spanned<Self> {
-            Self::Binary(
-                BinaryOperation {
-                    operator,
-                    lhs: lhs.into(),
-                    rhs: rhs.into(),
-                }
-                .s(),
-            )
-            .s()
-        }
-    }
-
-    impl Spanned<Expression> {
-        /// Get a property of this expression: `self.y`
-        pub fn property(self, property: &str) -> Self {
-            Expression::Property(
-                PropertyAccess {
-                    expression: self.into(),
-                    property: PropertyName::literal(property),
-                }
-                .s(),
-            )
-            .s()
-        }
-    }
-
-    impl Variable {
-        /// Create a simple identifier variable
-        pub fn identifier(
-            name: &str,
-            init: Option<Spanned<Expression>>,
-        ) -> Spanned<Self> {
-            Self {
-                binding: Binding::Identifier(Identifier::new(name).s()),
-                init: init.map(Box::new),
-            }
-            .s()
-        }
-    }
-
-    impl PropertyName {
-        pub fn literal(name: &str) -> Spanned<Self> {
-            Self::Literal(Identifier::new(name).s()).s()
-        }
-    }
-
-    impl FunctionParameter {
-        /// A simple single-identifier parameter, with no default expression
-        pub fn identifier(name: &str) -> Spanned<Self> {
-            Self {
-                variable: Variable::identifier(name, None),
-                varargs: false,
-            }
-            .s()
-        }
-    }
 }

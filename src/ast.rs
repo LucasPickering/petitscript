@@ -11,6 +11,7 @@ mod display;
 pub mod source;
 mod walk;
 
+pub use build::{IntoExpression, IntoStatement};
 pub use walk::{AstVisitor, Walk};
 
 use crate::{
@@ -286,7 +287,7 @@ pub enum Expression {
     Ternary(Spanned<TernaryConditional>),
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
 impl Identifier {

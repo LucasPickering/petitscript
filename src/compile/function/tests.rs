@@ -1,12 +1,17 @@
 use crate::{
     ast::{
-        source::IntoSpanned, Binding, Declaration, Expression,
-        FunctionDeclaration, FunctionDefinition, FunctionParameter,
-        FunctionPointer, Identifier, LexicalDeclaration, Literal, Module,
-        ObjectLiteral, ObjectProperty, PropertyName, Statement, Variable,
+        source::IntoSpanned, Binding, Declaration, Expression, FunctionBody,
+        FunctionCall, FunctionDeclaration, FunctionDefinition,
+        FunctionParameter, FunctionPointer, Identifier, ImportDeclaration,
+        IntoExpression, IntoStatement, LexicalDeclaration, Literal, Module,
+        ObjectLiteral, Statement, Variable,
     },
     compile::{CapturedAst, Compiler, LabelledAst, Lifted},
 };
+use std::sync::Arc;
+
+// We use vecs in a lot of args here in an attempt to cut down on
+// monomorphization copies for the builder methods
 
 /// Test that functions declared with an obvious associated name get
 /// labelled with that name.
@@ -24,10 +29,14 @@ fn function_label() {
     .unwrap()
     .label()
     .program;
-    let expected_statement_1 = Statement::const_assign(
+    let expected_statement_1 = Declaration::lexical(
         "f",
-        Expression::function(Some("f"), vec![], vec![], vec![]),
-    );
+        FunctionDefinition::new(vec![], FunctionBody::empty())
+            .with_name("f")
+            .into(),
+    )
+    .into_stmt()
+    .s();
     let expected_statement_2 = Statement::Declaration(
         Declaration::Lexical(
             LexicalDeclaration {
@@ -35,23 +44,15 @@ fn function_label() {
                     binding: Binding::Identifier(Identifier::new("o").s()),
                     init: Some(
                         Expression::Literal(
-                            Literal::Object(ObjectLiteral {
-                                properties: [ObjectProperty::Property {
-                                    property: PropertyName::Literal(
-                                        Identifier::new("g").s(),
-                                    )
-                                    .s(),
-
-                                    expression: Expression::function(
-                                        Some("g"),
-                                        vec![],
-                                        vec![],
-                                        vec![],
-                                    ),
-                                }
-                                .s()]
-                                .into(),
-                            })
+                            Literal::Object(ObjectLiteral::new(vec![(
+                                "g",
+                                FunctionDefinition::new(
+                                    [],
+                                    FunctionBody::empty(),
+                                )
+                                .with_name("g")
+                                .into_expr(),
+                            )]))
                             .s(),
                         )
                         .s()
@@ -104,46 +105,58 @@ fn function_capture() {
     assert_eq!(
         ast,
         Module::new(vec![
-            Statement::import_native(None, vec!["add"], "math"),
-            Statement::function(
-                "log",
+            ImportDeclaration::native(None::<Identifier>, vec!["add"], "math")
+                .into_stmt()
+                .s(),
+            FunctionDefinition::new(
                 vec![FunctionParameter::identifier("e")],
-                vec![Statement::Expression(Expression::call(
-                    Expression::identifier("console").property("log"),
-                    vec![Expression::identifier("e")]
-                ))
-                .s()],
-                vec![]
-            ),
-            Statement::const_assign("x", Expression::int(2)),
-            Statement::function(
-                "f",
-                vec![],
-                vec![
-                    Statement::const_assign("y", Expression::int(3)),
-                    Statement::Return(Some(Expression::function(
-                        None,
-                        vec![FunctionParameter::identifier("z")],
-                        vec![Statement::Expression(Expression::call(
-                            Expression::identifier("log"),
-                            vec![Expression::call(
-                                Expression::identifier("add"),
-                                vec![
-                                    Expression::identifier("x"),
-                                    Expression::identifier("y"),
-                                    Expression::identifier("z"),
-                                ],
-                            )]
-                        ))
-                        .s()],
-                        // `console` isn't captured because it isn't declared
-                        // in any parent scope
-                        vec!["log", "add", "x", "y"]
-                    )))
+                FunctionBody::block(vec![Statement::Expression(
+                    FunctionCall::new(
+                        Expression::reference("console").property("log"),
+                        vec![Expression::reference("e")]
+                    )
+                    .into_expr()
                     .s()
-                ],
-                vec!["log", "add", "x"]
+                )])
             )
+            .declare("log",)
+            .into_stmt()
+            .s(),
+            Declaration::lexical("x", 2.into()).into_stmt().s(),
+            FunctionDefinition::new(
+                vec![],
+                FunctionBody::block(vec![
+                    Declaration::lexical("y", 3.into()).into_stmt(),
+                    FunctionDefinition::new(
+                        vec![FunctionParameter::identifier("z")],
+                        FunctionBody::block(vec![Statement::Expression(
+                            FunctionCall::named(
+                                "log",
+                                vec![FunctionCall::named(
+                                    "add",
+                                    vec![
+                                        Expression::reference("x"),
+                                        Expression::reference("y"),
+                                        Expression::reference("z"),
+                                    ],
+                                )
+                                .into_expr()]
+                            )
+                            .into_expr()
+                            .s()
+                        )]),
+                    )
+                    // `console` isn't captured because it isn't declared
+                    // in any parent scope
+                    .with_captures(vec!["log", "add", "x", "y"])
+                    .into_expr()
+                    .return_()
+                ]),
+            )
+            .with_captures(vec!["log", "add", "x"])
+            .declare("f",)
+            .into_stmt()
+            .s()
         ])
     );
 }
@@ -190,48 +203,32 @@ fn function_lift() {
     );
 
     assert_eq!(
-        &function_table.functions,
-        &[
+        function_table.functions,
+        [
             // These are defined inside-out
-            FunctionDefinition {
-                name: None,
-                parameters: [].into(),
-                body: [].into(),
-                captures: [].into(),
-            }
-            .into(),
-            FunctionDefinition {
-                name: Some(Identifier::new("g").s()),
-                parameters: [].into(),
-                body: [Statement::Return(Some(
+            FunctionDefinition::new(vec![], FunctionBody::empty()),
+            FunctionDefinition::new(
+                vec![],
+                FunctionBody::block([Statement::Return(Some(
                     Expression::ArrowFunction(
                         FunctionPointer::Lifted(0.into()).s()
                     )
                     .s()
-                ))
-                .s()]
-                .into(),
-                captures: [].into(),
-            }
-            .into(),
-            FunctionDefinition {
-                name: Some(Identifier::new("f").s()),
-                parameters: [].into(),
-                body: [Statement::Declaration(
-                    Declaration::Function(
-                        FunctionDeclaration {
-                            name: Identifier::new("g").s(),
-                            pointer: FunctionPointer::Lifted(1.into()).s()
-                        }
-                        .s()
-                    )
-                    .s()
-                )
-                .s()]
-                .into(),
-                captures: [].into(),
-            }
-            .into(),
+                ))])
+            )
+            .with_name("g"),
+            FunctionDefinition::new(
+                vec![],
+                FunctionBody::block(vec![FunctionDeclaration {
+                    name: Identifier::new("g").s(),
+                    pointer: FunctionPointer::Lifted(1.into()).s()
+                }
+                .into()])
+            )
+            .with_name("f"),
         ]
+        .into_iter()
+        .map(Arc::new)
+        .collect::<Vec<_>>()
     );
 }

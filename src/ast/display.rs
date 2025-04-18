@@ -12,7 +12,7 @@ use crate::ast::{
     TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
     UnaryOperator, Variable, WhileLoop,
 };
-use std::fmt;
+use std::{borrow::Cow, fmt};
 
 // TODO fix extra newline in lambda bodies
 
@@ -297,8 +297,16 @@ impl DisplayIndent for Literal {
             Self::Boolean(b) => b.fmt(ind),
             Self::Float(float) => float.fmt(ind),
             Self::Int(int) => int.fmt(ind),
-            // TODO escape correctly here
-            Self::String(s) => ("\"", s, "\"").fmt(ind),
+            Self::String(s) => {
+                // Only escape if needed. The vast majority of the time this
+                // won't be needed, so we can save an allocation
+                let s = if s.contains('"') {
+                    Cow::Owned(s.replace('"', "\\\""))
+                } else {
+                    Cow::Borrowed(s.as_str())
+                };
+                ("\"", s, "\"").fmt(ind)
+            }
             Self::Array(array_literal) => array_literal.fmt(ind),
             Self::Object(object_literal) => object_literal.fmt(ind),
         }
@@ -610,6 +618,12 @@ impl DisplayIndent for String {
     }
 }
 
+impl DisplayIndent for Cow<'_, str> {
+    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        write!(ind.formatter, "{self}")
+    }
+}
+
 impl<T: DisplayIndent> DisplayIndent for Option<T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
@@ -711,3 +725,5 @@ impl fmt::Display for NativeModuleName {
         write!(f, "{}", self.0)
     }
 }
+
+// TODO tests

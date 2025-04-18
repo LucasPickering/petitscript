@@ -1,4 +1,5 @@
-//! Utilities for building ASTs programatically
+//! Utilities for building ASTs programatically. TODO add more detail. When do
+//! we use associated methods vs combinators?
 
 use crate::ast::{
     source::Spanned, ArrayElement, ArrayLiteral, BinaryOperation,
@@ -21,35 +22,6 @@ impl Module {
     }
 }
 
-impl Statement {
-    /// Create a native import declaration: `import default, { named } from
-    /// 'module'`
-    pub fn import_native(
-        default: Option<&'static str>,
-        // TODO generic on item?
-        named: impl IntoIterator<Item = &'static str>,
-        module: &str,
-    ) -> Self {
-        Self::Import(
-            ImportDeclaration {
-                default: default.map(|name| Identifier::from(name).s()),
-                named: named
-                    .into_iter()
-                    .map(|name| {
-                        ImportNamed {
-                            identifier: Identifier::from(name).s(),
-                            rename: None,
-                        }
-                        .s()
-                    })
-                    .collect(),
-                module: ImportModule::Native(module.parse().unwrap()).s(),
-            }
-            .s(),
-        )
-    }
-}
-
 impl From<Declaration> for Statement {
     fn from(declaration: Declaration) -> Self {
         Self::Declaration(declaration.s())
@@ -65,6 +37,37 @@ impl From<FunctionDeclaration> for Statement {
 impl From<Expression> for Statement {
     fn from(expression: Expression) -> Self {
         Self::Expression(expression.s())
+    }
+}
+
+impl From<ImportDeclaration> for Statement {
+    fn from(import: ImportDeclaration) -> Self {
+        Self::Import(import.s())
+    }
+}
+
+impl ImportDeclaration {
+    /// Create a import declaration from a native module:
+    /// `import default, { named } from 'module'`
+    pub fn native(
+        default: Option<impl Into<Identifier>>,
+        named: impl IntoIterator<Item = impl Into<Identifier>>,
+        module: &str,
+    ) -> Self {
+        Self {
+            default: default.map(|name| name.into().s()),
+            named: named
+                .into_iter()
+                .map(|name| {
+                    ImportNamed {
+                        identifier: name.into().s(),
+                        rename: None,
+                    }
+                    .s()
+                })
+                .collect(),
+            module: ImportModule::Native(module.parse().unwrap()).s(),
+        }
     }
 }
 
@@ -89,31 +92,6 @@ impl Declaration {
     }
 }
 
-impl FunctionDeclaration {
-    /// Create a function declaration: `const f = (a, b) => {`
-    pub fn new(
-        name: impl Into<Identifier>,
-        parameters: impl IntoIterator<Item = FunctionParameter>,
-        body: FunctionBody,
-    ) -> Self {
-        let identifier = name.into();
-        Self {
-            name: identifier.clone().s(),
-            pointer: FunctionPointer::Inline(FunctionDefinition {
-                name: Some(identifier.s()),
-                parameters: parameters
-                    .into_iter()
-                    .map(IntoSpanned::s)
-                    .collect::<Vec<_>>()
-                    .into(),
-                body,
-                captures: Default::default(),
-            })
-            .s(),
-        }
-    }
-}
-
 impl FunctionDefinition {
     /// Define a new anonymous function
     pub fn new(
@@ -130,6 +108,31 @@ impl FunctionDefinition {
             body,
             captures: Default::default(),
         }
+    }
+
+    /// Declare this function with the given name
+    pub fn declare(
+        mut self,
+        name: impl Into<Identifier>,
+    ) -> FunctionDeclaration {
+        let identifier = name.into().s();
+        self.name = Some(identifier.clone());
+        FunctionDeclaration {
+            name: identifier,
+            pointer: FunctionPointer::Inline(self).s(),
+        }
+    }
+
+    /// Attach a name to this function definition. This is only useful in tests
+    /// because:
+    /// - The name on a function definition isn't used in code generation.
+    /// - The name *is* useful at runtime, but if the built AST is going to be
+    ///   executed it needs to be run through the compiler first, which will
+    ///   attach the name automatically.
+    #[cfg(test)]
+    pub(crate) fn with_name(mut self, name: impl Into<Identifier>) -> Self {
+        self.name = Some(name.into().s());
+        self
     }
 
     /// Define what identifiers should be captured by this function. This is
@@ -175,22 +178,40 @@ impl FunctionBody {
             .s(),
         )
     }
+
+    /// Create a block function body with no statements
+    pub fn empty() -> Self {
+        Self::Block(
+            Block {
+                statements: Box::new([]),
+            }
+            .s(),
+        )
+    }
 }
 
 impl FunctionCall {
-    /// Call a function by name
+    /// Call an expression as a function
     pub fn new(
-        name: impl Into<Identifier>,
+        function: Expression,
         arguments: impl IntoIterator<Item = Expression>,
     ) -> Self {
         Self {
-            function: Expression::reference(name.into()).s().into(),
+            function: function.s().into(),
             arguments: arguments
                 .into_iter()
                 .map(IntoSpanned::s)
                 .collect::<Vec<_>>()
                 .into(),
         }
+    }
+
+    /// Call a function by name
+    pub fn named(
+        name: impl Into<Identifier>,
+        arguments: impl IntoIterator<Item = Expression>,
+    ) -> Self {
+        Self::new(Expression::reference(name.into()), arguments)
     }
 }
 
@@ -200,11 +221,7 @@ impl Expression {
         Self::Identifier(identifier.into().s())
     }
 
-    /// Create an integer literal
-    pub fn int(i: i64) -> Self {
-        Self::Literal(Literal::Int(i).s())
-    }
-
+    /// Create a binary operation expression
     pub fn binary(operator: BinaryOperator, lhs: Self, rhs: Self) -> Self {
         Self::Binary(
             BinaryOperation {
@@ -215,20 +232,21 @@ impl Expression {
             .s(),
         )
     }
-}
 
-// TODO merge into other impl block
-impl Spanned<Expression> {
     /// Get a property of this expression: `self.y`
     pub fn property(self, property: &str) -> Self {
-        Expression::Property(
+        Self::Property(
             PropertyAccess {
-                expression: self.into(),
+                expression: self.s().into(),
                 property: PropertyName::new(property).s(),
             }
             .s(),
         )
-        .s()
+    }
+
+    /// Create a `return` statement that returns this expression
+    pub fn return_(self) -> Statement {
+        Statement::Return(Some(self.s()))
     }
 }
 
@@ -249,6 +267,18 @@ where
 impl From<bool> for Expression {
     fn from(b: bool) -> Self {
         Self::Literal(Literal::Boolean(b).s())
+    }
+}
+
+impl From<i64> for Expression {
+    fn from(i: i64) -> Self {
+        Self::Literal(Literal::Int(i).s())
+    }
+}
+
+impl From<f64> for Expression {
+    fn from(f: f64) -> Self {
+        Self::Literal(Literal::Float(f).s())
     }
 }
 
@@ -392,5 +422,33 @@ impl From<&'static str> for Identifier {
     /// the risk of this panic by restricting it to string literals.
     fn from(s: &'static str) -> Self {
         Self::new(s)
+    }
+}
+
+/// TODO remove this one we get rid of Spanned
+pub trait IntoStatement {
+    fn into_stmt(self) -> Statement;
+}
+
+impl<T> IntoStatement for T
+where
+    Statement: From<T>,
+{
+    fn into_stmt(self) -> Statement {
+        self.into()
+    }
+}
+
+/// TODO remove this one we get rid of Spanned
+pub trait IntoExpression {
+    fn into_expr(self) -> Expression;
+}
+
+impl<T> IntoExpression for T
+where
+    Expression: From<T>,
+{
+    fn into_expr(self) -> Expression {
+        self.into()
     }
 }

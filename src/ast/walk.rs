@@ -347,10 +347,10 @@ impl Walk for ObjectProperty {
 
 impl Walk for FunctionCall {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_call(self);
+        visitor.enter_function_call(self);
         self.function.walk(visitor);
         self.arguments.walk(visitor);
-        visitor.exit_call(self);
+        visitor.exit_function_call(self);
     }
 }
 
@@ -493,9 +493,6 @@ pub trait AstVisitor {
     fn enter_block(&mut self, _: &mut Block) {}
     fn exit_block(&mut self, _: &mut Block) {}
 
-    fn enter_call(&mut self, _: &mut FunctionCall) {}
-    fn exit_call(&mut self, _: &mut FunctionCall) {}
-
     fn enter_declaration(&mut self, _: &mut Declaration) {}
     fn exit_declaration(&mut self, _: &mut Declaration) {}
 
@@ -511,6 +508,12 @@ pub trait AstVisitor {
     fn enter_for_of_loop(&mut self, _: &mut ForOfLoop) {}
     fn exit_for_of_loop(&mut self, _: &mut ForOfLoop) {}
 
+    fn enter_function_body(&mut self, _: &mut FunctionBody) {}
+    fn exit_function_body(&mut self, _: &mut FunctionBody) {}
+
+    fn enter_function_call(&mut self, _: &mut FunctionCall) {}
+    fn exit_function_call(&mut self, _: &mut FunctionCall) {}
+
     fn enter_function_declaration(&mut self, _: &mut FunctionDeclaration) {}
     fn exit_function_declaration(&mut self, _: &mut FunctionDeclaration) {}
 
@@ -519,9 +522,6 @@ pub trait AstVisitor {
 
     fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
     fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
-
-    fn enter_function_body(&mut self, _: &mut FunctionBody) {}
-    fn exit_function_body(&mut self, _: &mut FunctionBody) {}
 
     fn enter_function_pointer(&mut self, _: &mut FunctionPointer) {}
     fn exit_function_pointer(&mut self, _: &mut FunctionPointer) {}

@@ -9,10 +9,7 @@ use crate::{
         TemplateChunk, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{RuntimeError, TracedError, ValueError},
-    execute::{
-        exec::{Execute, Terminate},
-        ThreadState,
-    },
+    execute::{exec::Execute, ThreadState},
     function::{Function, FunctionInner, UserFunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
@@ -352,12 +349,7 @@ impl Function {
                 // Push the new frame onto the stack and execute the function
                 // body
                 state.with_frame(scope, call_site, self.id(), |state| {
-                    match definition.body.exec(state)? {
-                        Some(Terminate::Return {
-                            return_value: Some(return_value),
-                        }) => Ok(return_value),
-                        _ => Ok(Value::Undefined),
-                    }
+                    definition.body.exec(state)
                 })
             }
             FunctionInner::Native { id, .. } => {

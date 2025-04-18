@@ -3,7 +3,7 @@
 use crate::ast::{
     source::Spanned, ArrayElement, ArrayLiteral, ArrayPatternElement,
     BinaryOperation, BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
-    ExportDeclaration, Expression, ForOfLoop, FunctionCall,
+    ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
     FunctionDeclaration, FunctionDefinition, FunctionParameter,
     FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
     ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName,
@@ -155,9 +155,8 @@ impl DisplayIndent for FunctionDefinition {
         (
             "(",
             Repeat::new(&self.parameters, ", "),
-            ") => {",
-            Indent::new(&self.body, ""),
-            "}",
+            ") => ",
+            &self.body,
         )
             .fmt(ind)
     }
@@ -170,6 +169,15 @@ impl DisplayIndent for FunctionParameter {
             &self.variable,
         )
             .fmt(ind)
+    }
+}
+
+impl DisplayIndent for FunctionBody {
+    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        match self {
+            Self::Expression(expression) => expression.fmt(ind),
+            Self::Block(block) => block.fmt(ind),
+        }
     }
 }
 

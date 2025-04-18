@@ -109,7 +109,8 @@ pub enum FunctionPointer {
 }
 
 /// The parameters, body, and captures that constitute a PetitScript (i.e *not*
-/// native) function definition.
+/// native) function definition. This covers both `function` functions and
+/// arrow functions, since the two are semantically equivalent in PS.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDefinition {
@@ -118,9 +119,8 @@ pub struct FunctionDefinition {
     /// defined in the parent [FunctionDeclaration].
     pub name: Option<Spanned<Identifier>>,
     pub parameters: Box<[Spanned<FunctionParameter>]>,
-    /// We don't use [Block] here because a function's body shares a scope with
-    /// its parameters.
-    pub body: Box<[Spanned<Statement>]>,
+    // `Spanned` not necessary because both variants of the body contain it
+    pub body: FunctionBody,
     /// A list of all the identifiers this function captures from its parent
     /// scope. This only includes identifiers that are actually present in the
     /// parent scope. References in the function parameters/body that don't
@@ -128,6 +128,19 @@ pub struct FunctionDefinition {
     /// here. They will either be provided by the global scope or trigger a
     /// runtime error.
     pub captures: Box<[Identifier]>,
+}
+
+/// The body of a function
+#[derive(Clone, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+pub enum FunctionBody {
+    /// A single-expression body of an arrow function: `(x) => x + 1`
+    Expression(Box<Spanned<Expression>>),
+    /// A standard function body. Accessible through either syntax
+    Block(
+        // TODO make sure we don't create an unnecessary scope for this block
+        Spanned<Block>,
+    ),
 }
 
 /// One parameter in a function definition

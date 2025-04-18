@@ -2,12 +2,12 @@
 
 use crate::ast::{
     source::Spanned, ArrayElement, ArrayLiteral, BinaryOperation,
-    BinaryOperator, Binding, Declaration, ExportDeclaration, Expression,
-    FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
-    FunctionPointer, Identifier, ImportDeclaration, ImportModule, ImportNamed,
-    IntoSpanned, LexicalDeclaration, Literal, Module, ObjectLiteral,
-    ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateLiteral,
-    Variable,
+    BinaryOperator, Binding, Block, Declaration, ExportDeclaration, Expression,
+    FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
+    FunctionParameter, FunctionPointer, Identifier, ImportDeclaration,
+    ImportModule, ImportNamed, IntoSpanned, LexicalDeclaration, Literal,
+    Module, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
+    Statement, TemplateLiteral, Variable,
 };
 
 // TODO remove Spanned everywhere
@@ -93,16 +93,20 @@ impl FunctionDeclaration {
     /// Create a function declaration: `const f = (a, b) => {`
     pub fn new(
         name: impl Into<Identifier>,
-        parameters: Vec<Spanned<FunctionParameter>>,
-        body: Vec<Spanned<Statement>>,
+        parameters: impl IntoIterator<Item = FunctionParameter>,
+        body: FunctionBody,
     ) -> Self {
         let identifier = name.into();
         Self {
             name: identifier.clone().s(),
             pointer: FunctionPointer::Inline(FunctionDefinition {
                 name: Some(identifier.s()),
-                parameters: parameters.into(),
-                body: body.into(),
+                parameters: parameters
+                    .into_iter()
+                    .map(IntoSpanned::s)
+                    .collect::<Vec<_>>()
+                    .into(),
+                body,
                 captures: Default::default(),
             })
             .s(),
@@ -114,7 +118,7 @@ impl FunctionDefinition {
     /// Define a new anonymous function
     pub fn new(
         parameters: impl IntoIterator<Item = FunctionParameter>,
-        body: impl IntoIterator<Item = Statement>,
+        body: FunctionBody,
     ) -> Self {
         Self {
             name: None,
@@ -123,11 +127,7 @@ impl FunctionDefinition {
                 .map(IntoSpanned::s)
                 .collect::<Vec<_>>()
                 .into(),
-            body: body
-                .into_iter()
-                .map(IntoSpanned::s)
-                .collect::<Vec<_>>()
-                .into(),
+            body,
             captures: Default::default(),
         }
     }
@@ -145,6 +145,55 @@ impl FunctionDefinition {
     }
 }
 
+impl FunctionParameter {
+    /// A simple single-identifier parameter, with no default expression
+    pub fn identifier(name: &str) -> Self {
+        Self {
+            variable: Variable::identifier(name, None).s(),
+            varargs: false,
+        }
+    }
+}
+
+impl FunctionBody {
+    /// Create an expression function body, which evaluates a single expression
+    /// and returns its value
+    pub fn expression(expression: Expression) -> Self {
+        Self::Expression(expression.s().into())
+    }
+
+    /// Create a block function body
+    pub fn block(statements: impl IntoIterator<Item = Statement>) -> Self {
+        Self::Block(
+            Block {
+                statements: statements
+                    .into_iter()
+                    .map(IntoSpanned::s)
+                    .collect::<Vec<_>>()
+                    .into(),
+            }
+            .s(),
+        )
+    }
+}
+
+impl FunctionCall {
+    /// Call a function by name
+    pub fn new(
+        name: impl Into<Identifier>,
+        arguments: impl IntoIterator<Item = Expression>,
+    ) -> Self {
+        Self {
+            function: Expression::reference(name.into()).s().into(),
+            arguments: arguments
+                .into_iter()
+                .map(IntoSpanned::s)
+                .collect::<Vec<_>>()
+                .into(),
+        }
+    }
+}
+
 impl Expression {
     /// Create a simple identifier reference expression: `x`
     pub fn reference(identifier: impl Into<Identifier>) -> Self {
@@ -154,42 +203,6 @@ impl Expression {
     /// Create an integer literal
     pub fn int(i: i64) -> Self {
         Self::Literal(Literal::Int(i).s())
-    }
-
-    /// Create a lambda expression
-    pub fn function(
-        name: Option<&str>,
-        parameters: Vec<Spanned<FunctionParameter>>,
-        body: Vec<Spanned<Statement>>,
-        captures: Vec<&str>,
-    ) -> Self {
-        Self::ArrowFunction(
-            FunctionPointer::Inline(FunctionDefinition {
-                name: name.map(|name| Identifier::new(name).s()),
-                parameters: parameters.into(),
-                body: body.into(),
-                captures: captures.into_iter().map(Identifier::new).collect(),
-            })
-            .s(),
-        )
-    }
-
-    /// Call a function by name
-    pub fn call(
-        name: impl Into<Identifier>,
-        arguments: impl IntoIterator<Item = Self>,
-    ) -> Self {
-        Self::Call(
-            FunctionCall {
-                function: Expression::reference(name.into()).s().into(),
-                arguments: arguments
-                    .into_iter()
-                    .map(Self::s)
-                    .collect::<Vec<_>>()
-                    .into(),
-            }
-            .s(),
-        )
     }
 
     pub fn binary(operator: BinaryOperator, lhs: Self, rhs: Self) -> Self {
@@ -281,6 +294,12 @@ impl From<FunctionDefinition> for Expression {
     }
 }
 
+impl From<FunctionCall> for Expression {
+    fn from(function_call: FunctionCall) -> Self {
+        Self::Call(function_call.s())
+    }
+}
+
 impl ArrayLiteral {
     pub fn new(iter: impl IntoIterator<Item = Expression>) -> Self {
         Self {
@@ -294,6 +313,7 @@ impl ArrayLiteral {
 }
 
 impl ObjectLiteral {
+    /// Create a new object literal from a sequence of key-value pairs
     pub fn new<P>(iter: impl IntoIterator<Item = (P, Expression)>) -> Self
     where
         P: ToString,
@@ -307,6 +327,31 @@ impl ObjectLiteral {
                         expression: expression.s(),
                     }
                     .s()
+                })
+                .collect::<Vec<_>>()
+                .into(),
+        }
+    }
+
+    /// Create a new object literal from a sequence of key-value pairs, where
+    /// the values are optional. Any `None` value will be filtered out.
+    pub fn filtered<P>(
+        iter: impl IntoIterator<Item = (P, Option<Expression>)>,
+    ) -> Self
+    where
+        P: ToString,
+    {
+        Self {
+            properties: iter
+                .into_iter()
+                .filter_map(|(property, expression)| {
+                    Some(
+                        ObjectProperty::Property {
+                            property: PropertyName::new(property).s(),
+                            expression: expression?.s(),
+                        }
+                        .s(),
+                    )
                 })
                 .collect::<Vec<_>>()
                 .into(),
@@ -337,16 +382,6 @@ impl Variable {
         Self {
             binding: Binding::Identifier(Identifier::new(name).s()),
             init: init.map(Box::new),
-        }
-    }
-}
-
-impl FunctionParameter {
-    /// A simple single-identifier parameter, with no default expression
-    pub fn identifier(name: &str) -> Self {
-        Self {
-            variable: Variable::identifier(name, None).s(),
-            varargs: false,
         }
     }
 }

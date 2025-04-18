@@ -1,12 +1,13 @@
 use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation, Binding,
     Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
-    FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
-    FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, LexicalDeclaration, Literal, Module, ObjectLiteral,
-    ObjectPatternElement, ObjectProperty, OptionalPropertyAccess,
-    PropertyAccess, PropertyName, Spanned, Statement, TemplateChunk,
-    TemplateLiteral, TernaryConditional, UnaryOperation, Variable, WhileLoop,
+    FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
+    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
+    ImportModule, ImportNamed, LexicalDeclaration, Literal, Module,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned, Statement,
+    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -211,6 +212,17 @@ impl Walk for FunctionDefinition {
         self.parameters.walk(visitor);
         self.body.walk(visitor);
         visitor.exit_function_definition(self);
+    }
+}
+
+impl Walk for FunctionBody {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_function_body(self);
+        match self {
+            Self::Expression(expression) => expression.walk(visitor),
+            Self::Block(block) => block.walk(visitor),
+        }
+        visitor.exit_function_body(self);
     }
 }
 
@@ -507,6 +519,9 @@ pub trait AstVisitor {
 
     fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
     fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
+
+    fn enter_function_body(&mut self, _: &mut FunctionBody) {}
+    fn exit_function_body(&mut self, _: &mut FunctionBody) {}
 
     fn enter_function_pointer(&mut self, _: &mut FunctionPointer) {}
     fn exit_function_pointer(&mut self, _: &mut FunctionPointer) {}

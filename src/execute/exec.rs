@@ -3,8 +3,8 @@
 use crate::{
     ast::{
         source::Spanned, Block, Declaration, DoWhileLoop, ExportDeclaration,
-        ForOfLoop, FunctionDeclaration, If, ImportDeclaration, ImportModule,
-        LexicalDeclaration, Module, Statement, WhileLoop,
+        ForOfLoop, FunctionBody, FunctionDeclaration, If, ImportDeclaration,
+        ImportModule, LexicalDeclaration, Module, Statement, WhileLoop,
     },
     error::TracedError,
     execute::{eval::Evaluate, ThreadState},
@@ -342,6 +342,26 @@ impl Execute for Spanned<FunctionDeclaration> {
             state.scope_mut().declare(name, function);
         }
         Ok(name)
+    }
+}
+
+impl Execute for FunctionBody {
+    /// Function return value
+    type Output<'process> = Value;
+
+    fn exec<'process>(
+        &self,
+        state: &mut ThreadState<'process>,
+    ) -> Result<Self::Output<'process>, TracedError> {
+        match self {
+            Self::Expression(expression) => expression.eval(state),
+            Self::Block(block) => match block.exec(state)? {
+                Some(Terminate::Return {
+                    return_value: Some(return_value),
+                }) => Ok(return_value),
+                _ => Ok(Value::Undefined),
+            },
+        }
     }
 }
 

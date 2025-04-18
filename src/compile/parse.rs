@@ -6,7 +6,7 @@ use crate::{
         source::{IntoSpanned, SourceId, SourceTable, Span, Spanned},
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
         Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
-        FunctionCall, FunctionDeclaration, FunctionDefinition,
+        FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
         FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
         ImportModule, ImportNamed, LexicalDeclaration, Literal, Module,
         ObjectLiteral, ObjectPatternElement, ObjectProperty, PropertyAccess,
@@ -672,11 +672,12 @@ impl Transform for ext::FnDecl {
         let name = self.name().required(span)?.transform_spanned(context)?;
         let parameters =
             self.parameters().required(span)?.transform(context)?;
-        let body = self.body().required(span)?.transform(context)?.statements;
+        let body_block =
+            self.body().required(span)?.transform_spanned(context)?;
         let pointer = FunctionPointer::Inline(FunctionDefinition {
             name: Some(name.clone()),
             parameters,
-            body,
+            body: FunctionBody::Block(body_block),
             captures: [].into(), // Will be filled out later
         })
         .into_spanned(context.span(self.range()));
@@ -714,13 +715,11 @@ impl Transform for ext::ArrowExpr {
         let body = match self.body().required(span)? {
             ext::ExprOrBlock::Expr(expr) => {
                 let expression = expr.transform_spanned(context)?;
-                let span = expression.span;
-                Box::new([
-                    Statement::Return(Some(expression)).into_spanned(span)
-                ])
+                FunctionBody::Expression(expression.into())
             }
             ext::ExprOrBlock::Block(block_stmt) => {
-                block_stmt.transform(context)?.statements
+                let block = block_stmt.transform_spanned(context)?;
+                FunctionBody::Block(block)
             }
         };
         Ok(FunctionPointer::Inline(FunctionDefinition {

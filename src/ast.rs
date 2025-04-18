@@ -1,4 +1,43 @@
-//! TODO
+//! The [Abstract Syntax Tree](https://w.wiki/6jCi) types of PetitScript. These
+//! define all the possible components of a valid PetitScript program. Because
+//! PetitScript is implemented as a tree-walking interpreter, these types also
+//! compose into executable PS programs.
+//!
+//! ## [Node] and [NodeId]
+//!
+//! Each node type in the AST is wrapping in a [Node]. This wrapper holds a
+//! [NodeId], which uniquely identifies that node within the AST. These IDs are
+//! used to track metadata, such as source spans, for each node. There are a lot
+//! of ways to do this and they all have tradeoffs. Some considered
+//! alternatives:
+//!
+//! - Store the metadata inline in the AST. Replace each ID with the actual
+//!   metadata. This eliminates the indirection of having a separate metadata
+//!   table, but restricts you to a single metadata type.
+//! - Generic ineline metadata. The same solution as above, but add a generic
+//!   param to each node type to define what metadata to store. This adds a lot
+//!   of clutter and requires mapping between metadata types for cases like
+//!   comparing parsed ASTs to generated ones in tests.
+//! - Store the ID directly in each node type instead of using a wrapper type.
+//!   This declutters a lot of usage cases, but requires the repetition of
+//!   adding each node field, and also adds complexity around enums. It forces
+//!   you to either add the ID field to every variant of every enum, or
+//!   normalize enums so that each variant contains a single unique struct. Both
+//!   end up adding more clutter than they save.
+//! - Use the memory address of each node as its implicit ID. This subverts the
+//!   protection of the borrow checker and completely breaks as soon as you move
+//!   an AST node (which is very common during construction and parsing).
+//! - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
+//!   This adds a lot of complexity and is challenging to then store the AST and
+//!   the encapsulating arena together because they are self-referential.
+//!
+//!
+//! Overall, storing metadata separately adds flexibility to cover the two main
+//! use cases:
+//! - ASTs parsed from source code
+//! - ASTs generated programatically
+//!
+//! ## Collection Types
 //!
 //! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
@@ -11,7 +50,7 @@ mod display;
 pub mod source;
 mod walk;
 
-pub use build::{IntoExpression, IntoStatement};
+pub use build::{IntoExpression, IntoNode, IntoStatement};
 pub use walk::{AstVisitor, Walk};
 
 use crate::{compile::FunctionDefinitionId, error::ModuleNameError};
@@ -74,6 +113,7 @@ impl<T> DerefMut for Node<T> {
     }
 }
 
+/// TODO
 #[cfg(test)]
 impl<T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -283,7 +323,7 @@ pub enum ImportModule {
     /// Another PetitScript file, e.g. `import helpers from './helpers'`. The
     /// imported file will be parsed during the parse of the parent, so we
     /// end up with a separate AST to be executed.
-    Local(Module),
+    Local(Node<Module>),
 }
 
 /// TODO move this somewhere

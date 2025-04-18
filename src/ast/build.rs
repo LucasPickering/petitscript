@@ -12,12 +12,11 @@ use crate::ast::{
 };
 
 // TODO remove Spanned everywhere
-// TODO take impl IntoIter instead of vec
 
 impl Module {
-    pub fn new(statements: Vec<Node<Statement>>) -> Self {
+    pub fn new(statements: impl IntoIterator<Item = Statement>) -> Self {
         Self {
-            statements: statements.into_iter().collect(),
+            statements: statements.into_iter().map(IntoNode::s).collect(),
         }
     }
 }
@@ -76,10 +75,8 @@ impl Declaration {
     pub fn lexical(name: &str, expression: Expression) -> Declaration {
         Self::Lexical(
             LexicalDeclaration {
-                variables: [
-                    Variable::identifier(name, Some(expression.s())).s()
-                ]
-                .into(),
+                variables: [Variable::identifier(name, Some(expression)).s()]
+                    .into(),
             }
             .s(),
         )
@@ -408,10 +405,10 @@ impl PropertyName {
 
 impl Variable {
     /// Create a simple identifier variable
-    pub fn identifier(name: &str, init: Option<Node<Expression>>) -> Self {
+    pub fn identifier(name: &str, init: Option<Expression>) -> Self {
         Self {
             binding: Binding::Identifier(Identifier::new(name).s()).s(),
-            init: init.map(Box::new),
+            init: init.map(|init| init.s().into()),
         }
     }
 }

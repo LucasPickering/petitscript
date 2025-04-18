@@ -36,7 +36,9 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 /// the given source table has exactly one source in it to begin with, which is
 /// the source of the root module. In addition to the parsed module, this a
 /// debug table of source spans for each AST node.
-pub fn parse(sources: &mut SourceTable) -> Result<(Module, SpanTable), Error> {
+pub fn parse(
+    sources: &mut SourceTable,
+) -> Result<(Node<Module>, SpanTable), Error> {
     let source_id = sources.root_id();
     let mut spans = SpanTable::default();
     let context = ParseContext {
@@ -52,7 +54,7 @@ pub fn parse(sources: &mut SourceTable) -> Result<(Module, SpanTable), Error> {
 /// Helper for parsing a single module. This is called recursively within a
 /// parse tree, once per PS module. Each module corresponds to a single source,
 /// so this will add a new source to the given source table
-fn parse_module(mut context: ParseContext) -> Result<Module, Error> {
+fn parse_module(mut context: ParseContext) -> Result<Node<Module>, Error> {
     let source = context.current_source();
     let code = source.text()?;
     let ast = rslint_parser::parse_module(&code, 0)
@@ -62,7 +64,7 @@ fn parse_module(mut context: ParseContext) -> Result<Module, Error> {
             errors,
         })?;
     let module =
-        ast.transform(&mut context)
+        ast.transform_node(&mut context)
             .map_err(|error| Error::Transform {
                 error: error.data,
                 span: context.sources.qualify(error.span),
@@ -238,21 +240,22 @@ impl Transform for ext::ImportDecl {
         let module = match source_text.try_into() {
             Ok(name) => ImportModule::Native(name),
             Err(error) => {
-                let ast = resolve_module(error.name, context.current_source())
-                    .and_then(|path| {
-                        let source_id = context.sources.insert(path);
-                        parse_module(ParseContext {
-                            sources: context.sources,
-                            current_source_id: source_id,
-                            next_node_id: context.next_node_id,
-                            spans: context.spans,
+                let module =
+                    resolve_module(error.name, context.current_source())
+                        .and_then(|path| {
+                            let source_id = context.sources.insert(path);
+                            parse_module(ParseContext {
+                                sources: context.sources,
+                                current_source_id: source_id,
+                                next_node_id: context.next_node_id,
+                                spans: context.spans,
+                            })
                         })
-                    })
-                    .map_err(|error| {
-                        TransformError::Import(error.into())
-                            .into_spanned(source_span)
-                    })?;
-                ImportModule::Local(ast)
+                        .map_err(|error| {
+                            TransformError::Import(error.into())
+                                .into_spanned(source_span)
+                        })?;
+                ImportModule::Local(module)
             }
         }
         .into_node(context, source.range());

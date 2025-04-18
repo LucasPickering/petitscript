@@ -9,7 +9,7 @@ pub use parse::SUPPORTED_EXTENSIONS;
 use crate::{
     ast::{
         source::{SourceTable, SpanTable},
-        Module, Walk,
+        Module, Node, Walk,
     },
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
@@ -30,7 +30,7 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 #[derive(Debug)]
 pub struct Program {
     sources: SourceTable,
-    module: Module,
+    module: Node<Module>,
     /// A debug table of source spans for each node. This will help us produce
     /// good error messages at runtime
     spans: SpanTable,
@@ -72,25 +72,25 @@ struct Compiler<T> {
 
 /// AST that has been parsed, but had no transformations applied
 struct ParsedAst {
-    module: Module,
+    module: Node<Module>,
     spans: SpanTable,
 }
 
 /// AST after function labelling
 struct LabelledAst {
-    module: Module,
+    module: Node<Module>,
     spans: SpanTable,
 }
 
 /// AST after function capture
 struct CapturedAst {
-    module: Module,
+    module: Node<Module>,
     spans: SpanTable,
 }
 
 /// A program after function lifting
 struct Lifted {
-    module: Module,
+    module: Node<Module>,
     spans: SpanTable,
     function_table: FunctionTable,
 }

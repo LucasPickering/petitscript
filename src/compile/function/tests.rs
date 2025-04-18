@@ -1,10 +1,9 @@
 use crate::{
     ast::{
-        source::IntoSpanned, Binding, Declaration, Expression, FunctionBody,
-        FunctionCall, FunctionDeclaration, FunctionDefinition,
-        FunctionParameter, FunctionPointer, Identifier, ImportDeclaration,
-        IntoExpression, IntoStatement, LexicalDeclaration, Literal, Module,
-        ObjectLiteral, Statement, Variable,
+        Declaration, Expression, FunctionBody, FunctionCall,
+        FunctionDeclaration, FunctionDefinition, FunctionParameter,
+        FunctionPointer, Identifier, ImportDeclaration, IntoExpression,
+        IntoNode, IntoStatement, Module, ObjectLiteral, Statement,
     },
     compile::{CapturedAst, Compiler, LabelledAst, Lifted},
 };
@@ -17,7 +16,7 @@ use std::sync::Arc;
 /// labelled with that name.
 #[test]
 fn function_label() {
-    let LabelledAst(ast) = Compiler::new(
+    let LabelledAst { module, .. } = Compiler::new(
         "
         const f = () => {};
         const o = {g: () => {}};
@@ -35,51 +34,29 @@ fn function_label() {
             .with_name("f")
             .into(),
     )
-    .into_stmt()
-    .s();
-    let expected_statement_2 = Statement::Declaration(
-        Declaration::Lexical(
-            LexicalDeclaration {
-                variables: [Variable {
-                    binding: Binding::Identifier(Identifier::new("o").s()),
-                    init: Some(
-                        Expression::Literal(
-                            Literal::Object(ObjectLiteral::new(vec![(
-                                "g",
-                                FunctionDefinition::new(
-                                    [],
-                                    FunctionBody::empty(),
-                                )
-                                .with_name("g")
-                                .into_expr(),
-                            )]))
-                            .s(),
-                        )
-                        .s()
-                        .into(),
-                    ),
-                }
-                .s()]
-                .into(),
-            }
-            .s(),
-        )
-        .s(),
+    .into();
+    let expected_statement_2 = Declaration::lexical(
+        "o",
+        ObjectLiteral::new(vec![(
+            "g",
+            FunctionDefinition::new([], FunctionBody::empty())
+                .with_name("g")
+                .into_expr(),
+        )])
+        .into(),
     )
-    .s();
+    .into();
 
     assert_eq!(
-        ast,
-        Module {
-            statements: [expected_statement_1, expected_statement_2].into(),
-        }
+        module.node(),
+        &Module::new(vec![expected_statement_1, expected_statement_2])
     );
 }
 
 /// Test closure capturing
 #[test]
 fn function_capture() {
-    let CapturedAst(ast) = Compiler::new(
+    let CapturedAst { module, .. } = Compiler::new(
         "
         import { add } from 'math';
 
@@ -103,11 +80,10 @@ fn function_capture() {
     .program;
 
     assert_eq!(
-        ast,
-        Module::new(vec![
+        module.node(),
+        &Module::new(vec![
             ImportDeclaration::native(None::<Identifier>, vec!["add"], "math")
-                .into_stmt()
-                .s(),
+                .into_stmt(),
             FunctionDefinition::new(
                 vec![FunctionParameter::identifier("e")],
                 FunctionBody::block(vec![Statement::Expression(
@@ -120,9 +96,8 @@ fn function_capture() {
                 )])
             )
             .declare("log",)
-            .into_stmt()
-            .s(),
-            Declaration::lexical("x", 2.into()).into_stmt().s(),
+            .into_stmt(),
+            Declaration::lexical("x", 2.into()).into_stmt(),
             FunctionDefinition::new(
                 vec![],
                 FunctionBody::block(vec![
@@ -156,7 +131,6 @@ fn function_capture() {
             .with_captures(vec!["log", "add", "x"])
             .declare("f",)
             .into_stmt()
-            .s()
         ])
     );
 }
@@ -165,8 +139,9 @@ fn function_capture() {
 #[test]
 fn function_lift() {
     let Lifted {
-        module: ast,
+        module,
         function_table,
+        ..
     } = Compiler::new(
         // TODO include a function in param position here: (i = () => {}) => {}
         "
@@ -185,21 +160,12 @@ fn function_lift() {
     .program;
 
     assert_eq!(
-        ast,
-        Module {
-            statements: [Statement::Declaration(
-                Declaration::Function(
-                    FunctionDeclaration {
-                        name: Identifier::new("f").s(),
-                        pointer: FunctionPointer::Lifted(2.into()).s()
-                    }
-                    .s()
-                )
-                .s()
-            )
-            .s()]
-            .into(),
+        module.node(),
+        &Module::new(vec![FunctionDeclaration {
+            name: Identifier::new("f").s(),
+            pointer: FunctionPointer::Lifted(2.into()).s()
         }
+        .into()])
     );
 
     assert_eq!(

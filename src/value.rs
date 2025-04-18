@@ -346,8 +346,9 @@ pub enum ValueType {
     String,
     Array,
     Object,
-    Buffer,
     Function,
+    #[cfg(feature = "bytes")]
+    Buffer,
 }
 
 impl Display for ValueType {
@@ -360,8 +361,9 @@ impl Display for ValueType {
             Self::String => write!(f, "string"),
             Self::Array => write!(f, "array"),
             Self::Object => write!(f, "object"),
-            Self::Buffer => write!(f, "buffer"),
             Self::Function => write!(f, "function"),
+            #[cfg(feature = "bytes")]
+            Self::Buffer => write!(f, "buffer"),
         }
     }
 }

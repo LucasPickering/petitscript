@@ -1,8 +1,11 @@
 //! The PetitScript standard library
 
+mod array;
+mod string;
+
 use crate::{
     error::RuntimeError, function::Varargs, json, scope::Scope, value::Object,
-    NativeFunctionTable, Number, PetitString, Process, Value,
+    NativeFunctionTable, Number, Process, Value, ValueType,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -11,9 +14,11 @@ pub fn stdlib(functions: &mut NativeFunctionTable) -> Scope {
     let mut scope = Scope::new();
     scope.declare("Boolean", functions.create_fn(boolean));
     scope.declare("Number", functions.create_fn(number));
-    scope.declare("String", functions.create_fn(string));
+    scope.declare("String", functions.create_fn(string::constructor));
     scope.declare("console", console(functions));
     scope.declare("JSON", json(functions));
+    scope.declare_prototype(ValueType::String, string::prototype(functions));
+    scope.declare_prototype(ValueType::Array, array::prototype(functions));
     scope
 }
 
@@ -26,11 +31,6 @@ fn boolean(_: &Process, value: Value) -> bool {
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion
 fn number(_: &Process, value: Value) -> Number {
     value.to_number().unwrap_or(Number::NAN)
-}
-
-/// Coerce a value to a string
-fn string(_: &Process, value: Value) -> PetitString {
-    value.to_string().into()
 }
 
 /// `console` module

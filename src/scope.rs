@@ -1,8 +1,8 @@
 use crate::{
     ast::{Binding, Identifier},
-    function::Captures,
+    function::{Captures, NativeFunctionId},
     value::Value,
-    RuntimeError,
+    RuntimeError, ValueType,
 };
 use indexmap::IndexMap;
 use std::mem;
@@ -17,6 +17,12 @@ pub struct Scope {
     parent: Option<Box<Self>>,
     /// TODO
     bindings: Bindings,
+    /// A set of bindings scoped to a particular type, such as `Array.map`.
+    /// Prototypes are restricted to only storing functions, as there is no use
+    /// for constants in the prototype. Prototypes can only be defined on the
+    /// global scope, but are included in every scope for simplicity. This map
+    /// should be empty for all child scopes.
+    prototypes: IndexMap<ValueType, Prototype>,
 }
 
 impl Scope {
@@ -51,6 +57,7 @@ impl Scope {
         Self {
             parent: Some(Box::new(self)),
             bindings: Bindings::default(),
+            prototypes: IndexMap::default(),
         }
     }
 
@@ -86,6 +93,18 @@ impl Scope {
         self.bindings.declare(name.into(), value.into());
     }
 
+    /// Set the entire prototype for a single type. If the type already has a
+    /// prototype defined, panic as that's a bug
+    pub fn declare_prototype(
+        &mut self,
+        value_type: ValueType,
+        prototype: Prototype,
+    ) {
+        if self.prototypes.insert(value_type, prototype).is_some() {
+            panic!("Prototype already defined for type {value_type}");
+        }
+    }
+
     /// Get the value of a binding. Return an error if the binding doesn't exist
     /// in scope.
     pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
@@ -101,6 +120,18 @@ impl Scope {
                 }
             }
         }
+    }
+
+    /// Get a function definition from a specific type's prototype
+    pub(crate) fn get_prototype(
+        &self,
+        value_type: ValueType,
+        name: &str,
+    ) -> Option<NativeFunctionId> {
+        let definition_id = self
+            .prototype(value_type)
+            .and_then(|prototype| prototype.0.get(name))?;
+        Some(*definition_id)
     }
 
     /// Declare a new binding in this scope. The binding can be a single
@@ -149,15 +180,21 @@ impl Scope {
             })
             .collect()
     }
+
+    /// Find the prototype for a specific type. Recursively walk up the scope
+    /// stack until we find it (it should always be in the global scope).
+    fn prototype(&self, value_type: ValueType) -> Option<&Prototype> {
+        self.prototypes
+            .get(&value_type)
+            .or_else(|| self.parent.as_ref()?.prototype(value_type))
+    }
 }
 
 /// A set of unique names, each bound to a value. This is a flat map, with no
 /// hierarchy. For hierarchical scoping, see [Scope].
 /// TODO rename to not overlap with AST Binding type
 #[derive(Clone, Debug, Default)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Bindings(IndexMap<String, Value>);
+struct Bindings(IndexMap<String, Value>);
 
 impl Bindings {
     /// TODO
@@ -168,5 +205,22 @@ impl Bindings {
     /// TODO
     fn get(&self, name: &str) -> Option<&Value> {
         self.0.get(name)
+    }
+}
+
+/// A set of functions accessible to all values of a single type. Each of these
+/// functions must be bound to a value before being called. As such, the
+/// included native functions must point to a bound function, not a static one.
+#[derive(Clone, Debug, Default)]
+pub struct Prototype(IndexMap<String, NativeFunctionId>);
+
+impl Prototype {
+    /// Add a function to this prototype
+    pub(crate) fn declare(
+        &mut self,
+        name: impl Into<String>,
+        definition_id: NativeFunctionId,
+    ) {
+        self.0.insert(name.into(), definition_id);
     }
 }

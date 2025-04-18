@@ -18,13 +18,15 @@ fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
 #[test_case("importLocal", 6; "import_local")]
 #[test_case("importNative", 6; "import_native")]
 #[test_case("json", true; "json")]
+#[test_case("prototype", true; "prototype")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
     let mut engine = Engine::new();
     let module = Exports::named([("add", engine.create_fn(add))]);
     engine.register_module("math", module).unwrap();
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
 
-    let exported = execute(&engine, path).unwrap();
+    let exported =
+        execute(&engine, path).unwrap_or_else(|error| panic!("{error}"));
     let expected_default = expected.into();
     assert_eq!(exported, expected_default);
 }

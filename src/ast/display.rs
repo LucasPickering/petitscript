@@ -300,6 +300,7 @@ impl DisplayIndent for Literal {
             Self::String(s) => {
                 // Only escape if needed. The vast majority of the time this
                 // won't be needed, so we can save an allocation
+                // TODO escape newlines too
                 let s = if s.contains('"') {
                     Cow::Owned(s.replace('"', "\\\""))
                 } else {

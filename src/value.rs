@@ -18,6 +18,7 @@ pub use object::Object;
 use crate::{
     error::{RuntimeError, ValueError},
     json,
+    scope::Scope,
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
         impl_value_numeric_binary_op,
@@ -106,15 +107,25 @@ impl Value {
     }
 
     /// If this value is a string, get the inner string. Otherwise return a type
-    /// error.
+    /// error. This will not perform any type coercion.
     pub fn try_into_string(self) -> Result<PetitString, ValueError> {
         if let Self::String(string) = self {
             Ok(string)
         } else {
             Err(ValueError::Type {
-                expected: ValueType::Array,
+                expected: ValueType::String,
                 actual: self.type_(),
             })
+        }
+    }
+
+    /// If this value is a string, return a reference to the inner `str`. If
+    /// not, return `None`
+    pub fn as_str(&self) -> Option<&str> {
+        if let Self::String(string) = self {
+            Some(string)
+        } else {
+            None
         }
     }
 
@@ -187,17 +198,44 @@ impl Value {
         }
     }
 
-    /// TODO
-    pub fn get(&self, key: &Self) -> Result<Value, RuntimeError> {
-        match (self, key) {
-            (Self::Array(_), Self::Number(_)) => todo!(),
+    /// Get a property from this value. If the property is not present on the
+    /// value, check its prototype as well. Return `undefined` if the property
+    /// isn't present. If this value is `null` or `undefined`, return an error.
+    pub fn get(
+        &self,
+        key: &Self,
+        scope: &Scope,
+    ) -> Result<Value, RuntimeError> {
+        let value: Option<Value> = match (self, key) {
+            (Self::Array(array), Self::Number(Number::Int(i))) => {
+                // If the index is positive and in the array, get the value
+                if let Ok(i) = usize::try_from(*i) {
+                    array.get(i).cloned()
+                } else {
+                    None
+                }
+            }
             // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => {
-                Ok(object.get(key).clone())
+                Some(object.get(key).clone())
             }
-            (Self::Undefined | Self::Null, _) => todo!(),
-            _ => Ok(Value::Undefined),
-        }
+            (Self::Undefined | Self::Null, _) => todo!("error"),
+            _ => None,
+        };
+
+        Ok(value
+            // If it wasn't directly on the value, check the prototype
+            .or_else(|| {
+                // If the key isn't a string, we know it won't be in the
+                // prototype so we can bail out
+                let name = key.as_str()?;
+                let definition_id = scope.get_prototype(self.type_(), name)?;
+                Some(
+                    Function::bound(definition_id, self.clone(), name.into())
+                        .into(),
+                )
+            })
+            .unwrap_or_default())
     }
 
     /// Boolean AND operator (&&)
@@ -337,7 +375,7 @@ impl_value_from!(Vec<Value>, Array);
 impl_value_from!(IndexMap<&str, Value>, Object);
 
 /// Possible types for a value
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ValueType {
     Undefined,
     Null,

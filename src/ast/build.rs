@@ -231,11 +231,11 @@ impl Expression {
     }
 
     /// Get a property of this expression: `self.y`
-    pub fn property(self, property: &str) -> Self {
+    pub fn property(self, name: &str) -> Self {
         Self::Property(
             PropertyAccess {
                 expression: self.s().into(),
-                property: PropertyName::new(property).s(),
+                property: PropertyName::new(name).s(),
             }
             .s(),
         )
@@ -244,6 +244,16 @@ impl Expression {
     /// Create a `return` statement that returns this expression
     pub fn return_(self) -> Statement {
         Statement::Return(Some(self.s()))
+    }
+
+    /// Create an expression that will call a method from this expression
+    /// resolved value's prototype. `x` -> `x.f(...)`
+    pub fn call(
+        self,
+        name: &str,
+        arguments: impl IntoIterator<Item = Expression>,
+    ) -> Self {
+        FunctionCall::new(self.property(name), arguments).into()
     }
 }
 

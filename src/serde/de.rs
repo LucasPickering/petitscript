@@ -9,7 +9,7 @@ use serde::de::{
     value::{StrDeserializer, StringDeserializer, U64Deserializer},
     Deserializer as _, Error as _, IntoDeserializer, Unexpected,
 };
-use std::{fmt::Display, mem};
+use std::{fmt::Display, sync::Arc};
 
 impl de::Error for ValueError {
     fn custom<T: Display>(message: T) -> Self {
@@ -392,16 +392,17 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer {
 struct FunctionDeserializer {
     fields: &'static [&'static str],
     /// TODO
-    function: FunctionInner,
+    function: Arc<FunctionInner>,
     /// Index of the next field to emit in `fields`
     next_field: usize,
 }
 
 impl FunctionDeserializer {
     fn new(function: Function) -> Self {
-        let fields = match &function.0 {
+        let fields = match &*function.0 {
             FunctionInner::User { .. } => Function::USER_FIELDS,
             FunctionInner::Native { .. } => Function::NATIVE_FIELDS,
+            FunctionInner::Bound { .. } => Function::BOUND_FIELDS,
         };
         Self {
             fields,
@@ -441,27 +442,30 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
         match *field {
             Function::FIELD_TYPE => {
                 // Emit "__type": "<type>"
-                let type_ = match &self.function {
+                let type_ = match &*self.function {
                     FunctionInner::User { .. } => Function::TYPE_USER,
                     FunctionInner::Native { .. } => Function::TYPE_NATIVE,
+                    FunctionInner::Bound { .. } => Function::TYPE_BOUND,
                 };
                 seed.deserialize(StrDeserializer::new(type_))
             }
             Function::FIELD_ID => {
                 // Pack ID as a u64
-                let id = match &self.function {
+                let id = match &*self.function {
                     FunctionInner::User { id, .. } => id.pack(),
                     FunctionInner::Native { id, .. } => id.0,
+                    FunctionInner::Bound { id, .. } => id.0,
                 };
                 seed.deserialize(U64Deserializer::new(id))
             }
             Function::FIELD_NAME => {
-                let name = match &mut self.function {
+                let name = match &*self.function {
                     FunctionInner::User { name, .. }
-                    | FunctionInner::Native { name, .. } => name.take(),
+                    | FunctionInner::Native { name, .. }
+                    | FunctionInner::Bound { name, .. } => name.as_ref(),
                 };
                 if let Some(name) = name {
-                    seed.deserialize(StringDeserializer::new(name))
+                    seed.deserialize(StrDeserializer::new(name))
                 } else {
                     // TODO this probably isn't right - we should serialize
                     // None instead of ()
@@ -469,14 +473,23 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
                 }
             }
             Function::FIELD_CAPTURES => {
-                // We shouldn't ever hit this case for a native fn
-                match &mut self.function {
+                match &*self.function {
                     FunctionInner::User { captures, .. } => {
-                        let captures = mem::take(captures);
-                        seed.deserialize(captures.into_deserializer())
+                        seed.deserialize(captures.clone().into_deserializer())
                     }
-                    // We should never emit this field for a native fn
-                    FunctionInner::Native { .. } => todo!("error!"),
+                    // We should never emit this field for a native or bound fn
+                    FunctionInner::Native { .. }
+                    | FunctionInner::Bound { .. } => todo!("error!"),
+                }
+            }
+            Function::FIELD_RECEIVER => {
+                match &*self.function {
+                    FunctionInner::Bound { receiver, .. } => {
+                        seed.deserialize(receiver.clone().into_deserializer())
+                    }
+                    // We should never emit this field for a user or native fn
+                    FunctionInner::User { .. }
+                    | FunctionInner::Native { .. } => todo!("error!"),
                 }
             }
             _ => todo!(),

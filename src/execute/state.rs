@@ -7,7 +7,7 @@ use crate::{
     },
     compile::Program,
     error::TracedError,
-    function::FunctionId,
+    function::{FunctionId, NativeFunctionDefinition, NativeFunctionId},
     scope::Scope,
     value::{Exports, Value},
     Process, RuntimeError,
@@ -49,6 +49,14 @@ impl<'process> ThreadState<'process> {
     /// Get the program being executed
     pub fn program(&self) -> &Program {
         &self.process.program
+    }
+
+    /// Get a native function from the table by its ID
+    pub fn native_fn(
+        &self,
+        id: NativeFunctionId,
+    ) -> Result<&NativeFunctionDefinition, RuntimeError> {
+        self.process().native_functions.get(id)
     }
 
     /// Set a named export value

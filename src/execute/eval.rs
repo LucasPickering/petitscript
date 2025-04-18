@@ -10,7 +10,9 @@ use crate::{
     },
     error::{RuntimeError, TracedError, ValueError},
     execute::{exec::Execute, state::CallSite, ThreadState},
-    function::{Function, FunctionInner, UserFunctionId},
+    function::{
+        Function, FunctionInner, NativeFunctionDefinition, UserFunctionId,
+    },
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, sync::Arc};
@@ -230,7 +232,7 @@ impl Evaluate for Node<PropertyAccess> {
             PropertyName::Expression(expression) => expression.eval(state)?,
         };
         value
-            .get(&key)
+            .get(&key, state.scope())
             .map_err(|error| state.trace_error(error, self.id()))
     }
 }
@@ -301,7 +303,7 @@ impl Function {
         call_site: CallSite,
         arguments: &[Value],
     ) -> Result<Value, TracedError> {
-        match &self.0 {
+        match &*self.0 {
             FunctionInner::User { id, captures, .. } => {
                 let definition = Arc::clone(
                     state
@@ -358,13 +360,31 @@ impl Function {
             }
             FunctionInner::Native { id, .. } => {
                 let definition = state
-                    .process()
-                    .native_functions
-                    .get(*id)
+                    .native_fn(*id)
                     .map_err(|error| state.trace_error(error, call_site))?;
-                definition
-                    .call(state.process(), arguments)
-                    .map_err(|error| state.trace_error(error, call_site))
+                match definition {
+                    NativeFunctionDefinition::Static(f) => {
+                        (f)(state.process(), arguments)
+                    }
+                    NativeFunctionDefinition::Bound(_) => {
+                        todo!("error")
+                    }
+                }
+                .map_err(|error| state.trace_error(error, call_site))
+            }
+            FunctionInner::Bound { id, receiver, .. } => {
+                let definition = state
+                    .native_fn(*id)
+                    .map_err(|error| state.trace_error(error, call_site))?;
+                match definition {
+                    NativeFunctionDefinition::Static(_) => {
+                        todo!("error")
+                    }
+                    NativeFunctionDefinition::Bound(f) => {
+                        (f)(state.process(), receiver, arguments)
+                    }
+                }
+                .map_err(|error| state.trace_error(error, call_site))
             }
         }
     }

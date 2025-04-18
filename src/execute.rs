@@ -117,7 +117,7 @@ impl Process {
     ) -> Result<Value, Error> {
         // If this is a user function, make sure it belongs to this process.
         // Native functions don't capture any values so they don't need this
-        if let Function(FunctionInner::User { id, .. }) = function {
+        if let FunctionInner::User { id, .. } = &*function.0 {
             if id.process_id != self.id {
                 todo!("error process ID mismatch")
             }

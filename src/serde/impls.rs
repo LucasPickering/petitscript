@@ -195,12 +195,16 @@ impl Function {
     pub(super) const TYPE_USER: &'static str = "__UserFunction";
     /// Value to use for the type field for native functions
     pub(super) const TYPE_NATIVE: &'static str = "__NativeFunction";
+    /// Value to use for the type field for bound functions, which are
+    /// native functions bound to a receiver
+    pub(super) const TYPE_BOUND: &'static str = "__BoundFunction";
     /// A marker field to indicate that a map is actually a function definition.
     /// The value is always [Self::STRUCT_NAME]
     pub(super) const FIELD_TYPE: &'static str = "__type";
     pub(super) const FIELD_ID: &'static str = "id";
     pub(super) const FIELD_NAME: &'static str = "name";
     pub(super) const FIELD_CAPTURES: &'static str = "captures";
+    pub(super) const FIELD_RECEIVER: &'static str = "receiver";
     pub(super) const USER_FIELDS: &'static [&'static str] = &[
         Self::FIELD_TYPE,
         Self::FIELD_ID,
@@ -209,6 +213,12 @@ impl Function {
     ];
     pub(super) const NATIVE_FIELDS: &'static [&'static str] =
         &[Self::FIELD_TYPE, Self::FIELD_ID, Self::FIELD_NAME];
+    pub(super) const BOUND_FIELDS: &'static [&'static str] = &[
+        Self::FIELD_TYPE,
+        Self::FIELD_ID,
+        Self::FIELD_RECEIVER,
+        Self::FIELD_NAME,
+    ];
 }
 
 impl Serialize for Function {
@@ -219,7 +229,7 @@ impl Serialize for Function {
         // A function is serialized as a struct. In most formats this ends up
         // being the same as a map. We'll distinguish it from an object during
         // deserialization by the __type field
-        match &self.0 {
+        match &*self.0 {
             FunctionInner::User { id, name, captures } => {
                 let mut strct = serializer.serialize_struct(
                     Self::TYPE_USER,
@@ -239,6 +249,17 @@ impl Serialize for Function {
                 strct.serialize_field(Self::FIELD_TYPE, Self::TYPE_NATIVE)?;
                 strct.serialize_field(Self::FIELD_ID, &id.0)?;
                 strct.serialize_field(Self::FIELD_NAME, name)?;
+                strct.end()
+            }
+            FunctionInner::Bound { id, receiver, name } => {
+                let mut strct = serializer.serialize_struct(
+                    Self::TYPE_BOUND,
+                    Self::BOUND_FIELDS.len(),
+                )?;
+                strct.serialize_field(Self::FIELD_TYPE, Self::TYPE_USER)?;
+                strct.serialize_field(Self::FIELD_ID, &id.0)?;
+                strct.serialize_field(Self::FIELD_NAME, name)?;
+                strct.serialize_field(Self::FIELD_RECEIVER, receiver)?;
                 strct.end()
             }
         }

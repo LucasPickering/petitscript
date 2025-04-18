@@ -7,7 +7,10 @@ pub use function::FunctionDefinitionId;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
-    ast::{source::SourceTable, Module, Walk},
+    ast::{
+        source::{SourceTable, SpanTable},
+        Module, Walk,
+    },
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
     Error, Source,
 };
@@ -28,6 +31,9 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
 pub struct Program {
     sources: SourceTable,
     module: Module,
+    /// A debug table of source spans for each node. This will help us produce
+    /// good error messages at runtime
+    spans: SpanTable,
     function_table: FunctionTable,
 }
 
@@ -40,6 +46,11 @@ impl Program {
     /// TODO
     pub fn module(&self) -> &Module {
         &self.module
+    }
+
+    /// TODO
+    pub fn spans(&self) -> &SpanTable {
+        &self.spans
     }
 
     /// The function table stores the definition of each function, including
@@ -60,17 +71,27 @@ struct Compiler<T> {
 }
 
 /// AST that has been parsed, but had no transformations applied
-struct ParsedAst(Module);
+struct ParsedAst {
+    module: Module,
+    spans: SpanTable,
+}
 
 /// AST after function labelling
-struct LabelledAst(Module);
+struct LabelledAst {
+    module: Module,
+    spans: SpanTable,
+}
 
 /// AST after function capture
-struct CapturedAst(Module);
+struct CapturedAst {
+    module: Module,
+    spans: SpanTable,
+}
 
 /// A program after function lifting
 struct Lifted {
     module: Module,
+    spans: SpanTable,
     function_table: FunctionTable,
 }
 
@@ -86,10 +107,10 @@ impl Compiler<()> {
 
     /// Parse source code into an AST
     fn parse(mut self) -> Result<Compiler<ParsedAst>, Error> {
-        let ast = parse::parse(&mut self.sources)?;
+        let (module, spans) = parse::parse(&mut self.sources)?;
         Ok(Compiler {
             sources: self.sources,
-            program: ParsedAst(ast),
+            program: ParsedAst { module, spans },
         })
     }
 }
@@ -99,22 +120,28 @@ impl Compiler<ParsedAst> {
     /// debuggability and convenience. This has no semantic impact on the
     /// program
     fn label(self) -> Compiler<LabelledAst> {
-        let mut ast = self.program.0;
-        ast.walk(&mut LabelFunctions);
+        let mut module = self.program.module;
+        module.walk(&mut LabelFunctions);
         Compiler {
             sources: self.sources,
-            program: LabelledAst(ast),
+            program: LabelledAst {
+                module,
+                spans: self.program.spans,
+            },
         }
     }
 }
 
 impl Compiler<LabelledAst> {
     fn capture(self) -> Compiler<CapturedAst> {
-        let mut ast = self.program.0;
-        ast.walk(&mut CaptureFunctions::new());
+        let mut module = self.program.module;
+        module.walk(&mut CaptureFunctions::new());
         Compiler {
             sources: self.sources,
-            program: CapturedAst(ast),
+            program: CapturedAst {
+                module,
+                spans: self.program.spans,
+            },
         }
     }
 }
@@ -123,12 +150,13 @@ impl Compiler<CapturedAst> {
     /// Lift functions into a separate table, replacing their bodies with
     /// references
     fn lift(self) -> Compiler<Lifted> {
-        let mut ast = self.program.0;
-        let function_table = FunctionTable::lift(&mut ast);
+        let mut module = self.program.module;
+        let function_table = FunctionTable::lift(&mut module);
         Compiler {
             sources: self.sources,
             program: Lifted {
-                module: ast,
+                module,
+                spans: self.program.spans,
                 function_table,
             },
         }
@@ -140,6 +168,7 @@ impl Compiler<Lifted> {
         Program {
             sources: self.sources,
             module: self.program.module,
+            spans: self.program.spans,
             function_table: self.program.function_table,
         }
     }

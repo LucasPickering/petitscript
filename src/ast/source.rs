@@ -1,9 +1,10 @@
 //! Utilities for interacting with source code
 
-use crate::Error;
+use crate::{ast::NodeId, Error};
 use normalize_path::NormalizePath;
 use std::{
     borrow::Cow,
+    collections::HashMap,
     env,
     fmt::{self, Debug, Display},
     fs,
@@ -119,53 +120,43 @@ impl SourceTable {
     /// Map a span from cheap IDs and byte offsets to user-friendly source names
     /// and lines/columns
     pub fn qualify(&self, span: Span) -> QualifiedSpan {
-        match span {
-            Span::Source {
-                source_id,
-                start_offset,
-                end_offset,
-            } => {
-                let source = self.get(source_id);
-                let text = &source.text().expect("TODO");
-                // Lines/columns are 1-indexed, because reasons
-                let mut line = 1;
-                let mut column = 1;
-                let mut start_line = 0;
-                let mut start_column = 0;
-                let mut end_line = 0;
-                let mut end_column = 0;
-                for (index, c) in text.char_indices() {
-                    if index == start_offset {
-                        start_line = line;
-                        start_column = column;
-                    }
-                    if index == end_offset {
-                        end_line = line;
-                        end_column = column;
-                    }
-                    if index > end_offset {
-                        break;
-                    }
-
-                    // Reset at the end of the line
-                    if c == '\n' {
-                        line += 1;
-                        column = 1;
-                    } else {
-                        column += 1;
-                    }
-                }
-
-                QualifiedSpan::Source {
-                    source_name: source.name().unwrap_or_else(|| "???".into()),
-                    start_line,
-                    start_column,
-                    end_line,
-                    end_column,
-                }
+        let source = self.get(span.source_id);
+        let text = &source.text().expect("TODO");
+        // Lines/columns are 1-indexed, because reasons
+        let mut line = 1;
+        let mut column = 1;
+        let mut start_line = 0;
+        let mut start_column = 0;
+        let mut end_line = 0;
+        let mut end_column = 0;
+        for (index, c) in text.char_indices() {
+            if index == span.start_offset {
+                start_line = line;
+                start_column = column;
             }
-            Span::Native => QualifiedSpan::Native,
-            Span::None => unimplemented!("`Any` spans cannot be qualified"),
+            if index == span.end_offset {
+                end_line = line;
+                end_column = column;
+            }
+            if index > span.end_offset {
+                break;
+            }
+
+            // Reset at the end of the line
+            if c == '\n' {
+                line += 1;
+                column = 1;
+            } else {
+                column += 1;
+            }
+        }
+
+        QualifiedSpan::Source {
+            source_name: source.name().unwrap_or_else(|| "???".into()),
+            start_line,
+            start_column,
+            end_line,
+            end_column,
         }
     }
 }
@@ -177,65 +168,17 @@ impl SourceTable {
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
 #[derive(Copy, Clone, Debug)]
-pub enum Span {
-    /// A location in a PetitScript source code
-    Source {
-        /// The ID of the [Source] (typically a file) containing the code. This
-        /// is just an ID because we create thousands of spans, so we need this
-        /// to be cheap. Use [SourceTable] to look up the actual source.
-        source_id: SourceId,
-        /// Byte offset for the beginning of this span (inclusive). Always <=
-        /// end_span.
-        start_offset: usize,
-        /// Byte offset for the end of this span (inclusive). Always >=
-        /// start_span.
-        end_offset: usize,
-    },
-    /// A location in Rust native code. This carries no actual data because we
-    /// don't track Rust source locations.
-    /// TODO maybe we _can_ track native code too? look into it
-    Native,
-    /// An empty span. Used only when building ASTs programatically, because
-    /// there's no source code to map to.
-    None,
-}
-
-impl Span {
-    /// Create a new source span
-    pub fn new(
-        source_id: SourceId,
-        start_offset: usize,
-        end_offset: usize,
-    ) -> Self {
-        Self::Source {
-            source_id,
-            start_offset,
-            end_offset,
-        }
-    }
-}
-
-#[cfg(test)]
-impl PartialEq for Span {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                Self::Source {
-                    source_id: source1,
-                    start_offset: start1,
-                    end_offset: end1,
-                },
-                Self::Source {
-                    source_id: source2,
-                    start_offset: start2,
-                    end_offset: end2,
-                },
-            ) => source1 == source2 && start1 == start2 && end1 == end2,
-            (Self::Native, Self::Native) => true,
-            (Self::None, _) | (_, Self::None) => true,
-            _ => false,
-        }
-    }
+pub struct Span {
+    /// The ID of the [Source] (typically a file) containing the code. This
+    /// is just an ID because we create thousands of spans, so we need this
+    /// to be cheap. Use [SourceTable] to look up the actual source.
+    pub source_id: SourceId,
+    /// Byte offset for the beginning of this span (inclusive). Always <=
+    /// end_span.
+    pub start_offset: usize,
+    /// Byte offset for the end of this span (inclusive). Always >=
+    /// start_span.
+    pub end_offset: usize,
 }
 
 /// A range of source code, mapped to lines/columns. This format is suitable
@@ -276,8 +219,9 @@ impl Display for QualifiedSpan {
 /// Some data, with a source span attached. This is used to attach source
 /// mappings to AST nodes, so error messages can point back to the originating
 /// source code.
+///
+/// TODO delete this
 #[derive(Copy, Clone)]
-#[cfg_attr(test, derive(PartialEq))]
 pub struct Spanned<T> {
     pub data: T,
     pub span: Span,
@@ -321,32 +265,43 @@ impl<T: Hash> Hash for Spanned<T> {
 }
 
 /// Helper trait to attach a span to any piece of data
+///
+/// TODO delete this
 pub trait IntoSpanned: Sized {
     /// Wrap this data in a [Spanned]
     fn into_spanned(self, span: Span) -> Spanned<Self>;
-
-    /// Wrap an AST node in a [Spanned], with a wildcard span that will
-    /// match anything in quality checking. For AST comparisons
-    /// where you don't care about source spans
-    fn s(self) -> Spanned<Self>;
 }
 
 impl<T> IntoSpanned for T {
     fn into_spanned(self, span: Span) -> Spanned<Self> {
         Spanned { data: self, span }
     }
+}
 
-    fn s(self) -> Spanned<Self> {
-        Spanned {
-            data: self,
-            span: Span::None,
+/// A table of all spans for each node in the AST. The parser is responsible for
+/// generating this and ensuring every AST node has an entry.
+#[derive(Debug, Default)]
+pub(crate) struct SpanTable(HashMap<NodeId, Span>);
+
+impl SpanTable {
+    /// Get a span from the table, or `None` if the node ID isn't in the table
+    pub fn get(&self, id: NodeId) -> Option<Span> {
+        self.0.get(&id).copied()
+    }
+
+    /// Insert a span into the table. Panic if the AST node already has an
+    /// entry, because that indicates an ID has been repeated by the parser
+    /// which is a bug
+    pub fn insert(&mut self, id: NodeId, span: Span) {
+        if self.0.insert(id, span).is_some() {
+            panic!("AST node {id:?} already has an entry in the span table");
         }
     }
 }
 
 /// A list of source locations representing the function call stack at a
 /// particular moment in time. Most recent call is _last_ on this stack.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StackTrace(Vec<StackTraceFrame>);
 
 impl Display for StackTrace {
@@ -387,22 +342,5 @@ pub struct StackTraceFrame {
 impl Display for StackTraceFrame {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "in {} at {}", self.function_name, self.span)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn span_any() {
-        assert_eq!(
-            Span::Source {
-                source_id: SourceId(0),
-                start_offset: 0,
-                end_offset: 0
-            },
-            Span::None
-        );
     }
 }

@@ -2,9 +2,9 @@
 
 use crate::{
     ast::{
-        source::Spanned, Block, Declaration, DoWhileLoop, ExportDeclaration,
-        ForOfLoop, FunctionBody, FunctionDeclaration, If, ImportDeclaration,
-        ImportModule, LexicalDeclaration, Module, Statement, WhileLoop,
+        Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
+        FunctionBody, FunctionDeclaration, If, ImportDeclaration, ImportModule,
+        LexicalDeclaration, Module, Node, Statement, WhileLoop,
     },
     error::TracedError,
     execute::{eval::Evaluate, ThreadState},
@@ -12,6 +12,8 @@ use crate::{
     Exports,
 };
 use std::borrow::Cow;
+
+// TODO normalize whether we use Node<T> or just T on all impls
 
 /// TODO
 pub trait Execute {
@@ -53,7 +55,7 @@ impl Execute for Module {
     }
 }
 
-impl Execute for Spanned<Statement> {
+impl Execute for Node<Statement> {
     /// We can break out of a loop iter, loop, or fn from here
     type Output<'process> = Option<Terminate>;
 
@@ -61,7 +63,7 @@ impl Execute for Spanned<Statement> {
         &self,
         state: &mut ThreadState,
     ) -> Result<Option<Terminate>, TracedError> {
-        match &self.data {
+        match &self.node() {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
                 // A block gets a new lexical scope
@@ -122,7 +124,7 @@ impl Execute for Block {
     }
 }
 
-impl Execute for Spanned<ImportDeclaration> {
+impl Execute for Node<ImportDeclaration> {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
@@ -153,7 +155,7 @@ impl Execute for Spanned<ImportDeclaration> {
     }
 }
 
-impl Execute for Spanned<ImportModule> {
+impl Execute for Node<ImportModule> {
     type Output<'process> = Cow<'process, Exports>;
 
     /// Resolve a module name/path into its exports. For native modules this
@@ -163,12 +165,12 @@ impl Execute for Spanned<ImportModule> {
         &self,
         state: &mut ThreadState<'process>,
     ) -> Result<Cow<'process, Exports>, TracedError> {
-        match &self.data {
+        match &self.node() {
             ImportModule::Native(name) => state
                 .process()
                 .native_module(name)
                 .map(Cow::Borrowed)
-                .map_err(|error| state.trace_error(error, self.span)),
+                .map_err(|error| state.trace_error(error, self.id())),
             ImportModule::Local(ast) => {
                 let mut thread_state = state.process().create_thread();
                 ast.exec(&mut thread_state)?;
@@ -179,16 +181,16 @@ impl Execute for Spanned<ImportModule> {
     }
 }
 
-impl Execute for Spanned<ExportDeclaration> {
+impl Execute for Node<ExportDeclaration> {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
-        match &self.data {
+        match &self.node() {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
                     state.export(name).map_err(|error| {
-                        state.trace_error(error, declaration.span)
+                        state.trace_error(error, declaration.id())
                     })?;
                 }
                 Ok(())
@@ -200,17 +202,17 @@ impl Execute for Spanned<ExportDeclaration> {
                 // Fetch the function we just declared. Should never fail
                 let value =
                     state.scope().get(name.as_str()).map_err(|error| {
-                        state.trace_error(error, function_declaration.span)
+                        state.trace_error(error, function_declaration.id())
                     })?;
                 state
                     .export_default(value)
-                    .map_err(|error| state.trace_error(error, self.span))
+                    .map_err(|error| state.trace_error(error, self.id()))
             }
             ExportDeclaration::DefaultExpression(expression) => {
                 let value = expression.eval(state)?;
                 state
                     .export_default(value)
-                    .map_err(|error| state.trace_error(error, self.span))
+                    .map_err(|error| state.trace_error(error, self.id()))
             }
         }
     }
@@ -295,7 +297,7 @@ impl Execute for ForOfLoop {
     }
 }
 
-impl Execute for Spanned<LexicalDeclaration> {
+impl Execute for Node<LexicalDeclaration> {
     /// Return the list of declared names
     type Output<'process> = Vec<String>;
 
@@ -314,7 +316,7 @@ impl Execute for Spanned<LexicalDeclaration> {
             let names = state
                 .scope_mut()
                 .bind(&variable.binding, value)
-                .map_err(|error| state.trace_error(error, self.span))?;
+                .map_err(|error| state.trace_error(error, self.id()))?;
             declared.extend(names);
         }
 
@@ -322,7 +324,7 @@ impl Execute for Spanned<LexicalDeclaration> {
     }
 }
 
-impl Execute for Spanned<FunctionDeclaration> {
+impl Execute for Node<FunctionDeclaration> {
     /// Emit declared name
     type Output<'process> = Option<String>;
 

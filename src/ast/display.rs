@@ -1,12 +1,12 @@
 //! Generate source code from AST nodes
 
 use crate::ast::{
-    source::Spanned, ArrayElement, ArrayLiteral, ArrayPatternElement,
-    BinaryOperation, BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
+    ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
+    BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
     ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
     FunctionDeclaration, FunctionDefinition, FunctionParameter,
     FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName,
+    ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName, Node,
     ObjectLiteral, ObjectPatternElement, ObjectProperty,
     OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
     TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
@@ -372,7 +372,7 @@ impl DisplayIndent for FunctionCall {
 
 impl DisplayIndent for PropertyAccess {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match &self.property.data {
+        match &*self.property {
             PropertyName::Literal(literal) => {
                 (&self.expression, ".", literal).fmt(ind)
             }
@@ -582,9 +582,9 @@ impl<T: DisplayIndent> DisplayIndent for Box<T> {
     }
 }
 
-impl<T: DisplayIndent> DisplayIndent for Spanned<T> {
+impl<T: DisplayIndent> DisplayIndent for Node<T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        self.data.fmt(ind)
+        self.node().fmt(ind)
     }
 }
 

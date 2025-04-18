@@ -5,10 +5,13 @@ mod exec;
 mod state;
 
 use crate::{
-    ast::{source::Span, NativeModuleName},
+    ast::NativeModuleName,
     compile::Program,
     error::RuntimeError,
-    execute::{exec::Execute, state::ThreadState},
+    execute::{
+        exec::Execute,
+        state::{CallSite, ThreadState},
+    },
     function::{Function, FunctionInner},
     scope::Scope,
     value::{Exports, Value},
@@ -124,7 +127,7 @@ impl Process {
         let mut thread_state =
             ThreadState::new(self.globals.clone(), self, false);
         function
-            .call(&mut thread_state, Span::Native, arguments)
+            .call(&mut thread_state, CallSite::Native, arguments)
             .map_err(Error::from)
     }
 

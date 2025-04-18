@@ -14,40 +14,101 @@ mod walk;
 pub use build::{IntoExpression, IntoStatement};
 pub use walk::{AstVisitor, Walk};
 
-use crate::{
-    ast::source::{IntoSpanned, Spanned},
-    compile::FunctionDefinitionId,
-    error::ModuleNameError,
+use crate::{compile::FunctionDefinitionId, error::ModuleNameError};
+use std::{
+    hash::Hash,
+    ops::{Deref, DerefMut},
+    str::FromStr,
 };
-use std::{hash::Hash, str::FromStr};
+
+/// An identifier that uniquely identifies an AST node **within the AST**. These
+/// IDs are not globally unique, just within a single AST.
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct NodeId(u32);
+
+impl NodeId {
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+}
+
+/// TODO
+#[derive(Clone, Debug)]
+pub struct Node<T> {
+    id: NodeId,
+    node: T,
+}
+
+impl<T> Node<T> {
+    /// TODO
+    pub(crate) fn new(id: NodeId, node: T) -> Self {
+        Self { id, node }
+    }
+
+    pub(crate) fn id(&self) -> NodeId {
+        self.id
+    }
+
+    /// Get a reference to the contained node value
+    pub fn node(&self) -> &T {
+        &self.node
+    }
+
+    /// Get a mutable reference to the contained node value
+    pub fn node_mut(&mut self) -> &mut T {
+        &mut self.node
+    }
+}
+
+impl<T> Deref for Node<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.node
+    }
+}
+
+impl<T> DerefMut for Node<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.node
+    }
+}
+
+#[cfg(test)]
+impl<T: PartialEq> PartialEq for Node<T> {
+    fn eq(&self, other: &Self) -> bool {
+        // TODO explain
+        self.node == other.node
+    }
+}
 
 /// The root AST node for a single source file. This is the outcome of parsing a
 /// file, and may contain nested modules from local imports.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Module {
-    pub statements: Box<[Spanned<Statement>]>,
+    pub statements: Box<[Node<Statement>]>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Statement {
     Empty,
-    Block(Spanned<Block>),
-    Expression(Spanned<Expression>),
-    Declaration(Spanned<Declaration>),
+    Block(Node<Block>),
+    Expression(Node<Expression>),
+    Declaration(Node<Declaration>),
 
-    If(Spanned<If>),
-    ForOfLoop(Spanned<ForOfLoop>),
-    WhileLoop(Spanned<WhileLoop>),
-    DoWhileLoop(Spanned<DoWhileLoop>),
+    If(Node<If>),
+    ForOfLoop(Node<ForOfLoop>),
+    WhileLoop(Node<WhileLoop>),
+    DoWhileLoop(Node<DoWhileLoop>),
 
-    Return(Option<Spanned<Expression>>),
+    Return(Option<Node<Expression>>),
     Break,
     Continue,
 
-    Import(Spanned<ImportDeclaration>),
-    Export(Spanned<ExportDeclaration>),
+    Import(Node<ImportDeclaration>),
+    Export(Node<ExportDeclaration>),
     // TODO: switch, throw, try, catch, finally
 }
 
@@ -57,29 +118,29 @@ pub enum Statement {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Block {
-    pub statements: Box<[Spanned<Statement>]>,
+    pub statements: Box<[Node<Statement>]>,
 }
 
 /// TODO eliminate this and just use lexical/fn decls directly?
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Declaration {
-    Lexical(Spanned<LexicalDeclaration>),
-    Function(Spanned<FunctionDeclaration>),
+    Lexical(Node<LexicalDeclaration>),
+    Function(Node<FunctionDeclaration>),
 }
 
 /// `const x = 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct LexicalDeclaration {
-    pub variables: Box<[Spanned<Variable>]>,
+    pub variables: Box<[Node<Variable>]>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Variable {
-    pub binding: Binding,
-    pub init: Option<Box<Spanned<Expression>>>,
+    pub binding: Node<Binding>,
+    pub init: Option<Box<Node<Expression>>>,
 }
 
 /// A declaration of a function:
@@ -91,8 +152,8 @@ pub struct Variable {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionDeclaration {
-    pub name: Spanned<Identifier>,
-    pub pointer: Spanned<FunctionPointer>,
+    pub name: Node<Identifier>,
+    pub pointer: Node<FunctionPointer>,
 }
 
 /// A form of indirection for a function definition. Immediately after parsing,
@@ -118,8 +179,8 @@ pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value. This
     /// is **not necessarily** the name the function is bound to; that is
     /// defined in the parent [FunctionDeclaration].
-    pub name: Option<Spanned<Identifier>>,
-    pub parameters: Box<[Spanned<FunctionParameter>]>,
+    pub name: Option<Node<Identifier>>,
+    pub parameters: Box<[Node<FunctionParameter>]>,
     // `Spanned` not necessary because both variants of the body contain it
     pub body: FunctionBody,
     /// A list of all the identifiers this function captures from its parent
@@ -136,11 +197,11 @@ pub struct FunctionDefinition {
 #[cfg_attr(test, derive(PartialEq))]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
-    Expression(Box<Spanned<Expression>>),
+    Expression(Box<Node<Expression>>),
     /// A standard function body. Accessible through either syntax
     Block(
         // TODO make sure we don't create an unnecessary scope for this block
-        Spanned<Block>,
+        Node<Block>,
     ),
 }
 
@@ -148,39 +209,39 @@ pub enum FunctionBody {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionParameter {
-    pub variable: Spanned<Variable>,
+    pub variable: Node<Variable>,
     pub varargs: bool,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct If {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
+    pub condition: Node<Expression>,
+    pub body: Box<Node<Statement>>,
     /// Optional else block. For `else if` blocks, this will be a nested `if`
-    pub else_body: Option<Box<Spanned<Statement>>>,
+    pub else_body: Option<Box<Node<Statement>>>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ForOfLoop {
     pub binding: Binding,
-    pub iterable: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
+    pub iterable: Node<Expression>,
+    pub body: Box<Node<Statement>>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct WhileLoop {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
+    pub condition: Node<Expression>,
+    pub body: Box<Node<Statement>>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct DoWhileLoop {
-    pub condition: Spanned<Expression>,
-    pub body: Box<Spanned<Statement>>,
+    pub condition: Node<Expression>,
+    pub body: Box<Node<Statement>>,
 }
 
 /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
@@ -190,11 +251,11 @@ pub struct DoWhileLoop {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ImportDeclaration {
     /// `exportDefault`
-    pub default: Option<Spanned<Identifier>>,
+    pub default: Option<Node<Identifier>>,
     /// `{ export1, export2 as ex2 }`
-    pub named: Box<[Spanned<ImportNamed>]>,
+    pub named: Box<[Node<ImportNamed>]>,
     /// `"module-name"`
-    pub module: Spanned<ImportModule>,
+    pub module: Node<ImportModule>,
 }
 
 /// One identifier in a named import clause. In this import:
@@ -207,9 +268,9 @@ pub struct ImportDeclaration {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ImportNamed {
     /// `export1` or `export2`
-    pub identifier: Spanned<Identifier>,
+    pub identifier: Node<Identifier>,
     /// `ex2`
-    pub rename: Option<Spanned<Identifier>>,
+    pub rename: Option<Node<Identifier>>,
 }
 
 /// Source for an imported module
@@ -260,31 +321,31 @@ pub enum ExportDeclaration {
     Reexport {
         // TODO
     },
-    Declaration(Spanned<Declaration>),
+    Declaration(Node<Declaration>),
     // TODO do we need this variant? Can we merge it into DefaultExpression?
-    DefaultFunctionDeclaration(Spanned<FunctionDeclaration>),
-    DefaultExpression(Spanned<Expression>),
+    DefaultFunctionDeclaration(Node<FunctionDeclaration>),
+    DefaultExpression(Node<Expression>),
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Expression {
-    Parenthesized(Box<Spanned<Expression>>),
+    Parenthesized(Box<Node<Expression>>),
     /// Primitive and complex type literals
-    Literal(Spanned<Literal>),
-    Template(Spanned<TemplateLiteral>),
-    Identifier(Spanned<Identifier>),
-    Call(Spanned<FunctionCall>),
+    Literal(Node<Literal>),
+    Template(Node<TemplateLiteral>),
+    Identifier(Node<Identifier>),
+    Call(Node<FunctionCall>),
     /// The static or dynamic property accessors: `.` or `[]`
-    Property(Spanned<PropertyAccess>),
+    Property(Node<PropertyAccess>),
     /// Optional chaining operator: `?.`
-    OptionalProperty(Spanned<OptionalPropertyAccess>),
+    OptionalProperty(Node<OptionalPropertyAccess>),
     /// Lambda syntax: `(...) => {...}` or `() => value`. This shares the same
     /// AST node as the `function` syntax; they get combined during parsing
-    ArrowFunction(Spanned<FunctionPointer>),
-    Unary(Spanned<UnaryOperation>),
-    Binary(Spanned<BinaryOperation>),
-    Ternary(Spanned<TernaryConditional>),
+    ArrowFunction(Node<FunctionPointer>),
+    Unary(Node<UnaryOperation>),
+    Binary(Node<BinaryOperation>),
+    Ternary(Node<TernaryConditional>),
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -311,8 +372,8 @@ pub enum Literal {
     Float(f64),
     Int(i64),
     String(String),
-    Array(ArrayLiteral),
-    Object(ObjectLiteral),
+    Array(Node<ArrayLiteral>),
+    Object(Node<ObjectLiteral>),
 }
 
 /// TODO
@@ -321,34 +382,36 @@ pub enum Literal {
 pub struct TemplateLiteral {
     /// A set of contiguous chunks that comprise the template. These will be
     /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
-    pub chunks: Box<[Spanned<TemplateChunk>]>,
+    pub chunks: Box<[Node<TemplateChunk>]>,
 }
 
 /// One piece in a template. Either a static string or an expression
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum TemplateChunk {
-    Literal(Spanned<String>),
-    Expression(Spanned<Expression>),
+    /// This doesn't need a `Node` because we never refer to the literal chunks
+    /// of a template on their own
+    Literal(String),
+    Expression(Node<Expression>),
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ArrayLiteral {
-    pub elements: Box<[Spanned<ArrayElement>]>,
+    pub elements: Box<[Node<ArrayElement>]>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayElement {
-    Expression(Spanned<Expression>),
-    Spread(Spanned<Expression>),
+    Expression(Node<Expression>),
+    Spread(Node<Expression>),
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ObjectLiteral {
-    pub properties: Box<[Spanned<ObjectProperty>]>,
+    pub properties: Box<[Node<ObjectProperty>]>,
 }
 
 #[derive(Clone, Debug)]
@@ -356,41 +419,41 @@ pub struct ObjectLiteral {
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
-        property: Spanned<PropertyName>,
-        expression: Spanned<Expression>,
+        property: Node<PropertyName>,
+        expression: Node<Expression>,
     },
     /// Identifier shorthand: `{ name }`
-    Identifier(Spanned<Identifier>),
+    Identifier(Node<Identifier>),
     /// Spread: `{ ...other }`
-    Spread(Spanned<Expression>),
+    Spread(Node<Expression>),
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionCall {
-    pub function: Box<Spanned<Expression>>,
-    pub arguments: Box<[Spanned<Expression>]>,
+    pub function: Box<Node<Expression>>,
+    pub arguments: Box<[Node<Expression>]>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct PropertyAccess {
-    pub expression: Box<Spanned<Expression>>,
-    pub property: Spanned<PropertyName>,
+    pub expression: Box<Node<Expression>>,
+    pub property: Node<PropertyName>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct OptionalPropertyAccess {
-    pub expression: Box<Spanned<Expression>>,
-    pub property: Spanned<PropertyName>,
+    pub expression: Box<Node<Expression>>,
+    pub property: Node<PropertyName>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
-    pub expression: Box<Spanned<Expression>>,
+    pub expression: Box<Node<Expression>>,
 }
 
 #[derive(Clone, Debug)]
@@ -410,8 +473,8 @@ pub enum UnaryOperator {
 #[cfg_attr(test, derive(PartialEq))]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
-    pub lhs: Box<Spanned<Expression>>,
-    pub rhs: Box<Spanned<Expression>>,
+    pub lhs: Box<Node<Expression>>,
+    pub rhs: Box<Node<Expression>>,
 }
 
 #[derive(Clone, Debug)]
@@ -455,29 +518,29 @@ pub enum BinaryOperator {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct TernaryConditional {
-    pub condition: Box<Spanned<Expression>>,
-    pub true_expression: Box<Spanned<Expression>>,
-    pub false_expression: Box<Spanned<Expression>>,
+    pub condition: Box<Node<Expression>>,
+    pub true_expression: Box<Node<Expression>>,
+    pub false_expression: Box<Node<Expression>>,
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
-    Literal(Spanned<Identifier>),
+    Literal(Node<Identifier>),
     /// Computed key: `{ ["key"]: value }`
-    Expression(Box<Spanned<Expression>>),
+    Expression(Box<Node<Expression>>),
 }
 
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Binding {
     /// `const x = 3`
-    Identifier(Spanned<Identifier>),
+    Identifier(Node<Identifier>),
     /// An object pattern: `const { a, b, c } = object`
-    Object(Box<[Spanned<ObjectPatternElement>]>),
+    Object(Box<[Node<ObjectPatternElement>]>),
     /// An array pattern: `const [a, b, c] = array`
-    Array(Box<[Spanned<ArrayPatternElement>]>),
+    Array(Box<[Node<ArrayPatternElement>]>),
 }
 
 #[derive(Clone, Debug)]
@@ -485,19 +548,19 @@ pub enum Binding {
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
-        identifier: Spanned<Identifier>,
-        init: Option<Spanned<Expression>>,
+        identifier: Node<Identifier>,
+        init: Option<Node<Expression>>,
     },
     /// `const { x: x2 } = object` or `const { x: x2 = 3 } = object`
     Mapped {
-        key: Spanned<PropertyName>,
-        value: Spanned<Binding>,
-        init: Option<Spanned<Expression>>,
+        key: Node<PropertyName>,
+        value: Node<Binding>,
+        init: Option<Node<Expression>>,
     },
     /// `const { ...x } = object` or `const { ...x = {} } = object`
     Rest {
-        binding: Spanned<Binding>,
-        init: Option<Spanned<Expression>>,
+        binding: Node<Binding>,
+        init: Option<Node<Expression>>,
     },
 }
 

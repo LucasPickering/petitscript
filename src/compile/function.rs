@@ -5,10 +5,9 @@ mod tests;
 
 use crate::{
     ast::{
-        source::Spanned, AstVisitor, Binding, Block, Expression,
-        FunctionDeclaration, FunctionDefinition, FunctionPointer, Identifier,
-        ImportDeclaration, Module, ObjectProperty, PropertyName, Variable,
-        Walk as _,
+        AstVisitor, Binding, Block, Expression, FunctionDeclaration,
+        FunctionDefinition, FunctionPointer, Identifier, ImportDeclaration,
+        Module, Node, ObjectProperty, PropertyName, Variable, Walk as _,
     },
     error::RuntimeError,
 };
@@ -29,9 +28,10 @@ pub struct LabelFunctions;
 
 impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
-    fn set_name(identifier: &Spanned<Identifier>, expression: &mut Expression) {
+    fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
         if let Expression::ArrowFunction(function) = expression {
-            let FunctionPointer::Inline(definition) = &mut function.data else {
+            let FunctionPointer::Inline(definition) = function.node_mut()
+            else {
                 // This must be run before function lifting, because definitions
                 // are immutable once they're in the function table
                 unreachable!("Function labelling must run before lifting")
@@ -51,26 +51,26 @@ impl AstVisitor for LabelFunctions {
         // Look for `const f = () => {}` or `function(f = () => {}) {}`
         // The second case is rare, but it's easier to support it than to not
         if let Variable {
-            binding: Binding::Identifier(identifier),
+            binding,
             init: Some(init),
         } = variable
         {
-            Self::set_name(identifier, init);
+            if let Binding::Identifier(identifier) = &**binding {
+                Self::set_name(identifier, init);
+            }
         }
     }
 
     fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         // Look for `{f: () => {}}`
         if let ObjectProperty::Property {
-            property:
-                Spanned {
-                    data: PropertyName::Literal(identifier),
-                    ..
-                },
+            property,
             expression,
         } = property
         {
-            Self::set_name(identifier, expression);
+            if let PropertyName::Literal(identifier) = &**property {
+                Self::set_name(identifier, expression);
+            }
         }
     }
 }
@@ -105,9 +105,9 @@ impl CaptureFunctions {
     }
 
     /// Add a declaration to the outermost scope
-    fn declare(&mut self, identifier: &Spanned<Identifier>) {
+    fn declare(&mut self, identifier: Identifier) {
         let scope = self.scope_stack.last_mut().expect("Scope stack is empty");
-        scope.insert(identifier.data.clone());
+        scope.insert(identifier);
     }
 
     /// Track a reference to an identifier. We'll decide if it's accesible in
@@ -183,8 +183,10 @@ impl AstVisitor for CaptureFunctions {
     /// Declare a lexical variable
     fn enter_variable(&mut self, variable: &mut Variable) {
         // Lexical declaration could have any number of names
-        match &variable.binding {
-            Binding::Identifier(identifier) => self.declare(identifier),
+        match &*variable.binding {
+            Binding::Identifier(identifier) => {
+                self.declare(identifier.node().clone())
+            }
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
         }
@@ -196,17 +198,17 @@ impl AstVisitor for CaptureFunctions {
         declaration: &mut FunctionDeclaration,
     ) {
         // Function declarations are simple: just one name
-        self.declare(&declaration.name);
+        self.declare(declaration.name.node().clone());
     }
 
     /// Declare names from an import
     fn enter_import(&mut self, import: &mut ImportDeclaration) {
         if let Some(default) = &import.default {
-            self.declare(default);
+            self.declare(default.node().clone());
         }
         for named in &import.named {
             let name = named.rename.as_ref().unwrap_or(&named.identifier);
-            self.declare(name);
+            self.declare(name.node().clone());
         }
     }
 
@@ -216,13 +218,13 @@ impl AstVisitor for CaptureFunctions {
 
     fn enter_expression(&mut self, expression: &mut Expression) {
         if let Expression::Identifier(identifier) = expression {
-            self.refer(identifier.data.clone());
+            self.refer(identifier.node().clone());
         }
     }
 
     fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         if let ObjectProperty::Identifier(identifier) = property {
-            self.refer(identifier.data.clone());
+            self.refer(identifier.node().clone());
         }
     }
 }

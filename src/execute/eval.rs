@@ -2,18 +2,20 @@
 
 use crate::{
     ast::{
-        source::{Span, Spanned},
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, FunctionPointer, Literal, ObjectLiteral,
-        ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-        TemplateChunk, TemplateLiteral, UnaryOperation, UnaryOperator,
+        Expression, FunctionCall, FunctionPointer, Literal, Node,
+        ObjectLiteral, ObjectProperty, OptionalPropertyAccess, PropertyAccess,
+        PropertyName, TemplateChunk, TemplateLiteral, UnaryOperation,
+        UnaryOperator,
     },
     error::{RuntimeError, TracedError, ValueError},
-    execute::{exec::Execute, ThreadState},
+    execute::{exec::Execute, state::CallSite, ThreadState},
     function::{Function, FunctionInner, UserFunctionId},
     value::{Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, sync::Arc};
+
+// TODO normalize whether we use Node<T> or just T on all impls
 
 /// Evaluate an expression into a value
 pub trait Evaluate {
@@ -36,7 +38,7 @@ impl Evaluate for Expression {
             Expression::Identifier(identifier) => state
                 .scope()
                 .get(identifier.as_str())
-                .map_err(|error| state.trace_error(error, identifier.span)),
+                .map_err(|error| state.trace_error(error, identifier.id())),
             Expression::ArrowFunction(function) => function.eval(state),
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
@@ -73,7 +75,7 @@ impl Evaluate for ArrayLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut array = Array::default();
         for element in &self.elements {
-            match &element.data {
+            match &element.node() {
                 // These are optimized to avoid allocations where
                 // possible
                 ArrayElement::Expression(expression) => {
@@ -85,7 +87,7 @@ impl Evaluate for ArrayLiteral {
                         .eval(state)?
                         .try_into_array()
                         .map_err(|error| {
-                            state.trace_error(error.into(), expression.span)
+                            state.trace_error(error.into(), expression.id())
                         })?;
                     array = array.concat(new);
                 }
@@ -99,12 +101,12 @@ impl Evaluate for ObjectLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut object = Object::default();
         for property in &self.properties {
-            match &property.data {
+            match &property.node() {
                 ObjectProperty::Property {
                     property,
                     expression,
                 } => {
-                    let name = match &property.data {
+                    let name = match &property.node() {
                         // {field: "value"}
                         PropertyName::Literal(identifier) => {
                             identifier.as_str().to_owned()
@@ -123,7 +125,7 @@ impl Evaluate for ObjectLiteral {
                     // Shorthand notation: { field }
                     let name = identifier.as_str().to_owned();
                     let value = state.scope().get(&name).map_err(|error| {
-                        state.trace_error(error, identifier.span)
+                        state.trace_error(error, identifier.id())
                     })?;
                     object = object.insert(name, value);
                 }
@@ -132,7 +134,7 @@ impl Evaluate for ObjectLiteral {
                         .eval(state)?
                         .try_into_object()
                         .map_err(|error| {
-                            state.trace_error(error.into(), expression.span)
+                            state.trace_error(error.into(), expression.id())
                         })?;
                     object = object.insert_all(new);
                 }
@@ -146,9 +148,9 @@ impl Evaluate for TemplateLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         self.chunks
             .iter()
-            .map(|chunk| match &chunk.data {
+            .map(|chunk| match &chunk.node() {
                 TemplateChunk::Literal(literal) => {
-                    Ok(Cow::Borrowed(literal.data.as_str()))
+                    Ok(Cow::Borrowed(literal.as_str()))
                 }
                 TemplateChunk::Expression(expression) => {
                     Ok(Cow::Owned(expression.eval(state)?.to_string()))
@@ -159,15 +161,15 @@ impl Evaluate for TemplateLiteral {
     }
 }
 
-impl Evaluate for Spanned<FunctionPointer> {
+impl Evaluate for Node<FunctionPointer> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
-        match &self.data {
+        match self.node() {
             FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
                 format!("Function definition {definition:?} was not lifted"),
             ))
-            .map_err(|error| state.trace_error(error, self.span)),
+            .map_err(|error| state.trace_error(error, self.id())),
             FunctionPointer::Lifted(definition_id) => {
                 let id = UserFunctionId {
                     process_id: state.process().id(),
@@ -181,14 +183,14 @@ impl Evaluate for Spanned<FunctionPointer> {
                     .program
                     .function_table()
                     .get(id.definition_id)
-                    .map_err(|error| state.trace_error(error, self.span))?;
+                    .map_err(|error| state.trace_error(error, self.id()))?;
                 let name =
-                    definition.name.as_ref().map(|name| name.data.to_string());
+                    definition.name.as_ref().map(|name| name.to_string());
 
                 let scope = state.scope();
                 let captures = scope
                     .captures(&definition.captures)
-                    .map_err(|error| state.trace_error(error, self.span))?;
+                    .map_err(|error| state.trace_error(error, self.id()))?;
 
                 Ok(Function::user(id, name, captures).into())
             }
@@ -196,7 +198,9 @@ impl Evaluate for Spanned<FunctionPointer> {
     }
 }
 
-impl Evaluate for Spanned<FunctionCall> {
+/// This is implemented on `Node<FunctionCall>` so we can access our own node
+/// ID to add to the call stack
+impl Evaluate for Node<FunctionCall> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let function = self.function.eval(state)?;
         let mut arguments = Vec::with_capacity(self.arguments.len());
@@ -207,27 +211,27 @@ impl Evaluate for Spanned<FunctionCall> {
 
         match function {
             Value::Function(function) => {
-                function.call(state, self.span, &arguments)
+                function.call(state, self.id().into(), &arguments)
             }
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
                 actual: function.type_(),
             })
-            .map_err(|error| state.trace_error(error.into(), self.span)),
+            .map_err(|error| state.trace_error(error.into(), self.id())),
         }
     }
 }
 
-impl Evaluate for Spanned<PropertyAccess> {
+impl Evaluate for Node<PropertyAccess> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let value = self.expression.eval(state)?;
-        let key: Value = match &self.property.data {
+        let key: Value = match &self.property.node() {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
         };
         value
             .get(&key)
-            .map_err(|error| state.trace_error(error, self.span))
+            .map_err(|error| state.trace_error(error, self.id()))
     }
 }
 
@@ -288,13 +292,13 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    /// Call this function with some arguments. `call_site` is the source
-    /// location from which the function is being invoked. We track this for a
-    /// potential stack trace
+    /// Call this function with some arguments. `call_site` is the AST node from
+    /// which the function is being invoked. We track this for a  potential
+    /// stack trace.
     pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,
-        call_site: Span,
+        call_site: CallSite,
         arguments: &[Value],
     ) -> Result<Value, TracedError> {
         match &self.0 {
@@ -341,7 +345,7 @@ impl Function {
                     };
                     scope.bind(&parameter.variable.binding, value).map_err(
                         |error| {
-                            state.trace_error(error, parameter.variable.span)
+                            state.trace_error(error, parameter.variable.id())
                         },
                     )?;
                 }

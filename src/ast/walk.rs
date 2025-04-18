@@ -3,9 +3,9 @@ use crate::ast::{
     Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
     FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
     FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-    ImportModule, ImportNamed, LexicalDeclaration, Literal, Module,
+    ImportModule, ImportNamed, LexicalDeclaration, Literal, Module, Node,
     ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Spanned, Statement,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
     TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
     Variable, WhileLoop,
 };
@@ -436,9 +436,9 @@ impl<T: Walk> Walk for Box<T> {
     }
 }
 
-impl<T: Walk> Walk for Spanned<T> {
+impl<T: Walk> Walk for Node<T> {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        self.data.walk(visitor);
+        self.node_mut().walk(visitor);
     }
 }
 

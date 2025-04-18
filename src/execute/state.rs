@@ -1,7 +1,10 @@
 //! Program state management
 
 use crate::{
-    ast::source::{Span, StackTraceFrame},
+    ast::{
+        source::{QualifiedSpan, StackTraceFrame},
+        NodeId,
+    },
     compile::Program,
     error::TracedError,
     function::FunctionId,
@@ -97,9 +100,10 @@ impl<'process> ThreadState<'process> {
     pub fn trace_error(
         &self,
         error: RuntimeError,
-        current: Span,
+        current: impl Into<CallSite>,
     ) -> TracedError {
-        let sources = self.program().sources();
+        let current = current.into();
+        let program = self.program();
         let trace = self
             .call_stack
             .0
@@ -110,10 +114,10 @@ impl<'process> ThreadState<'process> {
                 // tells us where we exited _this_ frame. If this is the topmost
                 // frame, we have no exit point so use the given current span
                 let next_frame = self.call_stack.0.get(i + 1);
+                let call_site =
+                    next_frame.map(|frame| frame.call_site).unwrap_or(current);
                 // Convert bytes to lines and columns
-                let span = sources.qualify(
-                    next_frame.map(|frame| frame.call_site).unwrap_or(current),
-                );
+                let span = program.qualify(call_site);
 
                 // Look up the function by its ID. If the lookup fails, this
                 // indicates a bug but we're already unrolling an error so just
@@ -168,7 +172,7 @@ impl<'process> ThreadState<'process> {
     pub fn with_frame<T>(
         &mut self,
         scope: Scope,
-        call_site: Span,
+        call_site: CallSite,
         function_id: FunctionId,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
@@ -204,14 +208,19 @@ impl CallStack {
     pub fn new(globals: Scope) -> Self {
         // This root frame can never be popped
         Self(vec![CallFrame {
-            call_site: Span::Native,
+            call_site: CallSite::Native,
             function_id: None, // This is the entrypoint, so there's no fn yet
             scope: globals.child(),
         }])
     }
 
     /// Push a new frame onto the stack, indicating a new function invocation
-    fn push(&mut self, scope: Scope, call_site: Span, function_id: FunctionId) {
+    fn push(
+        &mut self,
+        scope: Scope,
+        call_site: CallSite,
+        function_id: FunctionId,
+    ) {
         self.0.push(CallFrame {
             call_site,
             // All stacks after the first must be function calls, so the ID is
@@ -258,5 +267,37 @@ struct CallFrame {
     /// The location from which this function *was invoked*, i.e. the location
     /// we'll return to when this frame is popped. Used to print the stack
     /// trace
-    call_site: Span,
+    call_site: CallSite,
+}
+
+/// A location from which a function can be called. Typically this is an AST
+/// node pointing to the invoking [FunctionCall](super::FunctionCall), but it
+/// can also be a point in native code.
+#[derive(Copy, Clone, Debug)]
+pub enum CallSite {
+    /// The current function was invoked from another PS function
+    Node(NodeId),
+    /// The current functionw as invoked from native code
+    Native,
+}
+
+impl From<NodeId> for CallSite {
+    fn from(node_id: NodeId) -> Self {
+        Self::Node(node_id)
+    }
+}
+
+impl Program {
+    /// Convert a call site to a qualified span. For AST nodes, look up the
+    /// node's span then qualify that. For native call sites, just return a
+    /// native span.
+    fn qualify(&self, call_site: CallSite) -> QualifiedSpan {
+        match call_site {
+            CallSite::Node(node_id) => {
+                let span = self.spans().get(node_id).expect("TODO panic here");
+                self.sources().qualify(span)
+            }
+            CallSite::Native => QualifiedSpan::Native,
+        }
+    }
 }

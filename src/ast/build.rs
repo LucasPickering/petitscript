@@ -2,20 +2,20 @@
 //! we use associated methods vs combinators?
 
 use crate::ast::{
-    source::Spanned, ArrayElement, ArrayLiteral, BinaryOperation,
-    BinaryOperator, Binding, Block, Declaration, ExportDeclaration, Expression,
-    FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
-    FunctionParameter, FunctionPointer, Identifier, ImportDeclaration,
-    ImportModule, ImportNamed, IntoSpanned, LexicalDeclaration, Literal,
-    Module, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
-    Statement, TemplateLiteral, Variable,
+    ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
+    Block, Declaration, ExportDeclaration, Expression, FunctionBody,
+    FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
+    FunctionPointer, Identifier, ImportDeclaration, ImportModule, ImportNamed,
+    LexicalDeclaration, Literal, Module, Node, NodeId, ObjectLiteral,
+    ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateLiteral,
+    Variable,
 };
 
 // TODO remove Spanned everywhere
 // TODO take impl IntoIter instead of vec
 
 impl Module {
-    pub fn new(statements: Vec<Spanned<Statement>>) -> Self {
+    pub fn new(statements: Vec<Node<Statement>>) -> Self {
         Self {
             statements: statements.into_iter().collect(),
         }
@@ -102,7 +102,7 @@ impl FunctionDefinition {
             name: None,
             parameters: parameters
                 .into_iter()
-                .map(IntoSpanned::s)
+                .map(IntoNode::s)
                 .collect::<Vec<_>>()
                 .into(),
             body,
@@ -171,7 +171,7 @@ impl FunctionBody {
             Block {
                 statements: statements
                     .into_iter()
-                    .map(IntoSpanned::s)
+                    .map(IntoNode::s)
                     .collect::<Vec<_>>()
                     .into(),
             }
@@ -200,7 +200,7 @@ impl FunctionCall {
             function: function.s().into(),
             arguments: arguments
                 .into_iter()
-                .map(IntoSpanned::s)
+                .map(IntoNode::s)
                 .collect::<Vec<_>>()
                 .into(),
         }
@@ -308,13 +308,13 @@ impl From<TemplateLiteral> for Expression {
 
 impl From<ArrayLiteral> for Expression {
     fn from(literal: ArrayLiteral) -> Self {
-        Self::Literal(Literal::Array(literal).s())
+        Self::Literal(Literal::Array(literal.s()).s())
     }
 }
 
 impl From<ObjectLiteral> for Expression {
     fn from(literal: ObjectLiteral) -> Self {
-        Self::Literal(Literal::Object(literal).s())
+        Self::Literal(Literal::Object(literal.s()).s())
     }
 }
 
@@ -408,9 +408,9 @@ impl PropertyName {
 
 impl Variable {
     /// Create a simple identifier variable
-    pub fn identifier(name: &str, init: Option<Spanned<Expression>>) -> Self {
+    pub fn identifier(name: &str, init: Option<Node<Expression>>) -> Self {
         Self {
-            binding: Binding::Identifier(Identifier::new(name).s()),
+            binding: Binding::Identifier(Identifier::new(name).s()).s(),
             init: init.map(Box::new),
         }
     }
@@ -452,3 +452,12 @@ where
         self.into()
     }
 }
+
+/// TODO
+pub trait IntoNode: Sized {
+    fn s(self) -> Node<Self> {
+        Node::new(NodeId::new(0), self)
+    }
+}
+
+impl<T> IntoNode for T {}

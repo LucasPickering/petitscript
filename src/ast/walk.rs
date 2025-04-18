@@ -438,7 +438,7 @@ impl<T: Walk> Walk for Box<T> {
 
 impl<T: Walk> Walk for Node<T> {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        self.node_mut().walk(visitor);
+        self.data_mut().walk(visitor);
     }
 }
 

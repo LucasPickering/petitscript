@@ -63,7 +63,7 @@ impl Execute for Node<Statement> {
         &self,
         state: &mut ThreadState,
     ) -> Result<Option<Terminate>, TracedError> {
-        match &self.node() {
+        match &self.data() {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
                 // A block gets a new lexical scope
@@ -165,7 +165,7 @@ impl Execute for Node<ImportModule> {
         &self,
         state: &mut ThreadState<'process>,
     ) -> Result<Cow<'process, Exports>, TracedError> {
-        match &self.node() {
+        match &self.data() {
             ImportModule::Native(name) => state
                 .process()
                 .native_module(name)
@@ -185,7 +185,7 @@ impl Execute for Node<ExportDeclaration> {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
-        match &self.node() {
+        match &self.data() {
             ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {

@@ -89,12 +89,12 @@ impl<T> Node<T> {
     }
 
     /// Get a reference to the contained node value
-    pub fn node(&self) -> &T {
+    pub fn data(&self) -> &T {
         &self.node
     }
 
     /// Get a mutable reference to the contained node value
-    pub fn node_mut(&mut self) -> &mut T {
+    pub fn data_mut(&mut self) -> &mut T {
         &mut self.node
     }
 }

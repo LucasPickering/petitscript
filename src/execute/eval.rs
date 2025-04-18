@@ -75,7 +75,7 @@ impl Evaluate for ArrayLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut array = Array::default();
         for element in &self.elements {
-            match &element.node() {
+            match &element.data() {
                 // These are optimized to avoid allocations where
                 // possible
                 ArrayElement::Expression(expression) => {
@@ -101,12 +101,12 @@ impl Evaluate for ObjectLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let mut object = Object::default();
         for property in &self.properties {
-            match &property.node() {
+            match &property.data() {
                 ObjectProperty::Property {
                     property,
                     expression,
                 } => {
-                    let name = match &property.node() {
+                    let name = match &property.data() {
                         // {field: "value"}
                         PropertyName::Literal(identifier) => {
                             identifier.as_str().to_owned()
@@ -148,7 +148,7 @@ impl Evaluate for TemplateLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         self.chunks
             .iter()
-            .map(|chunk| match &chunk.node() {
+            .map(|chunk| match &chunk.data() {
                 TemplateChunk::Literal(literal) => {
                     Ok(Cow::Borrowed(literal.as_str()))
                 }
@@ -165,7 +165,7 @@ impl Evaluate for Node<FunctionPointer> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         // All functions should have been lifted during compilation. If not,
         // that's a compiler bug
-        match self.node() {
+        match self.data() {
             FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
                 format!("Function definition {definition:?} was not lifted"),
             ))
@@ -225,7 +225,7 @@ impl Evaluate for Node<FunctionCall> {
 impl Evaluate for Node<PropertyAccess> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let value = self.expression.eval(state)?;
-        let key: Value = match &self.property.node() {
+        let key: Value = match &self.property.data() {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
         };

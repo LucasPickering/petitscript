@@ -584,7 +584,7 @@ impl<T: DisplayIndent> DisplayIndent for Box<T> {
 
 impl<T: DisplayIndent> DisplayIndent for Node<T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        self.node().fmt(ind)
+        self.data().fmt(ind)
     }
 }
 

@@ -30,7 +30,7 @@ impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
     fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
         if let Expression::ArrowFunction(function) = expression {
-            let FunctionPointer::Inline(definition) = function.node_mut()
+            let FunctionPointer::Inline(definition) = function.data_mut()
             else {
                 // This must be run before function lifting, because definitions
                 // are immutable once they're in the function table
@@ -185,7 +185,7 @@ impl AstVisitor for CaptureFunctions {
         // Lexical declaration could have any number of names
         match &*variable.binding {
             Binding::Identifier(identifier) => {
-                self.declare(identifier.node().clone())
+                self.declare(identifier.data().clone())
             }
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
@@ -198,17 +198,17 @@ impl AstVisitor for CaptureFunctions {
         declaration: &mut FunctionDeclaration,
     ) {
         // Function declarations are simple: just one name
-        self.declare(declaration.name.node().clone());
+        self.declare(declaration.name.data().clone());
     }
 
     /// Declare names from an import
     fn enter_import(&mut self, import: &mut ImportDeclaration) {
         if let Some(default) = &import.default {
-            self.declare(default.node().clone());
+            self.declare(default.data().clone());
         }
         for named in &import.named {
             let name = named.rename.as_ref().unwrap_or(&named.identifier);
-            self.declare(name.node().clone());
+            self.declare(name.data().clone());
         }
     }
 
@@ -218,13 +218,13 @@ impl AstVisitor for CaptureFunctions {
 
     fn enter_expression(&mut self, expression: &mut Expression) {
         if let Expression::Identifier(identifier) = expression {
-            self.refer(identifier.node().clone());
+            self.refer(identifier.data().clone());
         }
     }
 
     fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         if let ObjectProperty::Identifier(identifier) = property {
-            self.refer(identifier.node().clone());
+            self.refer(identifier.data().clone());
         }
     }
 }

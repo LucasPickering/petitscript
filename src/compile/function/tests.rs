@@ -48,7 +48,7 @@ fn function_label() {
     .into();
 
     assert_eq!(
-        module.node(),
+        module.data(),
         &Module::new(vec![expected_statement_1, expected_statement_2])
     );
 }
@@ -80,7 +80,7 @@ fn function_capture() {
     .program;
 
     assert_eq!(
-        module.node(),
+        module.data(),
         &Module::new(vec![
             ImportDeclaration::native(None::<Identifier>, vec!["add"], "math")
                 .into_stmt(),
@@ -160,7 +160,7 @@ fn function_lift() {
     .program;
 
     assert_eq!(
-        module.node(),
+        module.data(),
         &Module::new(vec![FunctionDeclaration {
             name: Identifier::new("f").s(),
             pointer: FunctionPointer::Lifted(2.into()).s()

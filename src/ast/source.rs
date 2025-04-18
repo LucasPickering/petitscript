@@ -8,8 +8,6 @@ use std::{
     env,
     fmt::{self, Debug, Display},
     fs,
-    hash::Hash,
-    ops::{Deref, DerefMut},
     path::{Path, PathBuf},
 };
 
@@ -168,7 +166,7 @@ impl SourceTable {
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
 #[derive(Copy, Clone, Debug)]
-pub struct Span {
+pub(crate) struct Span {
     /// The ID of the [Source] (typically a file) containing the code. This
     /// is just an ID because we create thousands of spans, so we need this
     /// to be cheap. Use [SourceTable] to look up the actual source.
@@ -213,68 +211,6 @@ impl Display for QualifiedSpan {
             }
             QualifiedSpan::Native => write!(f, "<native code>"),
         }
-    }
-}
-
-/// Some data, with a source span attached. This is used to attach source
-/// mappings to AST nodes, so error messages can point back to the originating
-/// source code.
-///
-/// TODO delete this
-#[derive(Copy, Clone)]
-pub struct Spanned<T> {
-    pub data: T,
-    pub span: Span,
-}
-
-/// A transparent Debug implementation. This makes AST debug printing much
-/// easier to read. Generally the spans are not useful.
-impl<T: Debug> Debug for Spanned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.data.fmt(f)
-    }
-}
-
-impl<T: Display> Display for Spanned<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.data.fmt(f)
-    }
-}
-
-impl<T> Deref for Spanned<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> DerefMut for Spanned<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-/// This `Hash` implementation **ignores** the span, because AST hashes should
-/// only be a function of the structure of a program, not its concrete source
-/// code.
-impl<T: Hash> Hash for Spanned<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.data.hash(state);
-    }
-}
-
-/// Helper trait to attach a span to any piece of data
-///
-/// TODO delete this
-pub trait IntoSpanned: Sized {
-    /// Wrap this data in a [Spanned]
-    fn into_spanned(self, span: Span) -> Spanned<Self>;
-}
-
-impl<T> IntoSpanned for T {
-    fn into_spanned(self, span: Span) -> Spanned<Self> {
-        Spanned { data: self, span }
     }
 }
 

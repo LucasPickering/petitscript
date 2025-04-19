@@ -25,11 +25,12 @@ pub use crate::{
 use crate::{
     ast::NativeModuleName,
     error::RuntimeError,
-    scope::Scope,
+    scope::GlobalEnvironment,
     stdlib::stdlib,
     value::function::{FromPsArgs, IntoPsResult, NativeFunctionTable},
 };
 use indexmap::IndexMap;
+use std::sync::Arc;
 
 // TODO replace all usages of `impl ToString` with `impl Into<String>`? prevent
 // clone when the value is already a String
@@ -42,9 +43,11 @@ pub struct Engine {
     /// This is the only way to provide named module imports. All other imports
     /// must be by relative path.
     modules: IndexMap<NativeModuleName, Exports>,
-    /// Global values available to all code execution. This includes both the
-    /// standard library and user-defined values.
-    globals: Scope,
+    /// Global values available to all code execution. This includes only the
+    /// standard library, and cannot be modified after engine initialization.
+    /// User-defined natives can only be exposed through modules. As such, we
+    /// can use refcounting to share this among all processes and threads.
+    globals: Arc<GlobalEnvironment>,
     /// An intern pool of native functions. When a native function is defined
     /// (either by the stdlib or a user), the definition is stored here and
     /// references to that function simply use its ID. This can only be
@@ -65,7 +68,7 @@ impl Engine {
         let globals = stdlib(&mut native_functions);
         Self {
             modules: Default::default(),
-            globals,
+            globals: Arc::new(globals),
             native_functions,
         }
     }
@@ -118,7 +121,7 @@ impl Engine {
         Ok(Process::new(
             self.modules.clone(),
             self.native_functions.clone(),
-            self.globals.clone(),
+            Arc::clone(&self.globals),
             program,
         ))
     }

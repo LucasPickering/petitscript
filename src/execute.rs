@@ -13,7 +13,7 @@ use crate::{
         state::{CallSite, ThreadState},
     },
     function::{Function, FunctionInner},
-    scope::Scope,
+    scope::GlobalEnvironment,
     value::{Exports, Value},
     Error, NativeFunctionTable,
 };
@@ -42,10 +42,8 @@ pub struct Process {
     /// spawned, new native functions cannot be added to it. Anything added to
     /// the engine after spawning will not be reflected here.
     native_functions: NativeFunctionTable,
-    /// Global values available to the program, such as the stdlib and native
-    /// functions provided by the user. This is cloned from the engine when the
-    /// process is spawned, and is read-only here.
-    globals: Scope,
+    /// Global values available to the program, i.e. the stdlib
+    globals: Arc<GlobalEnvironment>,
     /// Arbitrary user-defined data attached to this process
     app_data: AppData,
 }
@@ -58,7 +56,7 @@ impl Process {
     pub(super) fn new(
         modules: IndexMap<NativeModuleName, Exports>,
         native_functions: NativeFunctionTable,
-        globals: Scope,
+        globals: Arc<GlobalEnvironment>,
         program: Program,
     ) -> Self {
         // Within a single OS process, each process ID will be unique
@@ -125,7 +123,7 @@ impl Process {
 
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
-            ThreadState::new(self.globals.clone(), self, false);
+            ThreadState::new(Arc::clone(&self.globals), self, false);
         function
             .call(&mut thread_state, CallSite::Native, arguments)
             .map_err(Error::from)

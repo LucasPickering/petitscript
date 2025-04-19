@@ -314,7 +314,7 @@ impl Function {
                 );
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
-                let mut scope = state.process().globals.clone().child();
+                let mut scope = state.process().globals.clone().scope();
                 for (name, value) in captures {
                     scope.declare(name, value.clone());
                 }

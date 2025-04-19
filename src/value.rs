@@ -201,7 +201,7 @@ impl Value {
     /// Get a property from this value. If the property is not present on the
     /// value, check its prototype as well. Return `undefined` if the property
     /// isn't present. If this value is `null` or `undefined`, return an error.
-    pub fn get(
+    pub(crate) fn get(
         &self,
         key: &Self,
         scope: &Scope,

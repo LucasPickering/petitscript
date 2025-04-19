@@ -4,14 +4,14 @@ mod array;
 mod string;
 
 use crate::{
-    error::RuntimeError, function::Varargs, json, scope::Scope, value::Object,
-    NativeFunctionTable, Number, Process, Value, ValueType,
+    error::RuntimeError, function::Varargs, json, scope::GlobalEnvironment,
+    value::Object, NativeFunctionTable, Number, Process, Value, ValueType,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
 /// recreated for every execution
-pub fn stdlib(functions: &mut NativeFunctionTable) -> Scope {
-    let mut scope = Scope::new();
+pub fn stdlib(functions: &mut NativeFunctionTable) -> GlobalEnvironment {
+    let mut scope = GlobalEnvironment::default();
     scope.declare("Boolean", functions.create_fn(boolean));
     scope.declare("Number", functions.create_fn(number));
     scope.declare("String", functions.create_fn(string::constructor));

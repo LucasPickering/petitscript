@@ -65,6 +65,9 @@ impl NodeId {
 /// - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
 ///   This adds a lot of complexity and is challenging to then store the AST and
 ///   the encapsulating arena together because they are self-referential.
+/// - Use structural keys, such as a traversal path pointing to each node in the
+///   tree. This is a recipe for disaster though, because any changes to the
+///   tree's structure during compilation will completely destroy the keys.
 ///
 /// Overall, storing metadata separately adds flexibility to cover the two main
 /// use cases:

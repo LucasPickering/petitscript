@@ -8,11 +8,12 @@ use crate::{
     compile::Program,
     error::TracedError,
     function::{FunctionId, NativeFunctionDefinition, NativeFunctionId},
-    scope::Scope,
+    scope::{GlobalEnvironment, Scope},
     value::{Exports, Value},
     Process, RuntimeError,
 };
 use indexmap::map::Entry;
+use std::sync::Arc;
 
 /// TODO
 #[derive(Debug)]
@@ -25,7 +26,7 @@ pub(super) struct ThreadState<'process> {
 
 impl<'process> ThreadState<'process> {
     pub fn new(
-        globals: Scope,
+        globals: Arc<GlobalEnvironment>,
         process: &'process Process,
         can_export: bool,
     ) -> Self {
@@ -213,12 +214,12 @@ impl<'process> ThreadState<'process> {
 pub struct CallStack(Vec<CallFrame>);
 
 impl CallStack {
-    pub fn new(globals: Scope) -> Self {
+    pub fn new(globals: Arc<GlobalEnvironment>) -> Self {
         // This root frame can never be popped
         Self(vec![CallFrame {
             call_site: CallSite::Native,
             function_id: None, // This is the entrypoint, so there's no fn yet
-            scope: globals.child(),
+            scope: globals.scope(),
         }])
     }
 

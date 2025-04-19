@@ -6,23 +6,22 @@ use std::{
     ops::{Add, Div, Mul, Neg, Rem, Sub},
 };
 
-/// TODO
+/// A 64-bit float or 64-bit signed integer. Bit ints are *not* supported.
 #[derive(Copy, Clone, Debug)]
 pub enum Number {
     Int(i64),
     Float(f64),
-    // TODO support bigints
 }
 
 impl Number {
     /// Not a Number
     pub const NAN: Self = Self::Float(f64::NAN);
 
-    /// TODO
+    /// `false` if this value is 0 or `NaN`, `true` otherwise
     pub fn to_bool(self) -> bool {
         match self {
             Number::Int(i) => i != 0,
-            Number::Float(f) => f != 0.0,
+            Number::Float(f) => f != 0.0 && !f.is_nan(),
         }
     }
 }
@@ -223,5 +222,18 @@ mod tests {
         expected: impl Into<Number>,
     ) {
         assert_eq!(a.into() + b.into(), expected.into());
+    }
+
+    /// Test boolean coercion
+    #[test_case(0i64, false; "int zero")]
+    #[test_case(-1i64, true; "int negative")]
+    #[test_case(1i64, true; "int position")]
+    #[test_case(0.0f64, false; "float zero")]
+    #[test_case(-0.0f64, false; "float negative zero")]
+    #[test_case(Number::NAN, false; "float nan")]
+    #[test_case(-1.0f64, true; "float negative")]
+    #[test_case(1.0f64, true; "float position")]
+    fn to_bool(n: impl Into<Number>, expected: bool) {
+        assert_eq!(n.into().to_bool(), expected);
     }
 }

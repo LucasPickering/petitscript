@@ -41,9 +41,15 @@ impl Display for Buffer {
     }
 }
 
-impl From<&[u8]> for Buffer {
+impl From<&'static [u8]> for Buffer {
     fn from(bytes: &[u8]) -> Self {
         Self(bytes.to_owned().into())
+    }
+}
+
+impl<const N: usize> From<[u8; N]> for Buffer {
+    fn from(bytes: [u8; N]) -> Self {
+        Self(Bytes::from_owner(bytes))
     }
 }
 
@@ -77,7 +83,3 @@ impl_value_conversions!(Buffer, Buffer);
 impl_value_conversions!(Bytes, Buffer);
 // One-way conversions
 impl_value_from!(&[u8], Buffer); // Can't convert back to ref
-
-// `FromPs for Vec<u8>` conflicts with the blanket impl `From<Vec<T>>` impl.
-// Since this is a special feature, users will have to use Bytes for FromPs
-impl_value_from!(Vec<u8>, Buffer);

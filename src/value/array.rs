@@ -72,6 +72,12 @@ impl Deref for Array {
     }
 }
 
+impl<const N: usize, T: Into<Value>> From<[T; N]> for Array {
+    fn from(value: [T; N]) -> Self {
+        value.into_iter().map(T::into).collect()
+    }
+}
+
 impl<T: Into<Value>> From<Vec<T>> for Array {
     fn from(value: Vec<T>) -> Self {
         value.into_iter().map(T::into).collect()

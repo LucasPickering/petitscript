@@ -310,11 +310,19 @@ impl Neg for Value {
 impl Add for Value {
     type Output = Self;
 
-    /// TODO link to MDN docs or something on this
+    /// Add two values together. The semantics on this replicate those of JS
+    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition
     fn add(self, rhs: Self) -> Self::Output {
         // Add is unique from the other mathematical operations. For types that
         // can't be converted to a number, we'll do string concatenation
         match (self, rhs) {
+            // If either side is a string, do string concatenation
+            // TODO to_string() isn't the right string coercion. It doesn't
+            // handle 1-element arrays correctly
+            (Self::String(s), other) => (s + other).into(),
+            // (other, Self::String(s)) => other.to_string() + &s,
+            // Attempt to convert both to numbers and add them
+            // If both are numbers, add em up
             (Self::Number(n1), Self::Number(n2)) => (n1 + n2).into(),
             _ => todo!(),
         }
@@ -371,8 +379,31 @@ impl_value_conversions!(Function, Function);
 // One-way conversions: `From<T> for Value`
 impl_value_from!(&str, String);
 impl_value_from!(char, String);
-impl_value_from!(Vec<Value>, Array);
-impl_value_from!(IndexMap<&str, Value>, Object);
+
+// These generic conversions can't be done easily with macros
+impl<const N: usize, T: Into<Value>> From<[T; N]> for Value {
+    fn from(value: [T; N]) -> Self {
+        Value::Array(value.into())
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(value: Vec<T>) -> Self {
+        Value::Array(value.into())
+    }
+}
+
+impl<const N: usize, T: Into<Value>> From<[(&str, T); N]> for Value {
+    fn from(value: [(&str, T); N]) -> Self {
+        Self::Object(value.into())
+    }
+}
+
+impl<T: Into<Value>> From<IndexMap<&str, T>> for Value {
+    fn from(map: IndexMap<&str, T>) -> Self {
+        Self::Object(map.into())
+    }
+}
 
 /// Possible types for a value
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -449,6 +480,14 @@ impl From<PetitString> for String {
         // last copy of the wrapping Arc, but I can't find a way to do that
         // since str is unsized, so we have to clone all the data
         string.0.deref().to_owned()
+    }
+}
+
+impl Add<Value> for PetitString {
+    type Output = Self;
+
+    fn add(self, rhs: Value) -> Self::Output {
+        todo!()
     }
 }
 
@@ -584,31 +623,94 @@ impl<T: FromPs> FromPs for Vec<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::value::Value::{Null, Undefined};
     use test_case::test_case;
 
     /// Test value equality
-    #[test_case(Value::Undefined, Value::Undefined; "undefined")]
-    #[test_case(Value::Null, Value::Null; "null")]
+    #[test_case(Undefined, Undefined; "undefined")]
+    #[test_case(Null, Null; "null")]
     #[test_case(false, false; "bool_false")]
     #[test_case(true, true; "bool_true")]
     #[test_case(3, 3; "int")]
     #[test_case(3.5, 3.5; "float")]
-    #[test_case(3, 3.0; "int_float")]
+    #[test_case(3, 3.0; "int float")]
     #[test_case("", ""; "string_empty")]
     #[test_case("hello", "hello"; "string")]
-    // TODO more test cases
+    #[test_case([1, 2], [1, 2]; "array")]
+    #[test_case([("a", 1)], [("a", 1)]; "object")]
+    #[test_case(Buffer::from([1u8, 2u8]), [1u8, 2u8].as_slice(); "buffer")]
+    // TODO test functions
     fn equal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_eq!(a.into(), b.into());
     }
 
     /// Test value inequality
-    #[test_case(Value::Undefined, Value::Null; "undefined_null")]
-    #[test_case(Value::Null, "null"; "null_string")]
+    #[test_case(Undefined, Null; "undefined_null")]
+    #[test_case(Null, "null"; "null_string")]
     #[test_case(true, "true"; "bool_string")]
     #[test_case(Number::NAN, Number::NAN; "nan")]
     #[test_case("hello", "HELLO"; "string")]
-    // TODO more test cases
+    #[test_case(1, "1"; "number string")]
+    #[test_case([1], [1, 2]; "array")]
+    #[test_case([("a", 1)], [("a", 2)]; "object")]
+    #[test_case(Buffer::from([1, 2]), Buffer::from([1, 3]); "buffer")]
+    // TODO test functions
     fn unequal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_ne!(a.into(), b.into());
+    }
+
+    /// Test addition operations that return a number. These should all be
+    /// commutative (`a+ b == b + a`).
+    #[test_case(Undefined, Undefined, Number::NAN; "undefined undefined")]
+    #[test_case(Null, Null, 0; "null null")]
+    #[test_case(Undefined, Null, Number::NAN; "undefined null")]
+    #[test_case(Undefined, true, Number::NAN; "undefined bool")]
+    #[test_case(Undefined, 3, Number::NAN; "undefined int")]
+    #[test_case(Undefined, 3.5, Number::NAN; "undefined float")]
+    #[test_case(false, true, 1; "bool bool")]
+    #[test_case(false, 6.5, 7.5; "bool float")]
+    #[test_case(false, 6, 7; "bool int")]
+    #[test_case(-6, 13, 7; "int int")]
+    #[test_case(-5, 12.5, 7.5; "int float")]
+    #[test_case(3.2, 170.6, 173.8; "float float")]
+    #[test_case(3, Number::NAN, Number::NAN; "nan")]
+    fn add_numeric(
+        a: impl Into<Value>,
+        b: impl Into<Value>,
+        expected: impl Into<Number>,
+    ) {
+        let a = a.into();
+        let b = b.into();
+        let expected = Value::from(expected.into());
+        assert_eq!(a.clone() + b.clone(), expected);
+        assert_eq!(b + a, expected);
+    }
+
+    /// Test addition operations that return a string. Since string
+    /// concatenation is not commutative, this takes two expected values:
+    /// `a + b` and `b + a`
+    #[test_case(Undefined, "s", "undefineds", "sundefined"; "undefined string")]
+    #[test_case(Null, "s", "nulls", "snull"; "null string")]
+    #[test_case(true, "s", "trues", "strue"; "boolean string")]
+    #[test_case(3, "s", "3s", "s3"; "number string")]
+    #[test_case("s1", "s2", "s1test2", "s2test1"; "string string")]
+    #[test_case([1], "s", "1s", "s1"; "array string")]
+    #[test_case([1, 2, 3], "s", "1,2,3s", "s1,2,3"; "long_array string")]
+    #[test_case(
+        [("a", 1), ("b", 2)], "s", "[Object object]s", "s[Object object]";
+        "object string"
+    )]
+    #[test_case(Buffer::from([1, 2]), "s", "TODOs", "sTODO"; "buffer string")]
+    // TODO test functions
+    fn add_string(
+        a: impl Into<Value>,
+        b: impl Into<Value>,
+        expected1: &str,
+        expected2: &str,
+    ) {
+        let a = a.into();
+        let b = b.into();
+        assert_eq!(a.clone() + b.clone(), expected1.into());
+        assert_eq!(b + a, expected2.into());
     }
 }

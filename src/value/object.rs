@@ -109,6 +109,17 @@ impl Display for Object {
     }
 }
 
+impl<const N: usize, T: Into<Value>> From<[(&str, T); N]> for Object {
+    fn from(value: [(&str, T); N]) -> Self {
+        Self(Arc::new(
+            value
+                .into_iter()
+                .map(|(k, v)| (k.to_owned(), v.into()))
+                .collect(),
+        ))
+    }
+}
+
 impl<T: Into<Value>> From<IndexMap<&str, T>> for Object {
     fn from(map: IndexMap<&str, T>) -> Self {
         Self(Arc::new(
@@ -136,5 +147,14 @@ impl From<Object> for IndexMap<String, Value> {
 impl FromIterator<(String, Value)> for Object {
     fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
         Self(Arc::new(iter.into_iter().collect()))
+    }
+}
+
+impl IntoIterator for Object {
+    type Item = (String, Value);
+    type IntoIter = <IndexMap<String, Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Arc::unwrap_or_clone(self.0).into_iter()
     }
 }

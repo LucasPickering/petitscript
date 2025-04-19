@@ -325,7 +325,7 @@ mod test {
     fn json_object() {
         let input = r#"{"a":42,"b":"x"}"#;
         let expected = Value::from(indexmap! {
-            "a" => 42.into(),
+            "a" => Value::from(42),
             "b" => "x".into(),
         });
         assert_eq!(parse_json(input).unwrap(), expected);

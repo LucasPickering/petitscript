@@ -113,11 +113,13 @@ impl<T> DerefMut for Node<T> {
     }
 }
 
-/// TODO
+/// Compare equality of node *contents* only. To avoid misunderstandings and
+/// awkwardness, this is defined for tests only. We rarely want to actually
+/// compare IDs in tests, to this makes it much easier to compare parsed ASTs
+/// to generated ones.
 #[cfg(test)]
 impl<T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
-        // TODO explain
         self.node == other.node
     }
 }

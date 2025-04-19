@@ -150,8 +150,6 @@ impl DisplayIndent for FunctionPointer {
 impl DisplayIndent for FunctionDefinition {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         // Print as arrow syntax because it's easier
-        // TODO use function f(){} syntax? we would need to divide the AST
-
         (
             "(",
             Repeat::new(&self.parameters, ", "),
@@ -175,7 +173,20 @@ impl DisplayIndent for FunctionParameter {
 impl DisplayIndent for FunctionBody {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Expression(expression) => expression.fmt(ind),
+            Self::Expression(expression) => {
+                // unstable: if-let chains
+                if let Expression::Literal(literal) = expression.data() {
+                    if let Literal::Object(object_literal) = literal.data() {
+                        // If the body is just an object literal, we need to
+                        // wrap it in parens so it doesn't look like a block
+                        ("(", object_literal, ")").fmt(ind)
+                    } else {
+                        expression.fmt(ind)
+                    }
+                } else {
+                    expression.fmt(ind)
+                }
+            }
             Self::Block(block) => block.fmt(ind),
         }
     }
@@ -298,15 +309,14 @@ impl DisplayIndent for Literal {
             Self::Float(float) => float.fmt(ind),
             Self::Int(int) => int.fmt(ind),
             Self::String(s) => {
-                // Only escape if needed. The vast majority of the time this
-                // won't be needed, so we can save an allocation
-                // TODO escape newlines too
-                let s = if s.contains('"') {
-                    Cow::Owned(s.replace('"', "\\\""))
+                // If any invalid chars are in the string, use a template
+                // literal because they're more forgiving
+                if s.contains('"') || s.contains('\n') {
+                    // TODO escape backticks
+                    ("`", s, "`").fmt(ind)
                 } else {
-                    Cow::Borrowed(s.as_str())
-                };
-                ("\"", s, "\"").fmt(ind)
+                    ("\"", s, "\"").fmt(ind)
+                }
             }
             Self::Array(array_literal) => array_literal.fmt(ind),
             Self::Object(object_literal) => object_literal.fmt(ind),
@@ -316,6 +326,7 @@ impl DisplayIndent for Literal {
 
 impl DisplayIndent for TemplateLiteral {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        // TODO escape backticks
         ("`", Repeat::new(&self.chunks, ""), "`").fmt(ind)
     }
 }

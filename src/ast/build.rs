@@ -353,14 +353,14 @@ impl ObjectLiteral {
     /// Create a new object literal from a sequence of key-value pairs
     pub fn new<P>(iter: impl IntoIterator<Item = (P, Expression)>) -> Self
     where
-        P: ToString,
+        P: Into<PropertyName>,
     {
         Self {
             properties: iter
                 .into_iter()
-                .map(|(property, expression)| {
+                .map(|(name, expression)| {
                     ObjectProperty::Property {
-                        property: PropertyName::new(property).s(),
+                        property: name.into().s(),
                         expression: expression.s(),
                     }
                     .s()
@@ -410,6 +410,33 @@ impl PropertyName {
         } else {
             Self::Literal(Identifier::new(name.to_string()).s())
         }
+    }
+}
+
+impl From<Expression> for PropertyName {
+    /// Create a property string from an arbitrary expression. If the expression
+    /// is a string literal containing a valid identifier, create a literal
+    /// property name. Otherwise create an expression name.
+    fn from(expression: Expression) -> Self {
+        if let Expression::Literal(literal) = &expression {
+            if let Literal::String(name) = literal.data() {
+                // TODO remove implicit clone
+                return Self::new(name);
+            }
+        }
+        Self::Expression(expression.s().into())
+    }
+}
+
+impl From<&str> for PropertyName {
+    fn from(name: &str) -> Self {
+        PropertyName::new(name)
+    }
+}
+
+impl From<String> for PropertyName {
+    fn from(name: String) -> Self {
+        PropertyName::new(name)
     }
 }
 

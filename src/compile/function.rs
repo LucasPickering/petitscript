@@ -145,8 +145,7 @@ impl CaptureFunctions {
 
 impl AstVisitor for CaptureFunctions {
     fn enter_block(&mut self, _: &mut Block) {
-        // A block defines a new lexical scope. Blocks are *not* used for
-        // functions, so we're not pushing two scopes here.
+        // A block defines a new lexical scope
         self.scope_stack.push(IndexSet::new());
     }
 
@@ -160,7 +159,9 @@ impl AstVisitor for CaptureFunctions {
     fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {
         // A function definition defines a new function (obviously) as well as
         // a new scope. Create the scope first, then create a function frame
-        // that points to that scope
+        // that points to that scope. The function body may be wrapped in a
+        // Block, but we need a new scope here anyway to contain the parameters
+        // as well.
         self.scope_stack.push(IndexSet::new());
         self.function_stack.push(Frame {
             captures: IndexSet::new(),

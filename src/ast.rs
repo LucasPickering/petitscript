@@ -3,47 +3,11 @@
 //! PetitScript is implemented as a tree-walking interpreter, these types also
 //! compose into executable PS programs.
 //!
-//! ## [Node] and [NodeId]
-//!
-//! Each node type in the AST is wrapping in a [Node]. This wrapper holds a
-//! [NodeId], which uniquely identifies that node within the AST. These IDs are
-//! used to track metadata, such as source spans, for each node. There are a lot
-//! of ways to do this and they all have tradeoffs. Some considered
-//! alternatives:
-//!
-//! - Store the metadata inline in the AST. Replace each ID with the actual
-//!   metadata. This eliminates the indirection of having a separate metadata
-//!   table, but restricts you to a single metadata type.
-//! - Generic ineline metadata. The same solution as above, but add a generic
-//!   param to each node type to define what metadata to store. This adds a lot
-//!   of clutter and requires mapping between metadata types for cases like
-//!   comparing parsed ASTs to generated ones in tests.
-//! - Store the ID directly in each node type instead of using a wrapper type.
-//!   This declutters a lot of usage cases, but requires the repetition of
-//!   adding each node field, and also adds complexity around enums. It forces
-//!   you to either add the ID field to every variant of every enum, or
-//!   normalize enums so that each variant contains a single unique struct. Both
-//!   end up adding more clutter than they save.
-//! - Use the memory address of each node as its implicit ID. This subverts the
-//!   protection of the borrow checker and completely breaks as soon as you move
-//!   an AST node (which is very common during construction and parsing).
-//! - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
-//!   This adds a lot of complexity and is challenging to then store the AST and
-//!   the encapsulating arena together because they are self-referential.
-//!
-//!
-//! Overall, storing metadata separately adds flexibility to cover the two main
-//! use cases:
-//! - ASTs parsed from source code
-//! - ASTs generated programatically
-//!
 //! ## Collection Types
 //!
 //! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
 //! allocate more memory than needed.
-
-// TODO comments on everything
 
 mod build;
 mod display;
@@ -71,7 +35,41 @@ impl NodeId {
     }
 }
 
-/// TODO
+/// A wrapper type for an AST node. This wrapper holds a unique ID for each
+/// node, which uniquely identifies that node within the AST. These IDs are used
+/// to track metadata, such as source spans, for each node. The IDs are
+/// currently not exposed; the wrapper is intended to be as transparent as
+/// possible.
+///
+/// ## Why?
+///
+/// There are a lot of ways to do this and they all have tradeoffs. Some
+/// considered alternatives:
+///
+/// - Store the metadata inline in the AST. Replace each ID with the actual
+///   metadata. This eliminates the indirection of having a separate metadata
+///   table, but restricts you to a single metadata type.
+/// - Generic ineline metadata. The same solution as above, but add a generic
+///   param to each node type to define what metadata to store. This adds a lot
+///   of clutter and requires mapping between metadata types for cases like
+///   comparing parsed ASTs to generated ones in tests.
+/// - Store the ID directly in each node type instead of using a wrapper type.
+///   This declutters a lot of usage cases, but requires the repetition of
+///   adding each node field, and also adds complexity around enums. It forces
+///   you to either add the ID field to every variant of every enum, or
+///   normalize enums so that each variant contains a single unique struct. Both
+///   end up adding more clutter than they save.
+/// - Use the memory address of each node as its implicit ID. This subverts the
+///   protection of the borrow checker and completely breaks as soon as you move
+///   an AST node (which is very common during construction and parsing).
+/// - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
+///   This adds a lot of complexity and is challenging to then store the AST and
+///   the encapsulating arena together because they are self-referential.
+///
+/// Overall, storing metadata separately adds flexibility to cover the two main
+/// use cases:
+/// - ASTs parsed from source code
+/// - ASTs generated programatically
 #[derive(Clone, Debug)]
 pub struct Node<T> {
     id: NodeId,
@@ -79,7 +77,6 @@ pub struct Node<T> {
 }
 
 impl<T> Node<T> {
-    /// TODO
     pub(crate) fn new(id: NodeId, node: T) -> Self {
         Self { id, node }
     }
@@ -113,11 +110,10 @@ impl<T> DerefMut for Node<T> {
     }
 }
 
-/// Compare equality of node *contents* only. To avoid misunderstandings and
-/// awkwardness, this is defined for tests only. We rarely want to actually
-/// compare IDs in tests, to this makes it much easier to compare parsed ASTs
-/// to generated ones.
-#[cfg(test)]
+/// Compare equality of node *contents* only. Comparing AST nodes is typically
+/// only useful for tests. Skipping the ID in the comparison makes it much
+/// easier to compare parsed ASTs to generated ones because the IDs will likely
+/// be allocated in a different order.
 impl<T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Self) -> bool {
         self.node == other.node
@@ -151,19 +147,17 @@ pub enum Statement {
 
     Import(Node<ImportDeclaration>),
     Export(Node<ExportDeclaration>),
-    // TODO: switch, throw, try, catch, finally
 }
 
-/// A collection of statements, delineated by {}. This denotes a new
-/// lexical scope.
-/// TODO kill this and inline into the enum variant?
+/// A collection of statements, delineated by `{ }`. This declares a new lexical
+/// scope.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Block {
     pub statements: Box<[Node<Statement>]>,
 }
 
-/// TODO eliminate this and just use lexical/fn decls directly?
+/// A `const` or `function` declaration
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Declaration {
@@ -171,13 +165,15 @@ pub enum Declaration {
     Function(Node<FunctionDeclaration>),
 }
 
-/// `const x = 3;` or `const x = 3, y = 4, z = 5;`
+/// A single `const` declaration with one or more declared variables: `const x =
+/// 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct LexicalDeclaration {
     pub variables: Box<[Node<Variable>]>,
 }
 
+/// A single declared variable in a declaration or function parameter
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct Variable {
@@ -185,7 +181,7 @@ pub struct Variable {
     pub init: Option<Box<Node<Expression>>>,
 }
 
-/// A declaration of a function:
+/// A declaration of a function using `function` syntax:
 /// ```notrust
 /// function f() {
 ///   // Body
@@ -199,21 +195,23 @@ pub struct FunctionDeclaration {
 }
 
 /// A form of indirection for a function definition. Immediately after parsing,
-/// this is the actual function definition. During lifting, the definition is
-/// interned and replaced with an ID pointing to the definition.
+/// this is the actual function definition. During compilation, a step called
+/// "lifting" moves each function definition into a table and replaces it with
+/// a unique ID. At runtime, the ID is used to look up and invoke the
+/// definition.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
     Inline(FunctionDefinition),
-    /// Function definition has been lifted to the top of the program, and this
-    /// is just a pointer to the definition
+    /// Function definition has been lifted to the function table, and this is
+    /// just a pointer to the definition
     Lifted(FunctionDefinitionId),
 }
 
-/// The parameters, body, and captures that constitute a PetitScript (i.e *not*
-/// native) function definition. This covers both `function` functions and
+/// The parameters, body, and captures that constitute a user (i.e *not* native)
+/// function definition. This covers both `function` functions and
 /// arrow functions, since the two are semantically equivalent in PS.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -223,28 +221,26 @@ pub struct FunctionDefinition {
     /// defined in the parent [FunctionDeclaration].
     pub name: Option<Node<Identifier>>,
     pub parameters: Box<[Node<FunctionParameter>]>,
-    // `Spanned` not necessary because both variants of the body contain it
+    // `Node` not necessary because both variants of the body contain it
     pub body: FunctionBody,
     /// A list of all the identifiers this function captures from its parent
     /// scope. This only includes identifiers that are actually present in the
     /// parent scope. References in the function parameters/body that don't
-    /// existing anywhere in scope can't be captured and therefore won't appear
+    /// exist anywhere in scope can't be captured and therefore won't appear
     /// here. They will either be provided by the global scope or trigger a
     /// runtime error.
     pub captures: Box<[Identifier]>,
 }
 
-/// The body of a function
+/// The body of a function definition, which can be either a block or a bare
+/// expression.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
     Expression(Box<Node<Expression>>),
     /// A standard function body. Accessible through either syntax
-    Block(
-        // TODO make sure we don't create an unnecessary scope for this block
-        Node<Block>,
-    ),
+    Block(Node<Block>),
 }
 
 /// One parameter in a function definition
@@ -255,15 +251,38 @@ pub struct FunctionParameter {
     pub varargs: bool,
 }
 
+/// A conditional that executes executes its body only if the condition is
+/// truthy.
+///
+/// ```notrust
+/// if (condition) {
+///   console.log("if!");
+/// } else if (condition2) {
+///   console.log("else if!");
+/// } else {
+///   console.log("else");
+/// }
+/// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct If {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
-    /// Optional else block. For `else if` blocks, this will be a nested `if`
+    /// Optional `else` block. For `else if` blocks, this will be a nested `if`
     pub else_body: Option<Box<Node<Statement>>>,
 }
 
+/// A loop that iterates over each element of a an array or string.
+///
+/// ```notrust
+/// for (const n of [1, 2, 3]) {
+///   console.log(n);
+/// }
+///
+/// for (const c of "hello!") {
+///   console.log(c);
+/// }
+/// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ForOfLoop {
@@ -272,6 +291,12 @@ pub struct ForOfLoop {
     pub body: Box<Node<Statement>>,
 }
 
+/// A loop that runs until its condition is falsy.
+/// ```notrust
+/// while (shouldRun()) {
+///   console.log("running");
+/// }
+/// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct WhileLoop {
@@ -279,6 +304,12 @@ pub struct WhileLoop {
     pub body: Box<Node<Statement>>,
 }
 
+/// A loop that runs once, then continues to run until its condition is falsy.
+/// ```notrust
+/// do {
+///   console.log("running");
+/// } while (shouldKeepRunning());
+/// ```
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct DoWhileLoop {
@@ -301,7 +332,8 @@ pub struct ImportDeclaration {
 }
 
 /// One identifier in a named import clause. In this import:
-/// ```
+///
+/// ```notrust
 /// import exportDefault, { export1, export2 as ex2 } from "module-name"
 /// ```
 ///
@@ -315,7 +347,7 @@ pub struct ImportNamed {
     pub rename: Option<Node<Identifier>>,
 }
 
-/// Source for an imported module
+/// Source for an imported module, i.e. the string after `from`
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ImportModule {
@@ -329,7 +361,11 @@ pub enum ImportModule {
 }
 
 /// TODO move this somewhere
-/// TODO explain naming rules
+/// The name of a native module registered with the PS engine. Native module
+/// names must adhere to these rules:
+/// - Allowed characters are `a-z`, `A-Z`, `0-9`, `_` and `-`
+/// - Must start with a letter `a-z` or `A-Z`
+/// - Must be at least one character long
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct NativeModuleName(String);
 
@@ -357,6 +393,7 @@ impl FromStr for NativeModuleName {
     }
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ExportDeclaration {
@@ -369,6 +406,7 @@ pub enum ExportDeclaration {
     DefaultExpression(Node<Expression>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Expression {
@@ -390,6 +428,7 @@ pub enum Expression {
     Ternary(Node<TernaryConditional>),
 }
 
+/// TODO
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Identifier(String);
 
@@ -404,6 +443,7 @@ impl Identifier {
     }
 }
 
+/// TODO
 /// TODO document why no spans
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
@@ -437,12 +477,14 @@ pub enum TemplateChunk {
     Expression(Node<Expression>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ArrayLiteral {
     pub elements: Box<[Node<ArrayElement>]>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayElement {
@@ -450,12 +492,14 @@ pub enum ArrayElement {
     Spread(Node<Expression>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ObjectLiteral {
     pub properties: Box<[Node<ObjectProperty>]>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ObjectProperty {
@@ -470,6 +514,7 @@ pub enum ObjectProperty {
     Spread(Node<Expression>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct FunctionCall {
@@ -477,6 +522,7 @@ pub struct FunctionCall {
     pub arguments: Box<[Node<Expression>]>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct PropertyAccess {
@@ -484,6 +530,7 @@ pub struct PropertyAccess {
     pub property: Node<PropertyName>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct OptionalPropertyAccess {
@@ -491,6 +538,7 @@ pub struct OptionalPropertyAccess {
     pub property: Node<PropertyName>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct UnaryOperation {
@@ -498,6 +546,7 @@ pub struct UnaryOperation {
     pub expression: Box<Node<Expression>>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum UnaryOperator {
@@ -511,6 +560,7 @@ pub enum UnaryOperator {
     Typeof,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct BinaryOperation {
@@ -519,6 +569,7 @@ pub struct BinaryOperation {
     pub rhs: Box<Node<Expression>>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum BinaryOperator {
@@ -557,6 +608,7 @@ pub enum BinaryOperator {
     // TODO bitwise operations, exponent
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct TernaryConditional {
@@ -565,6 +617,7 @@ pub struct TernaryConditional {
     pub false_expression: Box<Node<Expression>>,
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum PropertyName {
@@ -574,6 +627,7 @@ pub enum PropertyName {
     Expression(Box<Node<Expression>>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum Binding {
@@ -585,6 +639,7 @@ pub enum Binding {
     Array(Box<[Node<ArrayPatternElement>]>),
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ObjectPatternElement {
@@ -606,6 +661,7 @@ pub enum ObjectPatternElement {
     },
 }
 
+/// TODO
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ArrayPatternElement {

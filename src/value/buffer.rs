@@ -10,7 +10,7 @@ use std::{
 /// [bytes::Bytes] for the internal storage type, because it enables fast and
 /// efficient sharing of bytes, and is commonly used throughout the Rust
 /// ecosystem.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Buffer(Bytes);
 
 impl Deref for Buffer {

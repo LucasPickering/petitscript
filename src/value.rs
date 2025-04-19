@@ -618,6 +618,52 @@ mod tests {
     use crate::value::Value::{Null, Undefined};
     use test_case::test_case;
 
+    /// Test boolean coercion
+    #[test_case(Undefined, false; "undefined")]
+    #[test_case(Null, false; "null")]
+    #[test_case(false, false; "bool_false")]
+    #[test_case(true, true; "bool_true")]
+    #[test_case(0, false; "int_false")]
+    #[test_case(-3, true; "int_true")]
+    #[test_case(0.0, false; "float_false")]
+    #[test_case(-3.0, true; "float_true")]
+    // Number has more extensive test cases for this
+    #[test_case("", false; "string_empty")]
+    #[test_case("test", true; "string")]
+    #[test_case(Array::default(), true; "array_empty")]
+    #[test_case([1,2], true; "array")]
+    #[test_case(Object::default(), true; "object_empty")]
+    #[test_case([("a", 1)], true; "object")]
+    #[test_case(Buffer::default(), true; "buffer_empty")]
+    #[test_case(Buffer::from([1, 2]), true; "buffer")]
+    // TODO test function
+    fn to_bool(value: impl Into<Value>, expected: bool) {
+        assert_eq!(value.into().to_bool(), expected);
+    }
+
+    /// Test number coercion
+    #[test_case(Undefined, Some(Number::NAN); "undefined")]
+    #[test_case(Null, Some(0); "null")]
+    #[test_case(false, Some(0); "bool_false")]
+    #[test_case(true, Some(1); "bool_true")]
+    #[test_case(-3, Some(-3); "int")]
+    #[test_case(17.8, Some(17.8); "float")]
+    #[test_case("3", Some(3); "string_int_positive")]
+    #[test_case("-3", Some(-3); "string_int_negative")]
+    #[test_case("-3.5", Some(-3.5); "string_float")]
+    #[test_case("test", None::<Number>; "string")]
+    #[test_case(Array::default(), None::<Number>; "array_empty")]
+    #[test_case([1], None::<Number>; "array_1")]
+    #[test_case([1, 2], None::<Number>; "array_2")]
+    #[test_case(Object::default(), None::<Number>; "object_empty")]
+    #[test_case([("a", 1)], None::<Number>; "object")]
+    #[test_case(Buffer::default(), None::<Number>; "buffer_empty")]
+    #[test_case(Buffer::from([1, 2]), None::<Number>; "buffer")]
+    // TODO test function
+    fn to_number(value: impl Into<Value>, expected: Option<impl Into<Number>>) {
+        assert_eq!(value.into().to_number(), expected.map(|n| n.into()));
+    }
+
     /// Test string coercion (NOT string displaying)
     #[test_case(Undefined, "undefined"; "undefined")]
     #[test_case(Null, "null"; "null")]
@@ -626,7 +672,7 @@ mod tests {
     #[test_case(-3, "-3"; "int")]
     #[test_case(17.8, "17.8"; "float")]
     #[test_case("test", "test"; "string")]
-    #[test_case([1,2], "1,2"; "array")]
+    #[test_case([1, 2], "1,2"; "array")]
     #[test_case([("a", 1)], "[Object object]"; "object")]
     #[test_case(Buffer::from([1, 2]), "TODO"; "buffer")]
     // TODO test function
@@ -702,7 +748,7 @@ mod tests {
     #[test_case(true, "s", "trues", "strue"; "boolean string")]
     #[test_case(3, "1", "31", "13"; "number string")]
     #[test_case("s1", "s2", "s1s2", "s2s1"; "string string")]
-    #[test_case([1], [1,2], "11,2", "1,21"; "array array")]
+    #[test_case([1], [1, 2], "11,2", "1,21"; "array array")]
     #[test_case([1], "s", "1s", "s1"; "array string")]
     #[test_case([1, 2, 3], "s", "1,2,3s", "s1,2,3"; "long_array string")]
     #[test_case(

@@ -34,7 +34,7 @@ impl serde::Serialize for Value {
             Value::String(string) => string.serialize(serializer),
             Value::Array(array) => array.serialize(serializer),
             Value::Object(object) => object.serialize(serializer),
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Value::Buffer(buffer) => buffer.serialize(serializer),
             Value::Function(function) => function.serialize(serializer),
         }
@@ -111,15 +111,15 @@ impl<'de> serde::Deserialize<'de> for Value {
                 Ok(Value::String(v.into()))
             }
 
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(Value::Buffer(v.into()))
+                Ok(Value::Buffer(v.to_owned().into()))
             }
 
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
             where
                 E: de::Error,

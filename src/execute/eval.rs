@@ -115,9 +115,9 @@ impl Evaluate for ObjectLiteral {
                         }
                         // {["field"]: "value"}
                         PropertyName::Expression(expression) => {
-                            // TODO should we fail for non-string props
-                            // instead?
-                            expression.eval(state)?.to_string()
+                            // Convert to a string using coercion semantics.
+                            // Make sure *not* to convert with the Display impl
+                            String::from(expression.eval(state)?.to_string())
                         }
                     };
                     let value = expression.eval(state)?;
@@ -155,7 +155,11 @@ impl Evaluate for TemplateLiteral {
                     Ok(Cow::Borrowed(literal.as_str()))
                 }
                 TemplateChunk::Expression(expression) => {
-                    Ok(Cow::Owned(expression.eval(state)?.to_string()))
+                    // Convert to a string using coercion semantics.
+                    // Make sure *not* to convert with the Display impl
+                    Ok(Cow::Owned(String::from(
+                        expression.eval(state)?.to_string(),
+                    )))
                 }
             })
             .collect::<Result<String, _>>()
@@ -248,7 +252,7 @@ impl Evaluate for OptionalPropertyAccess {
             | Value::Array(_)
             | Value::Object(_)
             | Value::Function(_) => todo!(),
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Value::Buffer(_) => todo!(),
         }
     }

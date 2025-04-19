@@ -7,7 +7,7 @@ use crate::{
 
 /// Coerce a value to a string
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/String
-pub fn constructor(_: &Process, value: Value) -> String {
+pub fn constructor(_: &Process, value: Value) -> PetitString {
     value.to_string()
 }
 

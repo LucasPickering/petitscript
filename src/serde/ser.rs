@@ -68,10 +68,13 @@ impl serde::Serializer for &Serializer {
 
     serialize_into!(serialize_char, char);
     serialize_into!(serialize_str, &str);
-    serialize_into!(serialize_bytes, &[u8]);
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         Ok(Value::Null)
+    }
+
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        Ok(v.to_owned().into())
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>

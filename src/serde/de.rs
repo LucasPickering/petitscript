@@ -64,7 +64,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Object(object) => {
                 visitor.visit_map(&mut MapDeserializer::new(object))
             }
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
             // Functions are represented as a map of static fields, with a

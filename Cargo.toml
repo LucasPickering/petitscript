@@ -22,7 +22,7 @@ serde = {version = "1.0.0", default-features = false, features = ["alloc", "deri
 winnow = "0.7.4"
 
 [features]
-bytes = ["dep:bytes"]
+buffer = ["dep:bytes"]
 default = []
 serde = ["dep:serde", "indexmap/serde"]
 

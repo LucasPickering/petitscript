@@ -82,4 +82,4 @@ impl From<Buffer> for Vec<u8> {
 impl_value_conversions!(Buffer, Buffer);
 impl_value_conversions!(Bytes, Buffer);
 // One-way conversions
-impl_value_from!(&[u8], Buffer); // Can't convert back to ref
+impl_value_from!(&'static [u8], Buffer); // Can't convert back to ref

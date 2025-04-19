@@ -46,7 +46,7 @@ pub fn write_json(buf: &mut String, value: &Value) {
             write!(buf, "}}").unwrap();
         }
         // These two can't be represented well as JSON, so just use undefined
-        #[cfg(feature = "bytes")]
+        #[cfg(feature = "buffer")]
         Value::Buffer(_) => write_json(buf, &Value::Undefined),
         Value::Function(_) => write_json(buf, &Value::Undefined),
     }
@@ -366,7 +366,7 @@ mod test {
                 Value::from("two"),
             ].into(),
             "object" => indexmap! {
-                "a" => 1.0.into(),
+                "a" => Value::from(1.0),
                 "b" => "c".into(),
             }.into(),
             "empty_array" => Array::new().into(),

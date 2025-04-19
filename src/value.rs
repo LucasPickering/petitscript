@@ -1,19 +1,21 @@
 //! Runtime values
 
 mod array;
-#[cfg(feature = "bytes")]
+#[cfg(feature = "buffer")]
 mod buffer;
 pub mod function;
 mod macros;
 mod number;
 mod object;
+mod string;
 
 pub use array::Array;
-#[cfg(feature = "bytes")]
+#[cfg(feature = "buffer")]
 pub use buffer::Buffer;
 pub use function::Function;
 pub use number::Number;
 pub use object::Object;
+pub use string::PetitString;
 
 use crate::{
     error::{RuntimeError, ValueError},
@@ -28,9 +30,8 @@ use indexmap::IndexMap;
 use std::{
     cmp::Ordering,
     fmt::{self, Display},
-    ops::{Add, Deref, Div, Mul, Neg, Not, Rem, Sub},
+    ops::{Add, Div, Mul, Neg, Not, Rem, Sub},
     path::PathBuf,
-    sync::Arc,
 };
 
 /// TODO
@@ -56,7 +57,7 @@ pub enum Value {
     /// An ordered key-value mapping
     Object(Object),
     /// An immutable byte buffer
-    #[cfg(feature = "bytes")]
+    #[cfg(feature = "buffer")]
     Buffer(Buffer),
     /// TODO
     Function(Function),
@@ -75,7 +76,7 @@ impl Value {
             Self::Number(number) => number.to_bool(),
             Self::String(s) => !s.is_empty(),
             Self::Array(_) | Self::Object(_) | Self::Function(_) => true,
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Self::Buffer(_) => true,
         }
     }
@@ -94,8 +95,42 @@ impl Value {
             | Self::Array(_)
             | Self::Object(_)
             | Self::Function(_) => None,
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Self::Buffer(_) => None,
+        }
+    }
+
+    /// Coerce this value to a string. This intentionally shadows
+    /// [ToString::to_string](std::fmt::ToString::to_string) to prevent
+    /// accidentally using display rules for coercion. The [Display] impl is
+    /// intended just for debug printing in Rust. This coercion implementation
+    /// aims to match JS's semantics for string coercion. If you specifically
+    /// want the display implementation, use `format!({string})` instead.
+    ///
+    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String
+    pub fn to_string(&self) -> PetitString {
+        match self {
+            Self::Undefined => "undefined".into(),
+            Self::Null => "null".into(),
+            Self::Boolean(false) => "false".into(),
+            Self::Boolean(true) => "true".into(),
+            Self::Number(number) => format!("{number}").into(),
+            Self::String(string) => string.clone(),
+            Self::Array(array) => {
+                let mut buf = String::new();
+                for (i, element) in array.iter().enumerate() {
+                    if i > 0 {
+                        buf.push(',');
+                    }
+                    buf.push_str(&element.to_string());
+                }
+                buf.into()
+            }
+            // lol. This is stupid but it matches JS
+            Self::Object(_) => "[Object object]".into(),
+            #[cfg(feature = "buffer")]
+            Self::Buffer(_) => "TODO".into(),
+            Self::Function(_) => todo!(),
         }
     }
 
@@ -131,7 +166,7 @@ impl Value {
 
     /// If this value is a byte buffer, get the inner bytes. Otherwise return a
     /// type error.
-    #[cfg(feature = "bytes")]
+    #[cfg(feature = "buffer")]
     pub fn try_into_buffer(self) -> Result<Buffer, ValueError> {
         if let Self::Buffer(buffer) = self {
             Ok(buffer)
@@ -192,7 +227,7 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Self::Buffer(_) => ValueType::Buffer,
             Self::Function(_) => ValueType::Function,
         }
@@ -275,7 +310,7 @@ impl Display for Value {
             Self::String(string) => write!(f, "{string}"),
             Self::Array(array) => write!(f, "{array}"),
             Self::Object(object) => write!(f, "{object}"),
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Self::Buffer(buffer) => write!(f, "{buffer}"),
             Self::Function(function) => write!(f, "{function}"),
         }
@@ -313,19 +348,30 @@ impl Add for Value {
     /// Add two values together. The semantics on this replicate those of JS
     /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition
     fn add(self, rhs: Self) -> Self::Output {
-        // Add is unique from the other mathematical operations. For types that
-        // can't be converted to a number, we'll do string concatenation
+        // Add is unique from the other mathematical operations. If either side
+        // is a string, do string concat.
         match (self, rhs) {
             // If either side is a string, do string concatenation
             // TODO to_string() isn't the right string coercion. It doesn't
             // handle 1-element arrays correctly
-            (Self::String(s), other) => (s + other).into(),
-            // (other, Self::String(s)) => other.to_string() + &s,
-            // Attempt to convert both to numbers and add them
-            // If both are numbers, add em up
-            (Self::Number(n1), Self::Number(n2)) => (n1 + n2).into(),
-            _ => todo!(),
+            (Self::String(s), other) => (s + other.to_string()).into(),
+            (other, Self::String(s)) => (other.to_string() + s).into(),
+            // Attempt to convert both to numbers and add them. Otherwise fall
+            // back to string concat again
+            (a, b) => match (a.to_number(), b.to_number()) {
+                (Some(a), Some(b)) => (a + b).into(),
+                _ => (a.to_string() + b.to_string()).into(),
+            },
         }
+    }
+}
+
+impl Add<PetitString> for Value {
+    type Output = Self;
+
+    /// Perform string concatenation
+    fn add(self, rhs: PetitString) -> Self::Output {
+        (self.to_string() + rhs).into()
     }
 }
 
@@ -416,7 +462,7 @@ pub enum ValueType {
     Array,
     Object,
     Function,
-    #[cfg(feature = "bytes")]
+    #[cfg(feature = "buffer")]
     Buffer,
 }
 
@@ -431,63 +477,9 @@ impl Display for ValueType {
             Self::Array => write!(f, "array"),
             Self::Object => write!(f, "object"),
             Self::Function => write!(f, "function"),
-            #[cfg(feature = "bytes")]
+            #[cfg(feature = "buffer")]
             Self::Buffer => write!(f, "buffer"),
         }
-    }
-}
-
-/// A reference-counted immutable string
-#[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct PetitString(Arc<str>);
-
-impl Deref for PetitString {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for PetitString {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl From<char> for PetitString {
-    fn from(value: char) -> Self {
-        Self(value.to_string().into())
-    }
-}
-
-impl From<&str> for PetitString {
-    fn from(value: &str) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<String> for PetitString {
-    fn from(value: String) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<PetitString> for String {
-    fn from(string: PetitString) -> Self {
-        // It'd be nice to be able to reuse the allocated string if we own the
-        // last copy of the wrapping Arc, but I can't find a way to do that
-        // since str is unsized, so we have to clone all the data
-        string.0.deref().to_owned()
-    }
-}
-
-impl Add<Value> for PetitString {
-    type Output = Self;
-
-    fn add(self, rhs: Value) -> Self::Output {
-        todo!()
     }
 }
 
@@ -626,6 +618,22 @@ mod tests {
     use crate::value::Value::{Null, Undefined};
     use test_case::test_case;
 
+    /// Test string coercion (NOT string displaying)
+    #[test_case(Undefined, "undefined"; "undefined")]
+    #[test_case(Null, "null"; "null")]
+    #[test_case(false, "false"; "bool_false")]
+    #[test_case(true, "true"; "bool_true")]
+    #[test_case(-3, "-3"; "int")]
+    #[test_case(17.8, "17.8"; "float")]
+    #[test_case("test", "test"; "string")]
+    #[test_case([1,2], "1,2"; "array")]
+    #[test_case([("a", 1)], "[Object object]"; "object")]
+    #[test_case(Buffer::from([1, 2]), "TODO"; "buffer")]
+    // TODO test function
+    fn to_string(value: impl Into<Value>, expected: &str) {
+        assert_eq!(&*value.into().to_string(), expected);
+    }
+
     /// Test value equality
     #[test_case(Undefined, Undefined; "undefined")]
     #[test_case(Null, Null; "null")]
@@ -692,8 +700,9 @@ mod tests {
     #[test_case(Undefined, "s", "undefineds", "sundefined"; "undefined string")]
     #[test_case(Null, "s", "nulls", "snull"; "null string")]
     #[test_case(true, "s", "trues", "strue"; "boolean string")]
-    #[test_case(3, "s", "3s", "s3"; "number string")]
-    #[test_case("s1", "s2", "s1test2", "s2test1"; "string string")]
+    #[test_case(3, "1", "31", "13"; "number string")]
+    #[test_case("s1", "s2", "s1s2", "s2s1"; "string string")]
+    #[test_case([1], [1,2], "11,2", "1,21"; "array array")]
     #[test_case([1], "s", "1s", "s1"; "array string")]
     #[test_case([1, 2, 3], "s", "1,2,3s", "s1,2,3"; "long_array string")]
     #[test_case(

@@ -1,6 +1,7 @@
 //! The PetitScript standard library
 
 mod array;
+mod object;
 mod string;
 
 use crate::{
@@ -15,6 +16,7 @@ pub fn stdlib(functions: &mut NativeFunctionTable) -> GlobalEnvironment {
     scope.declare("Boolean", functions.create_fn(boolean));
     scope.declare("Number", functions.create_fn(number));
     scope.declare("String", functions.create_fn(string::constructor));
+    scope.declare("Object", object::module(functions));
     scope.declare("console", console(functions));
     scope.declare("JSON", json(functions));
     scope.declare_prototype(ValueType::String, string::prototype(functions));

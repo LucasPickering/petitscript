@@ -54,6 +54,18 @@ impl Object {
         self.0.iter()
     }
 
+    /// Get an owned iterator over this object's keys. This will clone the keys
+    /// only if this object has multiple active references
+    pub fn into_keys(self) -> impl Iterator<Item = String> {
+        Arc::unwrap_or_clone(self.0).into_keys()
+    }
+
+    /// Get an owned iterator over this object's values. This will clone the
+    /// values only if this object has multiple active references
+    pub fn into_values(self) -> impl Iterator<Item = Value> {
+        Arc::unwrap_or_clone(self.0).into_values()
+    }
+
     /// TODO
     /// TODO better name?
     pub fn insert_all(self, other: Self) -> Self {
@@ -154,6 +166,8 @@ impl IntoIterator for Object {
     type Item = (String, Value);
     type IntoIter = <IndexMap<String, Value> as IntoIterator>::IntoIter;
 
+    /// Get an iterator over this object's `(key, value)` pairs. This will clone
+    /// the pairs only if this has multiple active references
     fn into_iter(self) -> Self::IntoIter {
         Arc::unwrap_or_clone(self.0).into_iter()
     }

@@ -116,7 +116,7 @@ impl Process {
     pub fn call(
         &self,
         function: &Function,
-        arguments: &[Value],
+        arguments: Vec<Value>,
     ) -> Result<Value, Error> {
         // If this is a user function, make sure it belongs to this process.
         // Native functions don't capture any values so they don't need this

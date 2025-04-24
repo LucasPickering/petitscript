@@ -8,6 +8,7 @@ use crate::{
 use indexmap::IndexMap;
 use std::{
     fmt::{self, Debug, Display},
+    mem,
     sync::Arc,
 };
 
@@ -230,7 +231,7 @@ pub(crate) enum NativeFunctionDefinition {
     Static(
         #[allow(clippy::type_complexity)]
         Arc<
-            dyn Fn(&Process, &[Value]) -> Result<Value, RuntimeError>
+            dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
                 + Send
                 + Sync,
         >,
@@ -242,7 +243,7 @@ pub(crate) enum NativeFunctionDefinition {
     Bound(
         #[allow(clippy::type_complexity)]
         Arc<
-            dyn Fn(&Process, &Value, &[Value]) -> Result<Value, RuntimeError>
+            dyn Fn(&Process, &Value, Vec<Value>) -> Result<Value, RuntimeError>
                 + Send
                 + Sync,
         >,
@@ -259,7 +260,7 @@ impl NativeFunctionDefinition {
         Out: IntoPetitResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |process: &Process, args: &[Value]| {
+        let function = move |process: &Process, args: Vec<Value>| {
             // TODO add error context
             let args = Args::from_petit_args(args)?;
             let output = f(process, args).into_petit_result()?;
@@ -278,9 +279,10 @@ impl NativeFunctionDefinition {
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
         let function =
-            move |process: &Process, this: &Value, args: &[Value]| {
+            move |process: &Process, this: &Value, args: Vec<Value>| {
                 // TODO add error context
-                // TODO avoid clone on receiver
+                // Clone is necessary on this receiver because there could be
+                // multiple references to `this.f`
                 let this = This::from_petit(this.clone())?;
                 let args = Args::from_petit_args(args)?;
                 let output = f(process, this, args).into_petit_result()?;
@@ -313,7 +315,7 @@ pub struct Varargs(pub Vec<Value>);
 
 /// TODO
 pub trait FromPetitArgs: Sized {
-    fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError>;
+    fn from_petit_args(args: Vec<Value>) -> Result<Self, RuntimeError>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
@@ -355,31 +357,30 @@ macro_rules! impl_from_petit_args {
         impl<'a, $($arg_types,)*> FromPetitArgs for ($($arg_types,)*)
             where $($arg_types: FromPetit,)*
         {
-            fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError> {
-                Ok(call_fn!(args, ($($arg_types,)*)))
+            fn from_petit_args(mut args: Vec<Value>) -> Result<Self, RuntimeError> {
+                Ok(call_fn!(&mut args, ($($arg_types,)*)))
             }
         }
     };
 }
 
 impl FromPetitArgs for () {
-    fn from_petit_args(_: &[Value]) -> Result<Self, RuntimeError> {
+    fn from_petit_args(_: Vec<Value>) -> Result<Self, RuntimeError> {
         Ok(())
     }
 }
 
 /// TODO
 impl FromPetitArgs for Varargs {
-    fn from_petit_args(values: &[Value]) -> Result<Self, RuntimeError> {
-        // TODO remove clones
-        Ok(Self(values.to_owned()))
+    fn from_petit_args(values: Vec<Value>) -> Result<Self, RuntimeError> {
+        Ok(Self(values))
     }
 }
 
 /// Special case implementation: a single argument doesn't need a tuple wrapper
 impl<T0: FromPetit> FromPetitArgs for T0 {
-    fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError> {
-        let arg0 = get_arg(args, 0)?;
+    fn from_petit_args(mut args: Vec<Value>) -> Result<Self, RuntimeError> {
+        let arg0 = get_arg(&mut args, 0)?;
         Ok(arg0)
     }
 }
@@ -395,15 +396,19 @@ impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7);
 impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
 impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 
-/// Helper to get a particular arg from the array and convert it to a static
-/// type
+/// Extract an argument from the argument list by index, replacing it with
+/// `undefined`. This should be called once per expected arg for a call, so
+/// removing the value allows us to get an owned value without any cloning.
 fn get_arg<T: FromPetit>(
-    args: &[Value],
+    args: &mut [Value],
     index: usize,
 ) -> Result<T, RuntimeError> {
-    // If the arg is missing, use undefined instead to mirror PS semantics
-    // TODO remove clone? we'd have to make FromPetit take &Value
-    let value = args.get(index).cloned().unwrap_or_default();
+    let value = if index < args.len() {
+        mem::take(&mut args[index])
+    } else {
+        // If the arg is missing, use undefined instead to mirror JS semantics
+        Value::Undefined
+    };
     let converted = T::from_petit(value).map_err(|error| {
         RuntimeError::from(error)
             .context(format!("Error converting argument {index}"))

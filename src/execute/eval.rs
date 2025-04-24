@@ -10,10 +10,12 @@ use crate::{
     },
     error::{RuntimeError, TracedError, ValueError},
     execute::{exec::Execute, state::CallSite, ThreadState},
-    value::  function::{
-        Function, FunctionInner, NativeFunctionDefinition, UserFunctionId,
+    value::{
+        function::{
+            Function, FunctionInner, NativeFunctionDefinition, UserFunctionId,
+        },
+        Array, Number, Object, Value, ValueType,
     },
-    value::{Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, sync::Arc};
 
@@ -209,15 +211,15 @@ impl Evaluate for Node<FunctionPointer> {
 impl Evaluate for Node<FunctionCall> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let function = self.function.eval(state)?;
-        let mut arguments = Vec::with_capacity(self.arguments.len());
-        for argument in &self.arguments {
-            let value = argument.eval(state)?;
-            arguments.push(value);
-        }
+        let arguments = self
+            .arguments
+            .iter()
+            .map(|argument| argument.eval(state))
+            .collect::<Result<Vec<_>, _>>()?;
 
         match function {
             Value::Function(function) => {
-                function.call(state, self.id().into(), &arguments)
+                function.call(state, self.id().into(), arguments)
             }
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,
@@ -320,7 +322,7 @@ impl Function {
         &self,
         state: &mut ThreadState<'_>,
         call_site: CallSite,
-        arguments: &[Value],
+        arguments: Vec<Value>,
     ) -> Result<Value, TracedError> {
         match &*self.0 {
             FunctionInner::User { id, captures, .. } => {

@@ -32,9 +32,6 @@ use crate::{
 use indexmap::IndexMap;
 use std::sync::Arc;
 
-// TODO replace all usages of `impl ToString` with `impl Into<String>`? prevent
-// clone when the value is already a String
-
 /// The main entrypoint for executing and evaluating PetitScript programs
 ///
 /// An engine defines how code should be executed. TODO more
@@ -92,10 +89,10 @@ impl Engine {
     /// here.
     pub fn register_module(
         &mut self,
-        name: impl ToString,
+        name: impl Into<String>,
         module: Exports,
     ) -> Result<(), Error> {
-        let name: NativeModuleName = name.to_string().try_into()?;
+        let name: NativeModuleName = name.into().try_into()?;
         self.modules.insert(name, module);
         Ok(())
     }

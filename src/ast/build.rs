@@ -376,7 +376,7 @@ impl ObjectLiteral {
         iter: impl IntoIterator<Item = (P, Option<Expression>)>,
     ) -> Self
     where
-        P: ToString,
+        P: Into<String>,
     {
         Self {
             properties: iter
@@ -400,9 +400,9 @@ impl PropertyName {
     /// Create a property name from a string. This will use a literal property
     /// name (`x.y`) if possible. If the name isn't a valid identifier, use
     /// the expression syntax instead (`x["not-identifier"]`).
-    pub fn new(name: impl ToString) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         // TODO if name isn't a valid identifier, use a dynamic property
-        let name = name.to_string();
+        let name = name.into();
         if name.contains('-') {
             // This is a hack; make it more generic based on the identifier
             // parser

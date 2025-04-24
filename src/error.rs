@@ -248,14 +248,14 @@ impl RuntimeError {
     }
 
     /// Create an error that indicates an internal bug in the runtime
-    pub(crate) fn internal(message: impl ToString) -> Self {
-        Self::Internal(message.to_string())
+    pub(crate) fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
     }
 
     /// Wrap this error to attach an additional context message to it
-    pub fn context(self, context: impl ToString) -> Self {
+    pub fn context(self, context: impl Into<String>) -> Self {
         Self::WithContext {
-            message: context.to_string(),
+            message: context.into(),
             error: Box::new(self),
         }
     }

@@ -173,12 +173,12 @@ impl Exports {
     /// ```
     pub fn named<K, V>(exports: impl IntoIterator<Item = (K, V)>) -> Self
     where
-        K: ToString,
+        K: Into<String>,
         V: Into<Value>,
     {
         let named = exports
             .into_iter()
-            .map(|(name, value)| (name.to_string(), value.into()))
+            .map(|(name, value)| (name.into(), value.into()))
             .collect();
         Self {
             named,
@@ -201,13 +201,13 @@ impl Exports {
         exports: impl IntoIterator<Item = (K, V)>,
     ) -> Self
     where
-        K: ToString,
+        K: Into<String>,
         V: Into<Value>,
     {
         let mut default = Object::new();
         let mut named = IndexMap::new();
         for (name, value) in exports {
-            let name = name.to_string();
+            let name = name.into();
             let value: Value = value.into();
             named.insert(name.clone(), value.clone());
             // Since we're the only owner, this will insert without cloning

@@ -2,15 +2,14 @@
 
 use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
-    ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
-    FunctionDeclaration, FunctionDefinition, FunctionParameter,
-    FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, LexicalDeclaration, Literal, Module, NativeModuleName, Node,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    UnaryOperator, Variable, WhileLoop,
+    BinaryOperator, Binding, Block, DoWhileLoop, ExportDeclaration, Expression,
+    ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
+    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
+    ImportModule, ImportNamed, Declaration, Literal, Module,
+    NativeModuleName, Node, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
+    UnaryOperation, UnaryOperator, Variable, WhileLoop,
 };
 use std::{borrow::Cow, fmt};
 
@@ -109,15 +108,6 @@ impl DisplayIndent for Block {
 
 impl DisplayIndent for Declaration {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Declaration::Lexical(lexical) => lexical.fmt(ind),
-            Declaration::Function(function) => function.fmt(ind),
-        }
-    }
-}
-
-impl DisplayIndent for LexicalDeclaration {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         ("const ", Repeat::new(&self.variables, ", "), ";").fmt(ind)
     }
 }
@@ -125,12 +115,6 @@ impl DisplayIndent for LexicalDeclaration {
 impl DisplayIndent for Variable {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         (&self.binding, self.init.as_ref().map(|init| (" = ", init))).fmt(ind)
-    }
-}
-
-impl DisplayIndent for FunctionDeclaration {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        ("const ", &self.name, " = ", &self.pointer, ";").fmt(ind)
     }
 }
 
@@ -266,9 +250,6 @@ impl DisplayIndent for ExportDeclaration {
         match self {
             Self::Reexport {} => todo!(),
             Self::Declaration(declaration) => ("export ", declaration).fmt(ind),
-            Self::DefaultFunctionDeclaration(_) => {
-                todo!()
-            }
             Self::DefaultExpression(expression) => {
                 ("export default ", expression, ";").fmt(ind)
             }

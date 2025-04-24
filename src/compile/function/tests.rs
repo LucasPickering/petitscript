@@ -1,9 +1,9 @@
 use crate::{
     ast::{
         Declaration, Expression, FunctionBody, FunctionCall,
-        FunctionDeclaration, FunctionDefinition, FunctionParameter,
-        FunctionPointer, Identifier, ImportDeclaration, IntoExpression,
-        IntoNode, IntoStatement, Module, ObjectLiteral, Statement,
+        FunctionDefinition, FunctionParameter, FunctionPointer, Identifier,
+        ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module,
+        ObjectLiteral, Statement,
     },
     compile::{CapturedAst, Compiler, LabelledAst, Lifted},
 };
@@ -28,14 +28,14 @@ fn function_label() {
     .unwrap()
     .label()
     .program;
-    let expected_statement_1 = Declaration::lexical(
+    let expected_statement_1 = Declaration::new(
         "f",
         FunctionDefinition::new(vec![], FunctionBody::empty())
             .with_name("f")
             .into(),
     )
     .into();
-    let expected_statement_2 = Declaration::lexical(
+    let expected_statement_2 = Declaration::new(
         "o",
         ObjectLiteral::new(vec![(
             "g",
@@ -60,17 +60,17 @@ fn function_capture() {
         "
         import { add } from 'math';
 
-        function log(e) {
+        const log = (e) => {
             console.log(e);
-        }
+        };
 
         const x = 2;
-        function f() {
+        const f = () => {
             const y = 3;
             return (z) => {
                 log(add(x, y, z))
             };
-        }
+        };
         ",
     )
     .parse()
@@ -97,11 +97,11 @@ fn function_capture() {
             )
             .declare("log",)
             .into_stmt(),
-            Declaration::lexical("x", 2.into()).into_stmt(),
+            Declaration::new("x", 2.into()).into_stmt(),
             FunctionDefinition::new(
                 vec![],
                 FunctionBody::block(vec![
-                    Declaration::lexical("y", 3.into()).into_stmt(),
+                    Declaration::new("y", 3.into()).into_stmt(),
                     FunctionDefinition::new(
                         vec![FunctionParameter::identifier("z")],
                         FunctionBody::block(vec![Statement::Expression(
@@ -145,11 +145,11 @@ fn function_lift() {
     } = Compiler::new(
         // TODO include a function in param position here: (i = () => {}) => {}
         "
-        function f() {
-            function g() {
+        const f = () => {
+            const g = () => {
                 return () => {};
-            }
-        }
+            };
+        };
         ",
     )
     .parse()
@@ -161,10 +161,10 @@ fn function_lift() {
 
     assert_eq!(
         module.data(),
-        &Module::new(vec![FunctionDeclaration {
-            name: Identifier::new("f").s(),
-            pointer: FunctionPointer::Lifted(2.into()).s()
-        }
+        &Module::new(vec![Declaration::new(
+            "f",
+            Expression::ArrowFunction(FunctionPointer::Lifted(2.into()).s())
+        )
         .into()])
     );
 
@@ -185,10 +185,12 @@ fn function_lift() {
             .with_name("g"),
             FunctionDefinition::new(
                 vec![],
-                FunctionBody::block(vec![FunctionDeclaration {
-                    name: Identifier::new("g").s(),
-                    pointer: FunctionPointer::Lifted(1.into()).s()
-                }
+                FunctionBody::block(vec![Declaration::new(
+                    "g",
+                    Expression::ArrowFunction(
+                        FunctionPointer::Lifted(1.into()).s()
+                    )
+                )
                 .into()])
             )
             .with_name("f"),

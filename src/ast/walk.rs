@@ -1,13 +1,12 @@
 use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation, Binding,
     Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
-    FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
-    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-    ImportModule, ImportNamed, LexicalDeclaration, Literal, Module, Node,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    Variable, WhileLoop,
+    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
+    FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
+    ImportNamed, Literal, Module, Node, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
+    UnaryOperation, Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -63,28 +62,9 @@ impl Walk for Block {
 
 impl Walk for Declaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_declaration(self);
-        match self {
-            Self::Lexical(declaration) => declaration.walk(visitor),
-            Self::Function(declaration) => declaration.walk(visitor),
-        }
-        visitor.exit_declaration(self);
-    }
-}
-
-impl Walk for LexicalDeclaration {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_lexical_declaration(self);
         self.variables.walk(visitor);
         visitor.exit_lexical_declaration(self);
-    }
-}
-
-impl Walk for FunctionDeclaration {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_function_declaration(self);
-        self.pointer.walk(visitor);
-        visitor.exit_function_declaration(self);
     }
 }
 
@@ -394,9 +374,6 @@ impl Walk for ExportDeclaration {
         match self {
             Self::Reexport {} => todo!(),
             Self::Declaration(declaration) => declaration.walk(visitor),
-            Self::DefaultFunctionDeclaration(declaration) => {
-                declaration.walk(visitor)
-            }
             Self::DefaultExpression(expression) => expression.walk(visitor),
         }
         visitor.exit_export(self);
@@ -493,9 +470,6 @@ pub trait AstVisitor {
     fn enter_block(&mut self, _: &mut Block) {}
     fn exit_block(&mut self, _: &mut Block) {}
 
-    fn enter_declaration(&mut self, _: &mut Declaration) {}
-    fn exit_declaration(&mut self, _: &mut Declaration) {}
-
     fn enter_do_while_loop(&mut self, _: &mut DoWhileLoop) {}
     fn exit_do_while_loop(&mut self, _: &mut DoWhileLoop) {}
 
@@ -513,9 +487,6 @@ pub trait AstVisitor {
 
     fn enter_function_call(&mut self, _: &mut FunctionCall) {}
     fn exit_function_call(&mut self, _: &mut FunctionCall) {}
-
-    fn enter_function_declaration(&mut self, _: &mut FunctionDeclaration) {}
-    fn exit_function_declaration(&mut self, _: &mut FunctionDeclaration) {}
 
     fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {}
     fn exit_function_definition(&mut self, _: &mut FunctionDefinition) {}
@@ -540,8 +511,8 @@ pub trait AstVisitor {
     fn enter_import_module(&mut self, _: &mut ImportModule) {}
     fn exit_import_module(&mut self, _: &mut ImportModule) {}
 
-    fn enter_lexical_declaration(&mut self, _: &mut LexicalDeclaration) {}
-    fn exit_lexical_declaration(&mut self, _: &mut LexicalDeclaration) {}
+    fn enter_lexical_declaration(&mut self, _: &mut Declaration) {}
+    fn exit_lexical_declaration(&mut self, _: &mut Declaration) {}
 
     fn enter_literal(&mut self, _: &mut Literal) {}
     fn exit_literal(&mut self, _: &mut Literal) {}

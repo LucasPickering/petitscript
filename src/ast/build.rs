@@ -4,14 +4,11 @@
 use crate::ast::{
     ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
     Block, Declaration, ExportDeclaration, Expression, FunctionBody,
-    FunctionCall, FunctionDeclaration, FunctionDefinition, FunctionParameter,
-    FunctionPointer, Identifier, ImportDeclaration, ImportModule, ImportNamed,
-    LexicalDeclaration, Literal, Module, Node, NodeId, ObjectLiteral,
-    ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateLiteral,
-    Variable,
+    FunctionCall, FunctionDefinition, FunctionParameter, FunctionPointer,
+    Identifier, ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
+    Node, NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
+    Statement, TemplateLiteral, Variable,
 };
-
-// TODO remove Spanned everywhere
 
 impl Module {
     pub fn new(statements: impl IntoIterator<Item = Statement>) -> Self {
@@ -24,12 +21,6 @@ impl Module {
 impl From<Declaration> for Statement {
     fn from(declaration: Declaration) -> Self {
         Self::Declaration(declaration.s())
-    }
-}
-
-impl From<FunctionDeclaration> for Statement {
-    fn from(declaration: FunctionDeclaration) -> Self {
-        Self::Declaration(Declaration::Function(declaration.s()).s())
     }
 }
 
@@ -72,14 +63,11 @@ impl ImportDeclaration {
 
 impl Declaration {
     /// Create a lexical declaration statement: `const x = <expression>`
-    pub fn lexical(name: &str, expression: Expression) -> Declaration {
-        Self::Lexical(
-            LexicalDeclaration {
-                variables: [Variable::identifier(name, Some(expression)).s()]
-                    .into(),
-            }
-            .s(),
-        )
+    pub fn new(name: impl Into<Identifier>, expression: Expression) -> Self {
+        Self {
+            variables: [Variable::identifier(name, Some(expression)).s()]
+                .into(),
+        }
     }
 
     /// Create a statement exporting this declaration: `export const x = ...` or
@@ -108,16 +96,10 @@ impl FunctionDefinition {
     }
 
     /// Declare this function with the given name
-    pub fn declare(
-        mut self,
-        name: impl Into<Identifier>,
-    ) -> FunctionDeclaration {
-        let identifier = name.into().s();
-        self.name = Some(identifier.clone());
-        FunctionDeclaration {
-            name: identifier,
-            pointer: FunctionPointer::Inline(self).s(),
-        }
+    pub fn declare(mut self, name: impl Into<Identifier>) -> Declaration {
+        let identifier = name.into();
+        self.name = Some(identifier.clone().s());
+        Declaration::new(identifier, self.into())
     }
 
     /// Attach a name to this function definition. This is only useful in tests
@@ -147,7 +129,7 @@ impl FunctionDefinition {
 
 impl FunctionParameter {
     /// A simple single-identifier parameter, with no default expression
-    pub fn identifier(name: &str) -> Self {
+    pub fn identifier(name: impl Into<Identifier>) -> Self {
         Self {
             variable: Variable::identifier(name, None).s(),
             varargs: false,
@@ -442,9 +424,12 @@ impl From<String> for PropertyName {
 
 impl Variable {
     /// Create a simple identifier variable
-    pub fn identifier(name: &str, init: Option<Expression>) -> Self {
+    pub fn identifier(
+        name: impl Into<Identifier>,
+        init: Option<Expression>,
+    ) -> Self {
         Self {
-            binding: Binding::Identifier(Identifier::new(name).s()).s(),
+            binding: Binding::Identifier(name.into().s()).s(),
             init: init.map(|init| init.s().into()),
         }
     }

@@ -2,9 +2,9 @@
 
 use crate::{
     ast::{
-        Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
-        FunctionBody, FunctionDeclaration, If, ImportDeclaration, ImportModule,
-        LexicalDeclaration, Module, Node, Statement, WhileLoop,
+        Block, DoWhileLoop, ExportDeclaration, ForOfLoop, FunctionBody, If,
+        ImportDeclaration, ImportModule, Declaration, Module, Node,
+        Statement, WhileLoop,
     },
     error::TracedError,
     execute::{eval::Evaluate, ThreadState},
@@ -195,44 +195,11 @@ impl Execute for Node<ExportDeclaration> {
                 }
                 Ok(())
             }
-            ExportDeclaration::DefaultFunctionDeclaration(
-                function_declaration,
-            ) => {
-                let name = function_declaration.exec(state)?.expect("TODO");
-                // Fetch the function we just declared. Should never fail
-                let value =
-                    state.scope().get(name.as_str()).map_err(|error| {
-                        state.trace_error(error, function_declaration.id())
-                    })?;
-                state
-                    .export_default(value)
-                    .map_err(|error| state.trace_error(error, self.id()))
-            }
             ExportDeclaration::DefaultExpression(expression) => {
                 let value = expression.eval(state)?;
                 state
                     .export_default(value)
                     .map_err(|error| state.trace_error(error, self.id()))
-            }
-        }
-    }
-}
-
-impl Execute for Declaration {
-    /// Return the list of declared names
-    type Output<'process> = Vec<String>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Vec<String>, TracedError> {
-        match self {
-            Self::Lexical(lexical_declaration) => {
-                lexical_declaration.exec(state)
-            }
-            Self::Function(function_declaration) => {
-                let name = function_declaration.exec(state)?.expect("TODO");
-                Ok(vec![name])
             }
         }
     }
@@ -297,7 +264,7 @@ impl Execute for ForOfLoop {
     }
 }
 
-impl Execute for Node<LexicalDeclaration> {
+impl Execute for Node<Declaration> {
     /// Return the list of declared names
     type Output<'process> = Vec<String>;
 
@@ -321,29 +288,6 @@ impl Execute for Node<LexicalDeclaration> {
         }
 
         Ok(declared)
-    }
-}
-
-impl Execute for Node<FunctionDeclaration> {
-    /// Emit declared name
-    type Output<'process> = Option<String>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<String>, TracedError> {
-        let function = self
-            .pointer
-            .eval(state)?
-            .try_into_function()
-            .expect("TODO should always return fn");
-        let name = function.name().map(String::from);
-
-        // Bind the name to the function pointer
-        if let Some(name) = &name {
-            state.scope_mut().declare(name, function);
-        }
-        Ok(name)
     }
 }
 

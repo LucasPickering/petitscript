@@ -5,21 +5,20 @@ mod tests;
 
 use crate::{
     ast::{
-        AstVisitor, Binding, Block, Expression, FunctionDeclaration,
-        FunctionDefinition, FunctionPointer, Identifier, ImportDeclaration,
-        Module, Node, ObjectProperty, PropertyName, Variable, Walk as _,
+        AstVisitor, Binding, Block, Expression, FunctionDefinition,
+        FunctionPointer, Identifier, ImportDeclaration, Module, Node,
+        ObjectProperty, PropertyName, Variable, Walk as _,
     },
     error::RuntimeError,
 };
 use indexmap::IndexSet;
 use std::{hash::Hash, mem, sync::Arc};
 
-/// A convenience compiler step to apply a name to functions that aren't
-/// declared using the syntax of `function f() {}`. The function name is
-/// purely for printing/debugging, so this has no impact on semantics. This
+/// A convenience compiler step to apply a name to functions. The function name
+/// is purely for printing/debugging, so this has no impact on semantics. This
 /// covers these syntaxes:
 ///  - Function assignment: `const f = () => {};`
-///  - Function as a default parameter value: `function(f = () => {})`
+///  - Function as a default parameter value: `(f = () => {}) => {}`
 ///  - Function in an object: `{f: () => {}}`
 ///
 /// Any context in which we can trivially determine a static name for the
@@ -48,7 +47,7 @@ impl LabelFunctions {
 
 impl AstVisitor for LabelFunctions {
     fn enter_variable(&mut self, variable: &mut Variable) {
-        // Look for `const f = () => {}` or `function(f = () => {}) {}`
+        // Look for `const f = () => {}` or `(f = () => {}) => {}`
         // The second case is rare, but it's easier to support it than to not
         if let Variable {
             binding,
@@ -191,15 +190,6 @@ impl AstVisitor for CaptureFunctions {
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),
         }
-    }
-
-    /// Declare a function's name
-    fn enter_function_declaration(
-        &mut self,
-        declaration: &mut FunctionDeclaration,
-    ) {
-        // Function declarations are simple: just one name
-        self.declare(declaration.name.data().clone());
     }
 
     /// Declare names from an import

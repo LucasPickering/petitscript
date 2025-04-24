@@ -4,13 +4,13 @@
 use crate::{
     ast::{
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
-        Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
-        FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
-        FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-        ImportModule, ImportNamed, LexicalDeclaration, Literal, Module, Node,
-        NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
-        PropertyAccess, PropertyName, Statement, TemplateChunk,
-        TemplateLiteral, UnaryOperation, UnaryOperator, Variable, WhileLoop,
+        Block, DoWhileLoop, ExportDeclaration, Expression, FunctionBody,
+        FunctionCall, FunctionDefinition, FunctionParameter, FunctionPointer,
+        Identifier, If, ImportDeclaration, ImportModule, ImportNamed,
+        Declaration, Literal, Module, Node, NodeId, ObjectLiteral,
+        ObjectPatternElement, ObjectProperty, PropertyAccess, PropertyName,
+        Statement, TemplateChunk, TemplateLiteral, UnaryOperation,
+        UnaryOperator, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     source::{SourceId, SourceTable, Span, SpanTable},
@@ -487,12 +487,11 @@ impl Transform for ext::Decl {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         match self {
-            Self::VarDecl(var_decl) => {
-                var_decl.transform_node(context).map(Declaration::Lexical)
-            }
-            Self::FnDecl(fn_decl) => {
-                fn_decl.transform_node(context).map(Declaration::Function)
-            }
+            Self::VarDecl(var_decl) => var_decl.transform(context),
+            Self::FnDecl(_) => unsupported(
+                "`function`",
+                "Use arrow syntax instead: `const f = (...) => {...}`",
+            ),
             Self::ClassDecl(_) => {
                 unsupported("`class`", "Classes are not supported")
             }
@@ -506,7 +505,7 @@ impl Transform for ext::Decl {
 }
 
 impl Transform for ext::VarDecl {
-    type Output = LexicalDeclaration;
+    type Output = Declaration;
 
     fn transform(
         self,
@@ -523,7 +522,7 @@ impl Transform for ext::VarDecl {
             );
         }
         let variables = self.declared().transform_all(context)?;
-        Ok(LexicalDeclaration { variables })
+        Ok(Declaration { variables })
     }
 }
 
@@ -664,28 +663,6 @@ impl Transform for ext::Name {
 
     fn transform(self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
         Ok(Identifier::new(self.text()))
-    }
-}
-
-impl Transform for ext::FnDecl {
-    type Output = FunctionDeclaration;
-
-    fn transform(
-        self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, TxError> {
-        // `function f()` is the only supported form; `function()` in invalid
-        let name = self.name().required()?.transform_node(context)?;
-        let parameters = self.parameters().required()?.transform(context)?;
-        let body_block = self.body().required()?.transform_node(context)?;
-        let pointer = FunctionPointer::Inline(FunctionDefinition {
-            name: Some(name.clone()),
-            parameters,
-            body: FunctionBody::Block(body_block),
-            captures: [].into(), // Will be filled out later
-        })
-        .into_node(context, self.range());
-        Ok(FunctionDeclaration { name, pointer })
     }
 }
 

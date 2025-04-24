@@ -137,6 +137,7 @@ pub enum Statement {
     Empty,
     Block(Node<Block>),
     Expression(Node<Expression>),
+    /// `const` declaration
     Declaration(Node<Declaration>),
 
     If(Node<If>),
@@ -160,19 +161,11 @@ pub struct Block {
     pub statements: Box<[Node<Statement>]>,
 }
 
-/// A `const` or `function` declaration
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub enum Declaration {
-    Lexical(Node<LexicalDeclaration>),
-    Function(Node<FunctionDeclaration>),
-}
-
 /// A single `const` declaration with one or more declared variables: `const x =
 /// 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
-pub struct LexicalDeclaration {
+pub struct Declaration {
     pub variables: Box<[Node<Variable>]>,
 }
 
@@ -182,19 +175,6 @@ pub struct LexicalDeclaration {
 pub struct Variable {
     pub binding: Node<Binding>,
     pub init: Option<Box<Node<Expression>>>,
-}
-
-/// A declaration of a function using `function` syntax:
-/// ```notrust
-/// function f() {
-///   // Body
-/// }
-/// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
-pub struct FunctionDeclaration {
-    pub name: Node<Identifier>,
-    pub pointer: Node<FunctionPointer>,
 }
 
 /// A form of indirection for a function definition. Immediately after parsing,
@@ -400,12 +380,13 @@ impl FromStr for NativeModuleName {
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub enum ExportDeclaration {
+    /// TODO
     Reexport {
         // TODO
     },
+    /// `export const x = 3;`
     Declaration(Node<Declaration>),
-    // TODO do we need this variant? Can we merge it into DefaultExpression?
-    DefaultFunctionDeclaration(Node<FunctionDeclaration>),
+    /// `export default 3;`
     DefaultExpression(Node<Expression>),
 }
 

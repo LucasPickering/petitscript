@@ -1,9 +1,9 @@
-//! Serialization and deserialization
+//! Serialization and deserialization via the [serde] crate
 //!
-//! This module is designed to imitate Serde data format crate, and thus follows
-//! [the conventions laid out by Serde](https://serde.rs/conventions.html),
+//! This module is designed to imitate a Serde data format crate, and thus
+//! follows [the conventions laid out by Serde](https://serde.rs/conventions.html),
 //! with the exception of the `Error` and `Result` types: we use [ValueError]
-//! instead.
+//! instead and no `Result` alias is provided.
 
 mod de;
 mod impls;
@@ -33,7 +33,7 @@ mod tests {
     use crate::{
         compile::FunctionDefinitionId,
         execute::ProcessId,
-        function::{Function, UserFunctionId},
+        value::function::{Function, UserFunctionId},
     };
     use indexmap::indexmap;
     use test_case::test_case;

@@ -1,6 +1,9 @@
 //! Standard library functions related to objects.
 
-use crate::{Array, NativeFunctionTable, Object, Process, Value};
+use crate::{
+    value::{Array, Object},
+    NativeFunctionTable, Process, Value,
+};
 
 /// `Object` module
 pub fn module(functions: &mut NativeFunctionTable) -> Object {

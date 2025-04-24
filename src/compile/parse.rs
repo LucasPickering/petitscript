@@ -3,7 +3,6 @@
 
 use crate::{
     ast::{
-        source::{SourceId, SourceTable, Span, SpanTable},
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
         Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
         FunctionBody, FunctionCall, FunctionDeclaration, FunctionDefinition,
@@ -14,6 +13,7 @@ use crate::{
         TemplateLiteral, UnaryOperation, UnaryOperator, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
+    source::{SourceId, SourceTable, Span, SpanTable},
     Source,
 };
 use rslint_parser::{

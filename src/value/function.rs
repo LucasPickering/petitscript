@@ -1,6 +1,9 @@
 use crate::{
-    compile::FunctionDefinitionId, error::RuntimeError, execute::ProcessId,
-    value::Value, FromPs, IntoPs, Process,
+    compile::FunctionDefinitionId,
+    error::RuntimeError,
+    execute::ProcessId,
+    value::{FromPs, IntoPs, Value},
+    Process,
 };
 use indexmap::IndexMap;
 use std::{

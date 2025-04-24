@@ -3,9 +3,9 @@
 
 use crate::{
     ast::{Binding, Identifier},
-    function::{Captures, NativeFunctionId},
-    value::Value,
-    RuntimeError, ValueType,
+    value:: function::{Captures, NativeFunctionId},
+    value::{Value, ValueType},
+    RuntimeError,
 };
 use indexmap::IndexMap;
 use std::{iter, sync::Arc};
@@ -18,7 +18,7 @@ use std::{iter, sync::Arc};
 ///
 /// A user scope is a scope in which a user can declare names.
 #[derive(Debug)]
-pub(crate) struct Scope {
+pub struct Scope {
     globals: Arc<GlobalEnvironment>,
     /// The first scope in a program. This is the only scope that allows
     /// exports. Conceptually this is part of the stack below, but by storing
@@ -37,13 +37,13 @@ impl Scope {
     /// lexical scope in a source file. It is always the _second_ scope in the
     /// chain (after the global scope), and is the only scope that allows
     /// exports.
-    pub(crate) fn is_root(&self) -> bool {
+    pub fn is_root(&self) -> bool {
         self.stack.is_empty()
     }
 
     /// Replace the current scope with a subscope of itself. This should be
     /// called right before entering a new lexical scope block.
-    pub(crate) fn push_subscope(&mut self) {
+    pub fn push_subscope(&mut self) {
         self.stack.push(Environment::default());
     }
 
@@ -51,14 +51,14 @@ impl Scope {
     /// bindings. This should be called immediately after exiting a lexical
     /// scope. This should never be called on the global scope; that indicates
     /// we're popping more than we're pushing
-    pub(crate) fn pop_subscope(&mut self) {
+    pub fn pop_subscope(&mut self) {
         if self.stack.pop().is_none() {
             panic!("Cannot pop the global scope");
         }
     }
 
     /// Declare a single name in scope, and bind it to a variable
-    pub(crate) fn declare(
+    pub fn declare(
         &mut self,
         name: impl Into<String>,
         value: impl Into<Value>,
@@ -70,7 +70,7 @@ impl Scope {
 
     /// Get the value of a binding. Return an error if the binding doesn't exist
     /// in scope.
-    pub(crate) fn get(&self, name: &str) -> Result<Value, RuntimeError> {
+    pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
         // Search up the chain until we find the name
         self.chain()
             .find_map(|environment| environment.get(name).cloned())
@@ -80,7 +80,7 @@ impl Scope {
     }
 
     /// Get a function definition from a specific type's prototype
-    pub(crate) fn get_prototype(
+    pub fn get_prototype(
         &self,
         value_type: ValueType,
         name: &str,
@@ -97,7 +97,7 @@ impl Scope {
     /// identifier, or a structured identifier, in which case multiple names
     /// may be bound. This is a convenience method for calling [Self::declare]
     /// on each name in the binding.
-    pub(crate) fn bind(
+    pub fn bind(
         &mut self,
         binding: &Binding,
         value: Value,
@@ -122,7 +122,7 @@ impl Scope {
     /// return an error. This indicates a compiler bug. The compiler should
     /// ensure that any captured names are available in a parent scope. An
     /// invalid reference here means the compiler messed up.
-    pub(crate) fn captures(
+    pub fn captures(
         &self,
         identifiers: &[Identifier],
     ) -> Result<Captures, RuntimeError> {
@@ -161,7 +161,7 @@ impl Scope {
 /// After construction, this should always be wrapped in an `Arc` so it can be
 /// shared cheaply.
 #[derive(Debug, Default)]
-pub(crate) struct GlobalEnvironment {
+pub struct GlobalEnvironment {
     environment: Environment,
     /// A set of bindings scoped to a particular type, such as `Array.map`.
     /// Prototypes are restricted to only storing functions, as there is no use
@@ -172,7 +172,7 @@ pub(crate) struct GlobalEnvironment {
 
 impl GlobalEnvironment {
     /// Declare a single name in this scope and bind it to a value
-    pub(crate) fn declare(
+    pub fn declare(
         &mut self,
         name: impl Into<String>,
         value: impl Into<Value>,
@@ -182,7 +182,7 @@ impl GlobalEnvironment {
 
     /// Set the entire prototype for a single type. If the type already has a
     /// prototype defined, panic as that's a bug
-    pub(crate) fn declare_prototype(
+    pub fn declare_prototype(
         &mut self,
         value_type: ValueType,
         prototype: Prototype,
@@ -193,7 +193,7 @@ impl GlobalEnvironment {
     }
 
     /// Create a new lexical scope with this global environment as the parent
-    pub(crate) fn scope(self: Arc<Self>) -> Scope {
+    pub fn scope(self: Arc<Self>) -> Scope {
         Scope {
             globals: self,
             root: Environment::default(),
@@ -221,11 +221,11 @@ impl Environment {
 /// functions must be bound to a value before being called. As such, the
 /// included native functions must point to a bound function, not a static one.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Prototype(IndexMap<String, NativeFunctionId>);
+pub struct Prototype(IndexMap<String, NativeFunctionId>);
 
 impl Prototype {
     /// Add a function to this prototype
-    pub(crate) fn declare(
+    pub fn declare(
         &mut self,
         name: impl Into<String>,
         definition_id: NativeFunctionId,

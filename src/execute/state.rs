@@ -1,15 +1,18 @@
 //! Program state management
 
 use crate::{
-    ast::{
-        source::{QualifiedSpan, StackTraceFrame},
-        NodeId,
-    },
+    ast::NodeId,
     compile::Program,
-    error::TracedError,
-    function::{FunctionId, NativeFunctionDefinition, NativeFunctionId},
-    scope::{GlobalEnvironment, Scope},
-    value::{Exports, Value},
+    error::{StackTraceFrame, TracedError},
+    execute::{
+        scope::{GlobalEnvironment, Scope},
+        Exports,
+    },
+    source::QualifiedSpan,
+    value::{
+        function::{FunctionId, NativeFunctionDefinition, NativeFunctionId},
+        Value,
+    },
     Process, RuntimeError,
 };
 use indexmap::map::Entry;
@@ -104,8 +107,8 @@ impl<'process> ThreadState<'process> {
         }
     }
 
-    /// Attach a stack trace to the given error, including the given span as the
-    /// most recent location in the trace.
+    /// Attach a stack trace to the given error, including the given call site
+    /// as the most recent location in the trace.
     pub fn trace_error(
         &self,
         error: RuntimeError,

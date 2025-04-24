@@ -1,7 +1,9 @@
 use crate::{
     error::ValueError,
-    function::{Function, FunctionInner},
-    Array, Number, Object, Value,
+    value::{
+        function::{Function, FunctionInner},
+        Array, Number, Object, Value,
+    },
 };
 use indexmap::IndexMap;
 use serde::de::{

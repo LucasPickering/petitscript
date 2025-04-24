@@ -11,7 +11,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// A source of source code. E.g. a string literal or a file path
+/// A source code provider
+///
+/// Examples of a `Source` are a string literal containing code or a path to a
+/// source file.
 pub trait Source: 'static + Debug + Send + Sync {
     /// Descriptive user-friendly display name for this source
     fn name(&self) -> Option<String>;
@@ -21,10 +24,11 @@ pub trait Source: 'static + Debug + Send + Sync {
     /// working directory will be used.
     fn import_root(&self) -> Option<&Path>;
 
-    /// Get the source code from this source
+    /// Load source code from this source
     fn text(&self) -> Result<Cow<'_, str>, Error>;
 }
 
+/// Load source code from a string literal
 impl Source for &'static str {
     fn name(&self) -> Option<String> {
         None
@@ -40,6 +44,7 @@ impl Source for &'static str {
     }
 }
 
+/// Load source code directly from a string
 impl Source for String {
     fn name(&self) -> Option<String> {
         None
@@ -55,6 +60,7 @@ impl Source for String {
     }
 }
 
+/// Load source code from a file
 impl Source for PathBuf {
     fn name(&self) -> Option<String> {
         // Absolute-ify the path and normalize it, but do _not_ canonicalize.
@@ -232,51 +238,5 @@ impl SpanTable {
         if self.0.insert(id, span).is_some() {
             panic!("AST node {id:?} already has an entry in the span table");
         }
-    }
-}
-
-/// A list of source locations representing the function call stack at a
-/// particular moment in time. Most recent call is _last_ on this stack.
-#[derive(Debug, Default)]
-pub struct StackTrace(Vec<StackTraceFrame>);
-
-impl Display for StackTrace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO reverse order?
-        writeln!(f, "Error (most recent call last)")?;
-        for frame in &self.0 {
-            writeln!(f, "  {frame}")?;
-        }
-        Ok(())
-    }
-}
-
-impl IntoIterator for StackTrace {
-    type Item = StackTraceFrame;
-    type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<StackTraceFrame> for StackTrace {
-    fn from_iter<T: IntoIterator<Item = StackTraceFrame>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-/// One frame in a stack trace
-#[derive(Debug)]
-pub struct StackTraceFrame {
-    /// TODO
-    pub span: QualifiedSpan,
-    /// TODO
-    pub function_name: String,
-}
-
-impl Display for StackTraceFrame {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "in {} at {}", self.function_name, self.span)
     }
 }

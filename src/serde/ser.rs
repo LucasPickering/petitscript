@@ -2,8 +2,11 @@
 
 use crate::{
     error::ValueError,
-    function::{Captures, Function, UserFunctionId},
-    IntoPs, Value,
+    value::{
+        function::{Captures, Function, UserFunctionId},
+        IntoPs,
+    },
+    Value,
 };
 use indexmap::IndexMap;
 use serde::ser;

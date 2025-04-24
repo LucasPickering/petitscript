@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-/// TODO
+/// A reference-counted immutable key-value store
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]

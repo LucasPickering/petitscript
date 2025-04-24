@@ -10,7 +10,7 @@ use crate::{
     },
     error::{RuntimeError, TracedError, ValueError},
     execute::{exec::Execute, state::CallSite, ThreadState},
-    function::{
+    value::  function::{
         Function, FunctionInner, NativeFunctionDefinition, UserFunctionId,
     },
     value::{Array, Number, Object, Value, ValueType},
@@ -235,9 +235,24 @@ impl Evaluate for Node<PropertyAccess> {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
         };
-        value
-            .get(&key, state.scope())
-            .map_err(|error| state.trace_error(error, self.id()))
+        let value = value
+            // Check for the property directly on the value
+            .get(&key)
+            .map_err(|error| state.trace_error(error, self.id()))?
+            // If it wasn't directly on the value, check the prototype
+            .or_else(|| {
+                // If the key isn't a string, we know it won't be in the
+                // prototype so we can bail out
+                let name = key.as_str()?;
+                let definition_id =
+                    state.scope().get_prototype(value.type_(), name)?;
+                Some(
+                    Function::bound(definition_id, value.clone(), name.into())
+                        .into(),
+                )
+            })
+            .unwrap_or_default();
+        Ok(value)
     }
 }
 

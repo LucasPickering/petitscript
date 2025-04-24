@@ -5,8 +5,10 @@ mod object;
 mod string;
 
 use crate::{
-    error::RuntimeError, function::Varargs, json, scope::GlobalEnvironment,
-    value::Object, NativeFunctionTable, Number, Process, Value, ValueType,
+    error::RuntimeError,
+    execute::GlobalEnvironment,
+    value::{function::Varargs, Number, Object, Value, ValueType},
+    NativeFunctionTable, Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -79,9 +81,7 @@ fn json_stringify(
     value: Value,
     // TODO support `replace` and `space` args
 ) -> String {
-    let mut buf = String::new();
-    json::write_json(&mut buf, &value);
-    buf
+    value.to_json()
 }
 
 /// Parse a JSON string
@@ -91,5 +91,5 @@ fn json_parse(
     input: String,
     // TODO support `reviver` arg
 ) -> Result<Value, RuntimeError> {
-    json::parse_json(&input).map_err(|error| RuntimeError::JsonParse { error })
+    Value::from_json(&input)
 }

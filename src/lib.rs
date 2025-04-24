@@ -5,29 +5,29 @@ pub mod ast;
 mod compile;
 pub mod error;
 mod execute;
-mod json;
-mod scope;
 #[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))] // TODO make this work
 pub mod serde;
+mod source;
 mod stdlib;
-mod value;
+pub mod value;
 
 pub use crate::{
-    ast::source::Source,
     error::Error,
-    execute::Process,
-    value::{
-        function, Array, Exports, FromPs, Function, IntoPs, Number, Object,
-        PetitString, Value, ValueType,
-    },
+    execute::{Exports, Process},
+    source::Source,
+    value::Value,
 };
 
 use crate::{
     ast::NativeModuleName,
     error::RuntimeError,
-    scope::GlobalEnvironment,
+    execute::GlobalEnvironment,
     stdlib::stdlib,
-    value::function::{FromPsArgs, IntoPsResult, NativeFunctionTable},
+    value::{
+        function::{FromPsArgs, IntoPsResult, NativeFunctionTable},
+        Function,
+    },
 };
 use indexmap::IndexMap;
 use std::sync::Arc;
@@ -35,8 +35,9 @@ use std::sync::Arc;
 // TODO replace all usages of `impl ToString` with `impl Into<String>`? prevent
 // clone when the value is already a String
 
-/// The main entrypoint for executing and evaluating PetitScript programs. An
-/// engine defines how code should be executed. TODO more
+/// The main entrypoint for executing and evaluating PetitScript programs
+///
+/// An engine defines how code should be executed. TODO more
 #[derive(Debug)]
 pub struct Engine {
     /// Modules registered by the user that can be imported into any script.

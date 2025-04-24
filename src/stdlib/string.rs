@@ -2,7 +2,7 @@
 //! module and its prototype
 
 use crate::{
-    scope::Prototype, NativeFunctionTable, PetitString, Process, Value,
+    execute::Prototype, value::PetitString, NativeFunctionTable, Process, Value,
 };
 
 /// Coerce a value to a string

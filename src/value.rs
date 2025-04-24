@@ -1,9 +1,10 @@
-//! Runtime values
+//! TODO
 
 mod array;
 #[cfg(feature = "buffer")]
 mod buffer;
-pub mod function;
+pub(crate) mod function;
+mod json;
 mod macros;
 mod number;
 mod object;
@@ -11,16 +12,15 @@ mod string;
 
 pub use array::Array;
 #[cfg(feature = "buffer")]
+#[cfg_attr(docsrs, doc(cfg(feature = "buffer")))]
 pub use buffer::Buffer;
-pub use function::Function;
+pub use function::{FromPsArgs, Function, IntoPsResult};
 pub use number::Number;
 pub use object::Object;
 pub use string::PetitString;
 
 use crate::{
     error::{RuntimeError, ValueError},
-    json,
-    scope::Scope,
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
         impl_value_numeric_binary_op,
@@ -34,7 +34,10 @@ use std::{
     path::PathBuf,
 };
 
-/// TODO
+/// Any PetitScript value
+///
+/// See the [petitscript::value](crate::value) module for individual value
+/// types.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Value {
     /// TODO
@@ -58,8 +61,9 @@ pub enum Value {
     Object(Object),
     /// An immutable byte buffer
     #[cfg(feature = "buffer")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "buffer")))]
     Buffer(Buffer),
-    /// TODO
+    /// A callable procedure
     Function(Function),
 }
 
@@ -81,8 +85,8 @@ impl Value {
         }
     }
 
-    /// Coernce this value to a number.
-    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion
+    /// Coerce this value to a number.
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion>
     pub fn to_number(&self) -> Option<Number> {
         match self {
             Self::Undefined => Some(Number::NAN),
@@ -101,13 +105,13 @@ impl Value {
     }
 
     /// Coerce this value to a string. This intentionally shadows
-    /// [ToString::to_string](std::fmt::ToString::to_string) to prevent
-    /// accidentally using display rules for coercion. The [Display] impl is
-    /// intended just for debug printing in Rust. This coercion implementation
-    /// aims to match JS's semantics for string coercion. If you specifically
-    /// want the display implementation, use `format!({string})` instead.
+    /// [ToString::to_string] to prevent accidentally using display rules for
+    /// coercion. The [Display] impl is intended just for debug printing in
+    /// Rust. This coercion implementation aims to match JS's semantics for
+    /// string coercion. If you specifically want the display implementation,
+    /// use `format!({string})` instead.
     ///
-    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String>
     pub fn to_string(&self) -> PetitString {
         match self {
             Self::Undefined => "undefined".into(),
@@ -139,6 +143,12 @@ impl Value {
         let mut s = String::new();
         json::write_json(&mut s, self);
         s
+    }
+
+    /// Parse a JSON string into a PetitScript value
+    pub fn from_json(json: &str) -> Result<Self, RuntimeError> {
+        json::parse_json(json)
+            .map_err(|error| RuntimeError::JsonParse { error })
     }
 
     /// If this value is a string, get the inner string. Otherwise return a type
@@ -233,14 +243,12 @@ impl Value {
         }
     }
 
-    /// Get a property from this value. If the property is not present on the
-    /// value, check its prototype as well. Return `undefined` if the property
-    /// isn't present. If this value is `null` or `undefined`, return an error.
+    /// Get a property from this value. Return `None` if the property isn't
+    /// present. If this value is `null` or `undefined`, return an error.
     pub(crate) fn get(
         &self,
         key: &Self,
-        scope: &Scope,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Option<Value>, RuntimeError> {
         let value: Option<Value> = match (self, key) {
             (Self::Array(array), Self::Number(Number::Int(i))) => {
                 // If the index is positive and in the array, get the value
@@ -258,19 +266,7 @@ impl Value {
             _ => None,
         };
 
-        Ok(value
-            // If it wasn't directly on the value, check the prototype
-            .or_else(|| {
-                // If the key isn't a string, we know it won't be in the
-                // prototype so we can bail out
-                let name = key.as_str()?;
-                let definition_id = scope.get_prototype(self.type_(), name)?;
-                Some(
-                    Function::bound(definition_id, self.clone(), name.into())
-                        .into(),
-                )
-            })
-            .unwrap_or_default())
+        Ok(value)
     }
 
     /// Boolean AND operator (&&)
@@ -346,7 +342,7 @@ impl Add for Value {
     type Output = Self;
 
     /// Add two values together. The semantics on this replicate those of JS
-    /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition>
     fn add(self, rhs: Self) -> Self::Output {
         // Add is unique from the other mathematical operations. If either side
         // is a string, do string concat.
@@ -451,7 +447,7 @@ impl<T: Into<Value>> From<IndexMap<&str, T>> for Value {
     }
 }
 
-/// Possible types for a value
+/// Possible types for a [Value]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ValueType {
     Undefined,
@@ -483,85 +479,7 @@ impl Display for ValueType {
     }
 }
 
-/// Values exported from a module. This is the output of loading a module.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Exports {
-    /// Default exported value
-    pub default: Option<Value>,
-    /// Named exported values
-    pub named: IndexMap<String, Value>,
-}
-
-impl Exports {
-    /// Export a module as named exports. This allows it to be imported like so:
-    ///
-    /// ```notrust
-    /// import { add } from "module";
-    ///
-    /// add(1, 2);
-    /// ```
-    pub fn named<K, V>(exports: impl IntoIterator<Item = (K, V)>) -> Self
-    where
-        K: ToString,
-        V: Into<Value>,
-    {
-        let named = exports
-            .into_iter()
-            .map(|(name, value)| (name.to_string(), value.into()))
-            .collect();
-        Self {
-            named,
-            default: None,
-        }
-    }
-
-    /// Export a module as both named exports and a default object of those
-    /// names. This allows a module to be used with both named and default
-    /// imports, like so:
-    ///
-    /// ```notrust
-    /// import { add } from "module";
-    /// import module from "module";
-    ///
-    /// add(1, 2);
-    /// module.add(1, 2);
-    /// ```
-    pub fn named_and_default<K, V>(
-        exports: impl IntoIterator<Item = (K, V)>,
-    ) -> Self
-    where
-        K: ToString,
-        V: Into<Value>,
-    {
-        let mut default = Object::new();
-        let mut named = IndexMap::new();
-        for (name, value) in exports {
-            let name = name.to_string();
-            let value: Value = value.into();
-            named.insert(name.clone(), value.clone());
-            // Since we're the only owner, this will insert without cloning
-            default = default.insert(name, value);
-        }
-        Self {
-            named,
-            default: Some(default.into()),
-        }
-    }
-}
-
-impl Display for Exports {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(default) = &self.default {
-            writeln!(f, "(default): {default}")?;
-        }
-        for (name, value) in &self.named {
-            writeln!(f, "{name}: {value}")?;
-        }
-        Ok(())
-    }
-}
-
-/// Trait for converting values into [Value]
+/// A trait for converting into [Value]
 pub trait IntoPs {
     fn into_ps(self) -> Result<Value, ValueError>;
 }
@@ -587,7 +505,7 @@ impl IntoPs for PathBuf {
     }
 }
 
-/// Trait for converting values from [Value]
+/// A trait for converting from [Value]
 pub trait FromPs: Sized {
     fn from_ps(value: Value) -> Result<Self, ValueError>;
 }

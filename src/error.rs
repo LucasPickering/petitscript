@@ -1,11 +1,10 @@
+//! Sometimes bad things happen
+
 use crate::{
-    ast::{
-        source::{QualifiedSpan, StackTrace},
-        NativeModuleName,
-    },
+    ast::NativeModuleName,
     compile::{FunctionDefinitionId, SUPPORTED_EXTENSIONS},
-    value::ValueType,
-    Number,
+    source::QualifiedSpan,
+    value::{Number, ValueType},
 };
 use rslint_parser::ParserError;
 use std::{
@@ -97,13 +96,15 @@ impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::DuplicateAppData { .. } => None,
-            Self::InvalidModuleName(error) => Some(error),
-            Self::InvalidExtension { .. } => None,
             Self::Io { error, .. } => Some(error),
-            Self::Parse(error) => Some(error),
-            Self::Transform { error, .. } => Some(error),
-            Self::Runtime { error, .. } => Some(error),
+            Self::InvalidExtension { .. } => None,
             Self::UnknownAppData { .. } => None,
+            // For internal error types, there's no reason to add an additional
+            // layer of source, so defer to the child
+            Self::InvalidModuleName(error) => error.source(),
+            Self::Parse(error) => error.source(),
+            Self::Transform { error, .. } => error.source(),
+            Self::Runtime { error, .. } => error.source(),
         }
     }
 }
@@ -154,8 +155,10 @@ impl Display for ParseError {
 impl StdError for ParseError {}
 
 /// An error that occurs while transforming a parsed program from ECMAScript to
-/// the PetitScript abstract syntax tree. This indicates the source is valid
-/// JavaScript syntax, but is illegal in PetitScript.
+/// PetitScript
+///
+/// This indicates the source is valid ECMAScript syntax, but is illegal in
+/// PetitScript.
 #[derive(Debug)]
 pub enum TransformError {
     /// A nested error that occurred while parsing an imported local module
@@ -305,7 +308,9 @@ impl StdError for RuntimeError {
             RuntimeError::Internal(_) => None,
             RuntimeError::ImmutableAssign { .. } => None,
             RuntimeError::JsonParse { .. } => None,
-            RuntimeError::Other(error) => Some(&**error),
+            // This is a transparent wrapper. We're going to print the error
+            // in our display, so don't print it again as the source
+            RuntimeError::Other(error) => error.source(),
             RuntimeError::Reference { .. } => None,
             RuntimeError::UnknownModule { .. } => None,
             RuntimeError::UnknownUserFunction(_) => None,
@@ -425,3 +430,58 @@ impl Display for ModuleNameError {
 }
 
 impl StdError for ModuleNameError {}
+
+/// A list of source locations representing the function call stack
+///
+/// This captures the call stack at a particular moment in time, typically when
+/// an error occurs. The most recent call is _last_ on this stack.
+#[derive(Debug, Default)]
+pub struct StackTrace(Vec<StackTraceFrame>);
+
+impl StackTrace {
+    /// Get an iterator over the frames of this stack. The most recent call will
+    /// be _last_.
+    pub fn iter(&self) -> impl Iterator<Item = &StackTraceFrame> {
+        self.0.iter()
+    }
+}
+
+impl Display for StackTrace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Error (most recent call last)")?;
+        for frame in &self.0 {
+            writeln!(f, "  {frame}")?;
+        }
+        Ok(())
+    }
+}
+
+impl IntoIterator for StackTrace {
+    type Item = StackTraceFrame;
+    type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl FromIterator<StackTraceFrame> for StackTrace {
+    fn from_iter<T: IntoIterator<Item = StackTraceFrame>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+/// One frame in a stack trace
+#[derive(Debug)]
+pub struct StackTraceFrame {
+    /// TODO
+    pub span: QualifiedSpan,
+    /// TODO
+    pub function_name: String,
+}
+
+impl Display for StackTraceFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "in {} at {}", self.function_name, self.span)
+    }
+}

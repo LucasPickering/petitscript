@@ -4,10 +4,12 @@
 use crate::{
     compile::FunctionDefinitionId,
     execute::ProcessId,
-    function::{
-        Captures, Function, FunctionInner, NativeFunctionId, UserFunctionId,
+    value::{
+        function::{
+            Captures, Function, FunctionInner, NativeFunctionId, UserFunctionId,
+        },
+        Array, IntoPs, Number, Object, Value,
     },
-    Array, IntoPs, Number, Object, Value,
 };
 use serde::{
     de::{

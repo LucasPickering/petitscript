@@ -1,6 +1,6 @@
 //! JSON parsing and stringification
 
-use crate::{Array, Number, Object, Value};
+use crate::value::{Array, Number, Object, Value};
 use std::{fmt::Write, str};
 use winnow::{
     ascii::{dec_int, float},

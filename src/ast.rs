@@ -1,7 +1,8 @@
-//! The [Abstract Syntax Tree](https://w.wiki/6jCi) types of PetitScript. These
-//! define all the possible components of a valid PetitScript program. Because
-//! PetitScript is implemented as a tree-walking interpreter, these types also
-//! compose into executable PS programs.
+//! The [Abstract Syntax Tree](https://w.wiki/6jCi) types of PetitScript
+//!
+//! These define all the possible components of a valid PetitScript program.
+//! Because PetitScript is implemented as a tree-walking interpreter, these
+//! types also compose into executable PS programs.
 //!
 //! ## Collection Types
 //!
@@ -11,7 +12,6 @@
 
 mod build;
 mod display;
-pub mod source;
 mod walk;
 
 pub use build::{IntoExpression, IntoNode, IntoStatement};
@@ -322,7 +322,7 @@ pub struct DoWhileLoop {
 
 /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
 /// No other import formats are supported
-/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import>
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq))]
 pub struct ImportDeclaration {

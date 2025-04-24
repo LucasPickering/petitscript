@@ -103,7 +103,7 @@ macro_rules! impl_numeric_binary_op {
 /// Implement `From<T> for Number`, for infallible conversions
 macro_rules! impl_from {
     ($type:ty, $variant:ident) => {
-        impl From<$type> for $crate::Number {
+        impl From<$type> for $crate::value::Number {
             fn from(value: $type) -> Self {
                 Self::$variant(value.into())
             }

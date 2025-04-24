@@ -51,7 +51,7 @@ macro_rules! ensure_type {
             value
         } else {
             return Err($crate::error::ValueError::Type {
-                expected: $crate::ValueType::$variant,
+                expected: $crate::value::ValueType::$variant,
                 actual: $value.type_(),
             });
         }
@@ -62,7 +62,7 @@ macro_rules! ensure_type {
 /// variant of `Value`.
 macro_rules! impl_from_ps {
     ($type:ty, $variant:ident, infallible) => {
-        impl $crate::FromPs for $type {
+        impl $crate::value::FromPs for $type {
             fn from_ps(
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {
@@ -73,7 +73,7 @@ macro_rules! impl_from_ps {
         }
     };
     ($type:ty, $variant:ident, fallible) => {
-        impl $crate::FromPs for $type {
+        impl $crate::value::FromPs for $type {
             fn from_ps(
                 value: $crate::Value,
             ) -> Result<Self, $crate::error::ValueError> {

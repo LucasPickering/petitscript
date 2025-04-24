@@ -1,6 +1,6 @@
 use indexmap::IndexMap;
 use petitscript::{
-    error::RuntimeError, Engine, Error, Exports, Number, Process, Value,
+    error::RuntimeError, value::Number, Engine, Error, Exports, Process, Value,
 };
 use std::{env, path::PathBuf};
 use test_case::test_case;

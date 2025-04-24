@@ -7,11 +7,9 @@ pub use function::FunctionDefinitionId;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
-    ast::{
-        source::{SourceTable, SpanTable},
-        Module, Node, Walk,
-    },
+    ast::{Module, Node, Walk},
     compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
+    source::{SourceTable, SpanTable},
     Error, Source,
 };
 

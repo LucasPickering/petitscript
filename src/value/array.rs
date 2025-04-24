@@ -5,10 +5,10 @@ use std::{
     sync::Arc,
 };
 
-/// TODO
+/// A reference-counted immutable ordered collection of values.
 ///
-/// Operations on this array will use optimistic mutation, meaning they will
-/// mutate the current array in place if there are no other references to it,
+/// Operations on arrays will use optimistic mutation, meaning they will mutate
+/// the current array in place if there are no other references to it,
 /// and only clone the contents if they're referenced in multiple places. This
 /// makes this method very fast for most use cases.
 #[derive(Clone, Debug, Default, PartialEq)]

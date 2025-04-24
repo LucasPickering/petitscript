@@ -2,7 +2,7 @@ use crate::{
     compile::FunctionDefinitionId,
     error::RuntimeError,
     execute::ProcessId,
-    value::{FromPs, IntoPs, Value},
+    value::{FromPetit, IntoPetit, Value},
     Process,
 };
 use indexmap::IndexMap;
@@ -189,8 +189,8 @@ impl NativeFunctionTable {
     pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
     where
         F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
-        Args: FromPsArgs,
-        Out: IntoPsResult,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
     {
         let id = NativeFunctionId(self.0.len() as u64);
         self.0.push(NativeFunctionDefinition::static_(function));
@@ -207,9 +207,9 @@ impl NativeFunctionTable {
     ) -> NativeFunctionId
     where
         F: 'static + Fn(&Process, This, Args) -> Out + Send + Sync,
-        This: FromPs,
-        Args: FromPsArgs,
-        Out: IntoPsResult,
+        This: FromPetit,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
     {
         let id = NativeFunctionId(self.0.len() as u64);
         self.0.push(NativeFunctionDefinition::bound(function));
@@ -255,15 +255,15 @@ impl NativeFunctionDefinition {
     pub fn static_<F, Args, Out>(f: F) -> Self
     where
         F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
-        Args: FromPsArgs,
-        Out: IntoPsResult,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
         let function = move |process: &Process, args: &[Value]| {
             // TODO add error context
-            let args = Args::from_ps_args(args)?;
-            let output = f(process, args).into_ps_result()?;
-            output.into_ps().map_err(RuntimeError::Value)
+            let args = Args::from_petit_args(args)?;
+            let output = f(process, args).into_petit_result()?;
+            output.into_petit().map_err(RuntimeError::Value)
         };
         Self::Static(Arc::new(function))
     }
@@ -272,19 +272,19 @@ impl NativeFunctionDefinition {
     pub fn bound<F, This, Args, Out>(f: F) -> Self
     where
         F: 'static + Fn(&Process, This, Args) -> Out + Send + Sync,
-        This: FromPs,
-        Args: FromPsArgs,
-        Out: IntoPsResult,
+        This: FromPetit,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
         let function =
             move |process: &Process, this: &Value, args: &[Value]| {
                 // TODO add error context
                 // TODO avoid clone on receiver
-                let this = This::from_ps(this.clone())?;
-                let args = Args::from_ps_args(args)?;
-                let output = f(process, this, args).into_ps_result()?;
-                output.into_ps().map_err(RuntimeError::Value)
+                let this = This::from_petit(this.clone())?;
+                let args = Args::from_petit_args(args)?;
+                let output = f(process, this, args).into_petit_result()?;
+                output.into_petit().map_err(RuntimeError::Value)
             };
         Self::Bound(Arc::new(function))
     }
@@ -312,12 +312,12 @@ impl PartialEq for NativeFunctionDefinition {
 pub struct Varargs(pub Vec<Value>);
 
 /// TODO
-pub trait FromPsArgs: Sized {
-    fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError>;
+pub trait FromPetitArgs: Sized {
+    fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
-/// convert each one according to its FromPs impl, then pass them all to a
+/// convert each one according to its FromPetit impl, then pass them all to a
 /// function
 macro_rules! call_fn {
     // Entrypoint - pass a function you want called, the array of arguments to
@@ -349,59 +349,62 @@ macro_rules! call_fn {
     };
 }
 
-/// Generate an implementation of FromPsArgs for a fixed number of arguments
-macro_rules! impl_from_ps_args {
+/// Generate an implementation of FromPetitArgs for a fixed number of arguments
+macro_rules! impl_from_petit_args {
     ($($arg_types:ident),*) => {
-        impl<'a, $($arg_types,)*> FromPsArgs for ($($arg_types,)*)
-            where $($arg_types: FromPs,)*
+        impl<'a, $($arg_types,)*> FromPetitArgs for ($($arg_types,)*)
+            where $($arg_types: FromPetit,)*
         {
-            fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError> {
+            fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError> {
                 Ok(call_fn!(args, ($($arg_types,)*)))
             }
         }
     };
 }
 
-impl FromPsArgs for () {
-    fn from_ps_args(_: &[Value]) -> Result<Self, RuntimeError> {
+impl FromPetitArgs for () {
+    fn from_petit_args(_: &[Value]) -> Result<Self, RuntimeError> {
         Ok(())
     }
 }
 
 /// TODO
-impl FromPsArgs for Varargs {
-    fn from_ps_args(values: &[Value]) -> Result<Self, RuntimeError> {
+impl FromPetitArgs for Varargs {
+    fn from_petit_args(values: &[Value]) -> Result<Self, RuntimeError> {
         // TODO remove clones
         Ok(Self(values.to_owned()))
     }
 }
 
 /// Special case implementation: a single argument doesn't need a tuple wrapper
-impl<T0: FromPs> FromPsArgs for T0 {
-    fn from_ps_args(args: &[Value]) -> Result<Self, RuntimeError> {
+impl<T0: FromPetit> FromPetitArgs for T0 {
+    fn from_petit_args(args: &[Value]) -> Result<Self, RuntimeError> {
         let arg0 = get_arg(args, 0)?;
         Ok(arg0)
     }
 }
 
-impl_from_ps_args!(T0);
-impl_from_ps_args!(T0, T1);
-impl_from_ps_args!(T0, T1, T2);
-impl_from_ps_args!(T0, T1, T2, T3);
-impl_from_ps_args!(T0, T1, T2, T3, T4);
-impl_from_ps_args!(T0, T1, T2, T3, T4, T5);
-impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6);
-impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7);
-impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
-impl_from_ps_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+impl_from_petit_args!(T0);
+impl_from_petit_args!(T0, T1);
+impl_from_petit_args!(T0, T1, T2);
+impl_from_petit_args!(T0, T1, T2, T3);
+impl_from_petit_args!(T0, T1, T2, T3, T4);
+impl_from_petit_args!(T0, T1, T2, T3, T4, T5);
+impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6);
+impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7);
+impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
+impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 
 /// Helper to get a particular arg from the array and convert it to a static
 /// type
-fn get_arg<T: FromPs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
+fn get_arg<T: FromPetit>(
+    args: &[Value],
+    index: usize,
+) -> Result<T, RuntimeError> {
     // If the arg is missing, use undefined instead to mirror PS semantics
-    // TODO remove clone? we'd have to make FromPs take &Value
+    // TODO remove clone? we'd have to make FromPetit take &Value
     let value = args.get(index).cloned().unwrap_or_default();
-    let converted = T::from_ps(value).map_err(|error| {
+    let converted = T::from_petit(value).map_err(|error| {
         RuntimeError::from(error)
             .context(format!("Error converting argument {index}"))
     })?;
@@ -409,21 +412,21 @@ fn get_arg<T: FromPs>(args: &[Value], index: usize) -> Result<T, RuntimeError> {
 }
 
 /// TODO
-pub trait IntoPsResult {
+pub trait IntoPetitResult {
     /// TODO
-    fn into_ps_result(self) -> Result<Value, RuntimeError>;
+    fn into_petit_result(self) -> Result<Value, RuntimeError>;
 }
 
-impl<T: IntoPs> IntoPsResult for T {
-    fn into_ps_result(self) -> Result<Value, RuntimeError> {
-        self.into_ps().map_err(RuntimeError::from)
+impl<T: IntoPetit> IntoPetitResult for T {
+    fn into_petit_result(self) -> Result<Value, RuntimeError> {
+        self.into_petit().map_err(RuntimeError::from)
     }
 }
 
-impl<T: IntoPs, E: Into<RuntimeError>> IntoPsResult for Result<T, E> {
-    fn into_ps_result(self) -> Result<Value, RuntimeError> {
+impl<T: IntoPetit, E: Into<RuntimeError>> IntoPetitResult for Result<T, E> {
+    fn into_petit_result(self) -> Result<Value, RuntimeError> {
         match self {
-            Ok(value) => Ok(value.into_ps()?),
+            Ok(value) => Ok(value.into_petit()?),
             Err(error) => Err(error.into()),
         }
     }

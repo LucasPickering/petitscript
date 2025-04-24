@@ -8,7 +8,7 @@ use crate::{
         function::{
             Captures, Function, FunctionInner, NativeFunctionId, UserFunctionId,
         },
-        Array, IntoPs, Number, Object, Value,
+        Array, IntoPetit, Number, Object, Value,
     },
 };
 use serde::{
@@ -89,7 +89,7 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                i.into_ps().map_err(|_| todo!())
+                i.into_petit().map_err(|_| todo!())
             }
 
             fn visit_f64<E>(self, f: f64) -> Result<Self::Value, E>

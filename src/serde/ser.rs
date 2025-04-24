@@ -4,7 +4,7 @@ use crate::{
     error::ValueError,
     value::{
         function::{Captures, Function, UserFunctionId},
-        IntoPs,
+        IntoPetit,
     },
     Value,
 };
@@ -31,12 +31,12 @@ macro_rules! serialize_into {
     };
 }
 
-/// Serialize a `T` into `Value` using its `IntoPs` impl
+/// Serialize a `T` into `Value` using its `IntoPetit` impl
 macro_rules! serialize_into_fallible {
     ($name:ident, $t:ty) => {
         #[inline]
         fn $name(self, value: $t) -> Result<Value, ValueError> {
-            value.into_ps()
+            value.into_petit()
         }
     };
 }

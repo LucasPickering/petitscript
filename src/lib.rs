@@ -25,7 +25,7 @@ use crate::{
     execute::GlobalEnvironment,
     stdlib::stdlib,
     value::{
-        function::{FromPsArgs, IntoPsResult, NativeFunctionTable},
+        function::{FromPetitArgs, IntoPetitResult, NativeFunctionTable},
         Function,
     },
 };
@@ -106,8 +106,8 @@ impl Engine {
     pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
     where
         F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
-        Args: FromPsArgs,
-        Out: IntoPsResult,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
     {
         self.native_functions.create_fn(function)
     }

@@ -14,7 +14,7 @@ pub use array::Array;
 #[cfg(feature = "buffer")]
 #[cfg_attr(docsrs, doc(cfg(feature = "buffer")))]
 pub use buffer::Buffer;
-pub use function::{FromPsArgs, Function, IntoPsResult};
+pub use function::{FromPetitArgs, Function, IntoPetitResult};
 pub use number::Number;
 pub use object::Object;
 pub use string::PetitString;
@@ -287,12 +287,6 @@ impl Value {
             _ => self,
         }
     }
-
-    /// Convert this value into an arbitrary type, using the type's [FromPs]
-    /// implementation
-    pub fn into_todo<T: FromPs>(self) -> Result<T, ValueError> {
-        T::from_ps(self)
-    }
 }
 
 impl Display for Value {
@@ -396,21 +390,21 @@ impl_value_numeric_binary_op!(Mul, mul, *);
 impl_value_numeric_binary_op!(Div, div, /);
 impl_value_numeric_binary_op!(Rem, rem, %);
 
-// Two-way conversions: `From<T> for Value` and `FromPs for T``
+// Two-way conversions: `From<T> for Value` and `FromPetit for T``
 impl_value_conversions!(bool, Boolean);
 impl_value_conversions!(Number, Number);
-impl_value_conversions!(i8, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(u8, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(i16, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(u16, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(i32, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(u32, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(i64, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(u64, Number, to_ps: fallible, from_ps: fallible);
-impl_value_conversions!(i128, Number, to_ps: fallible, from_ps: fallible);
-impl_value_conversions!(u128, Number, to_ps: fallible, from_ps: fallible);
-impl_value_conversions!(f32, Number, to_ps: infallible, from_ps: fallible);
-impl_value_conversions!(f64, Number, to_ps: infallible, from_ps: fallible);
+impl_value_conversions!(i8, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(u8, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(i16, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(u16, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(i32, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(u32, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(i64, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(u64, Number, to_petit: fallible, from_petit: fallible);
+impl_value_conversions!(i128, Number, to_petit: fallible, from_petit: fallible);
+impl_value_conversions!(u128, Number, to_petit: fallible, from_petit: fallible);
+impl_value_conversions!(f32, Number, to_petit: infallible, from_petit: fallible);
+impl_value_conversions!(f64, Number, to_petit: infallible, from_petit: fallible);
 impl_value_conversions!(String, String);
 impl_value_conversions!(PetitString, String);
 impl_value_conversions!(Array, Array);
@@ -480,24 +474,24 @@ impl Display for ValueType {
 }
 
 /// A trait for converting into [Value]
-pub trait IntoPs {
-    fn into_ps(self) -> Result<Value, ValueError>;
+pub trait IntoPetit {
+    fn into_petit(self) -> Result<Value, ValueError>;
 }
 
-impl<T: Into<Value>> IntoPs for T {
-    fn into_ps(self) -> Result<Value, ValueError> {
+impl<T: Into<Value>> IntoPetit for T {
+    fn into_petit(self) -> Result<Value, ValueError> {
         Ok(self.into())
     }
 }
 
-impl IntoPs for () {
-    fn into_ps(self) -> Result<Value, ValueError> {
+impl IntoPetit for () {
+    fn into_petit(self) -> Result<Value, ValueError> {
         Ok(Value::Undefined)
     }
 }
 
-impl IntoPs for PathBuf {
-    fn into_ps(self) -> Result<Value, ValueError> {
+impl IntoPetit for PathBuf {
+    fn into_petit(self) -> Result<Value, ValueError> {
         // Attempt to convert the path to UTF-8
         let string =
             String::from_utf8(self.into_os_string().into_encoded_bytes())?;
@@ -506,27 +500,27 @@ impl IntoPs for PathBuf {
 }
 
 /// A trait for converting from [Value]
-pub trait FromPs: Sized {
-    fn from_ps(value: Value) -> Result<Self, ValueError>;
+pub trait FromPetit: Sized {
+    fn from_petit(value: Value) -> Result<Self, ValueError>;
 }
 
-impl<T: From<Value>> FromPs for T {
-    fn from_ps(value: Value) -> Result<Self, ValueError> {
+impl<T: From<Value>> FromPetit for T {
+    fn from_petit(value: Value) -> Result<Self, ValueError> {
         Ok(value.into())
     }
 }
 
-impl FromPs for PathBuf {
-    fn from_ps(value: Value) -> Result<Self, ValueError> {
-        let string: String = value.into_todo()?;
+impl FromPetit for PathBuf {
+    fn from_petit(value: Value) -> Result<Self, ValueError> {
+        let string = String::from_petit(value)?;
         Ok(string.into())
     }
 }
 
-impl<T: FromPs> FromPs for Vec<T> {
-    fn from_ps(value: Value) -> Result<Self, ValueError> {
+impl<T: FromPetit> FromPetit for Vec<T> {
+    fn from_petit(value: Value) -> Result<Self, ValueError> {
         let array = ensure_type!(value, Array);
-        array.into_iter().map(T::from_ps).collect()
+        array.into_iter().map(T::from_petit).collect()
     }
 }
 

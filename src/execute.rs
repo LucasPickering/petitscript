@@ -8,7 +8,7 @@ mod state;
 pub use scope::{GlobalEnvironment, Prototype};
 
 use crate::{
-    ast::NativeModuleName,
+    ast::{FunctionDefinition, NativeModuleName},
     compile::Program,
     error::RuntimeError,
     execute::{
@@ -132,6 +132,26 @@ impl Process {
         function
             .call(&mut thread_state, CallSite::Native, arguments)
             .map_err(Error::from)
+    }
+
+    /// TODO
+    pub fn get_fn_definition(
+        &self,
+        function: &Function,
+    ) -> Result<&Arc<FunctionDefinition>, Error> {
+        match &*function.0 {
+            FunctionInner::User { id, .. } if id.process_id == self.id => {
+                Ok(self
+                    .program
+                    .function_table()
+                    .get(id.definition_id)
+                    .expect("TODO"))
+            }
+            FunctionInner::User { .. } => todo!(),
+            FunctionInner::Native { .. } | FunctionInner::Bound { .. } => {
+                todo!()
+            }
+        }
     }
 
     /// Create a new thread to evaluate a module

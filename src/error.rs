@@ -218,7 +218,7 @@ pub enum RuntimeError {
     /// Second assignment to a `const` variable
     ImmutableAssign { name: String },
 
-    /// Error in `JSO.parse`
+    /// Error in `JSON.parse`
     JsonParse { error: ContextError },
 
     /// Custom error type, for errors originating in user-provided native

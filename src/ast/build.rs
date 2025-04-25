@@ -7,7 +7,7 @@ use crate::ast::{
     FunctionCall, FunctionDefinition, FunctionParameter, FunctionPointer,
     Identifier, ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
     Node, NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
-    Statement, TemplateLiteral, Variable,
+    Statement, TemplateChunk, TemplateLiteral, Variable,
 };
 
 impl Module {
@@ -316,6 +316,31 @@ impl From<FunctionDefinition> for Expression {
 impl From<FunctionCall> for Expression {
     fn from(function_call: FunctionCall) -> Self {
         Self::Call(function_call.s())
+    }
+}
+
+impl TemplateLiteral {
+    /// Create a new template literal from chunks
+    pub fn new(chunks: impl IntoIterator<Item = TemplateChunk>) -> Self {
+        Self {
+            chunks: chunks
+                .into_iter()
+                .map(TemplateChunk::s)
+                .collect::<Vec<_>>()
+                .into(),
+        }
+    }
+}
+
+impl From<Expression> for TemplateChunk {
+    fn from(expression: Expression) -> Self {
+        TemplateChunk::Expression(expression.s())
+    }
+}
+
+impl From<&'static str> for TemplateChunk {
+    fn from(value: &'static str) -> Self {
+        TemplateChunk::Literal(value.to_owned())
     }
 }
 

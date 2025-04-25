@@ -20,7 +20,8 @@ pub use crate::{
 };
 
 use crate::{
-    ast::NativeModuleName,
+    ast::{Module, NativeModuleName, Node},
+    compile::Program,
     error::RuntimeError,
     execute::GlobalEnvironment,
     stdlib::stdlib,
@@ -112,16 +113,35 @@ impl Engine {
         self.native_functions.create_fn(function)
     }
 
-    /// Compile some source code into a loaded program. The returned [Process]
-    /// can be used to execute the program.
+    /// Parse some source code and return the parsed AST. The returned AST is
+    /// not fully compiled and therefore can't be executed. Call
+    /// [Engine::compile_ast] to complete compilation.
+    pub fn parse(&self, source: impl Source) -> Result<Node<Module>, Error> {
+        compile::parse(source)
+    }
+
+    /// Parse and compile some source code into an executable [Process]
     pub fn compile(&self, source: impl Source) -> Result<Process, Error> {
         let program = compile::compile(source)?;
-        Ok(Process::new(
+        Ok(self.spawn(program))
+    }
+
+    /// Compile a prebuilt AST into an executable [Process]. Helpful for tests
+    /// and other environments where an AST is built programatically rather
+    /// than by parsing source code.
+    pub fn compile_ast(&self, module: Node<Module>) -> Result<Process, Error> {
+        let program = compile::compile_ast(module)?;
+        Ok(self.spawn(program))
+    }
+
+    /// Create a new process to execute a compiled program
+    fn spawn(&self, program: Program) -> Process {
+        Process::new(
             self.modules.clone(),
             self.native_functions.clone(),
             Arc::clone(&self.globals),
             program,
-        ))
+        )
     }
 }
 

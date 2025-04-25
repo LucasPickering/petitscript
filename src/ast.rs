@@ -125,14 +125,12 @@ impl<T: PartialEq> PartialEq for Node<T> {
 
 /// The root AST node for a single source file. This is the outcome of parsing a
 /// file, and may contain nested modules from local imports.
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Module {
     pub statements: Box<[Node<Statement>]>,
 }
 
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Statement {
     Empty,
     Block(Node<Block>),
@@ -155,23 +153,20 @@ pub enum Statement {
 
 /// A collection of statements, delineated by `{ }`. This declares a new lexical
 /// scope.
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub statements: Box<[Node<Statement>]>,
 }
 
 /// A single `const` declaration with one or more declared variables: `const x =
 /// 3;` or `const x = 3, y = 4, z = 5;`
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Declaration {
     pub variables: Box<[Node<Variable>]>,
 }
 
 /// A single declared variable in a declaration or function parameter
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variable {
     pub binding: Node<Binding>,
     pub init: Option<Box<Node<Expression>>>,
@@ -182,8 +177,7 @@ pub struct Variable {
 /// "lifting" moves each function definition into a table and replaces it with
 /// a unique ID. At runtime, the ID is used to look up and invoke the
 /// definition.
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionPointer {
     /// Lifting hasn't been performed yet, the function definitions is still
     /// inline. This code isn't executable yet!
@@ -196,8 +190,7 @@ pub enum FunctionPointer {
 /// The parameters, body, and captures that constitute a user (i.e *not* native)
 /// function definition. This covers both `function` functions and
 /// arrow functions, since the two are semantically equivalent in PS.
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value. This
     /// is **not necessarily** the name the function is bound to; that is
@@ -217,8 +210,7 @@ pub struct FunctionDefinition {
 
 /// The body of a function definition, which can be either a block or a bare
 /// expression.
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
     Expression(Box<Node<Expression>>),
@@ -227,8 +219,7 @@ pub enum FunctionBody {
 }
 
 /// One parameter in a function definition
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionParameter {
     pub variable: Node<Variable>,
     pub varargs: bool,
@@ -246,8 +237,7 @@ pub struct FunctionParameter {
 ///   console.log("else");
 /// }
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct If {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -266,8 +256,7 @@ pub struct If {
 ///   console.log(c);
 /// }
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Node<Expression>,
@@ -280,8 +269,7 @@ pub struct ForOfLoop {
 ///   console.log("running");
 /// }
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct WhileLoop {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -293,8 +281,7 @@ pub struct WhileLoop {
 ///   console.log("running");
 /// } while (shouldKeepRunning());
 /// ```
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DoWhileLoop {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -303,8 +290,7 @@ pub struct DoWhileLoop {
 /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
 /// No other import formats are supported
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import>
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ImportDeclaration {
     /// `exportDefault`
     pub default: Option<Node<Identifier>>,
@@ -321,8 +307,7 @@ pub struct ImportDeclaration {
 /// ```
 ///
 /// the nameds are `export1` and `export2 as ex2`
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ImportNamed {
     /// `export1` or `export2`
     pub identifier: Node<Identifier>,
@@ -331,8 +316,7 @@ pub struct ImportNamed {
 }
 
 /// Source for an imported module, i.e. the string after `from`
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ImportModule {
     /// A native module provided by the engine with a static name, like
     /// `import helpers from 'helpers'`
@@ -377,8 +361,7 @@ impl FromStr for NativeModuleName {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExportDeclaration {
     /// TODO
     Reexport {
@@ -391,8 +374,7 @@ pub enum ExportDeclaration {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expression {
     Parenthesized(Box<Node<Expression>>),
     /// Primitive and complex type literals
@@ -429,8 +411,7 @@ impl Identifier {
 
 /// TODO
 /// TODO document why no spans
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Null,
     Undefined,
@@ -443,8 +424,7 @@ pub enum Literal {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TemplateLiteral {
     /// A set of contiguous chunks that comprise the template. These will be
     /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
@@ -452,8 +432,7 @@ pub struct TemplateLiteral {
 }
 
 /// One piece in a template. Either a static string or an expression
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TemplateChunk {
     /// This doesn't need a `Node` because we never refer to the literal chunks
     /// of a template on their own
@@ -462,30 +441,26 @@ pub enum TemplateChunk {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ArrayLiteral {
     pub elements: Box<[Node<ArrayElement>]>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ArrayElement {
     Expression(Node<Expression>),
     Spread(Node<Expression>),
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ObjectLiteral {
     pub properties: Box<[Node<ObjectProperty>]>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
@@ -499,40 +474,35 @@ pub enum ObjectProperty {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FunctionCall {
     pub function: Box<Node<Expression>>,
     pub arguments: Box<[Node<Expression>]>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PropertyAccess {
     pub expression: Box<Node<Expression>>,
     pub property: Node<PropertyName>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OptionalPropertyAccess {
     pub expression: Box<Node<Expression>>,
     pub property: Node<PropertyName>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
     pub expression: Box<Node<Expression>>,
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UnaryOperator {
     /// `!`: Boolean negation
     BooleanNot,
@@ -545,8 +515,7 @@ pub enum UnaryOperator {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
     pub lhs: Box<Node<Expression>>,
@@ -554,8 +523,7 @@ pub struct BinaryOperation {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -593,8 +561,7 @@ pub enum BinaryOperator {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TernaryConditional {
     pub condition: Box<Node<Expression>>,
     pub true_expression: Box<Node<Expression>>,
@@ -602,8 +569,7 @@ pub struct TernaryConditional {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Node<Identifier>),
@@ -612,8 +578,7 @@ pub enum PropertyName {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Binding {
     /// `const x = 3`
     Identifier(Node<Identifier>),
@@ -624,8 +589,7 @@ pub enum Binding {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
@@ -646,8 +610,7 @@ pub enum ObjectPatternElement {
 }
 
 /// TODO
-#[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ArrayPatternElement {
     // TODO
 }

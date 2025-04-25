@@ -13,7 +13,12 @@ use crate::{
     Error, Source,
 };
 
-/// Compile source code into an executable [Program]
+/// Parse some source code into an AST
+pub fn parse(source: impl Source) -> Result<Node<Module>, Error> {
+    Ok(Compiler::new(source).parse()?.program.module)
+}
+
+/// Parse and compile source code into an executable [Program]
 pub fn compile(source: impl Source) -> Result<Program, Error> {
     let program = Compiler::new(source)
         .parse()?
@@ -21,6 +26,24 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
         .capture()
         .lift()
         .end();
+    Ok(program)
+}
+
+/// Compile a prebuilt AST into an executable [Program]. Helpful for tests and
+/// other environments where an AST is built programatically rather than by
+/// parsing source code.
+pub fn compile_ast(module: Node<Module>) -> Result<Program, Error> {
+    let program = Compiler {
+        program: ParsedAst {
+            module,
+            spans: SpanTable::default(),
+        },
+        sources: SourceTable::default(), // No source code to map here
+    }
+    .label()
+    .capture()
+    .lift()
+    .end();
     Ok(program)
 }
 

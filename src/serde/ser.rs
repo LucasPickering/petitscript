@@ -72,6 +72,10 @@ impl serde::Serializer for &Serializer {
     serialize_into!(serialize_char, char);
     serialize_into!(serialize_str, &str);
 
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        Ok(Value::Undefined)
+    }
+
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
         Ok(Value::Null)
     }
@@ -85,10 +89,6 @@ impl serde::Serializer for &Serializer {
         T: ?Sized + serde::Serialize,
     {
         value.serialize(self)
-    }
-
-    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        Ok(Value::Null)
     }
 
     fn serialize_unit_struct(

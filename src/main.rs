@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 
 fn main() {
     let path = env::args().nth(1).expect("Expected path");
-    let engine = Engine::new();
+    let engine = Engine::default();
     let process = match engine.compile(PathBuf::from(path)) {
         Ok(process) => process,
         Err(error) => {

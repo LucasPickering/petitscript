@@ -644,11 +644,11 @@ mod tests {
     #[test_case(Undefined, 3, Number::NAN; "undefined int")]
     #[test_case(Undefined, 3.5, Number::NAN; "undefined float")]
     #[test_case(false, true, 1; "bool bool")]
-    #[test_case(false, 6.5, 7.5; "bool float")]
-    #[test_case(false, 6, 7; "bool int")]
+    #[test_case(true, 6.5, 7.5; "bool float")]
+    #[test_case(true, 6, 7; "bool int")]
     #[test_case(-6, 13, 7; "int int")]
     #[test_case(-5, 12.5, 7.5; "int float")]
-    #[test_case(3.2, 170.6, 173.8; "float float")]
+    #[test_case(3.2, 170.6, 3.2 + 170.6; "float float")]
     #[test_case(3, Number::NAN, Number::NAN; "nan")]
     fn add_numeric(
         a: impl Into<Value>,

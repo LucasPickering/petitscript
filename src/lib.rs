@@ -13,6 +13,7 @@ mod stdlib;
 pub mod value;
 
 pub use crate::{
+    ast::NativeModuleName,
     error::Error,
     execute::{Exports, Process},
     source::Source,
@@ -20,7 +21,7 @@ pub use crate::{
 };
 
 use crate::{
-    ast::{Module, NativeModuleName, Node},
+    ast::{Module, Node},
     compile::Program,
     error::RuntimeError,
     execute::GlobalEnvironment,
@@ -35,7 +36,10 @@ use std::sync::Arc;
 
 /// The main entrypoint for executing and evaluating PetitScript programs
 ///
-/// An engine defines how code should be executed. TODO more
+/// An engine defines how code should be executed and what modules are available
+/// to executed code. Engines are created using the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
+/// and are immutable after creation. This immutability allows an engine to be
+/// shared among many processes cheaply, through the joys of reference counting.
 #[derive(Debug)]
 pub struct Engine {
     /// Modules registered by the user that can be imported into any script.
@@ -59,58 +63,23 @@ pub struct Engine {
 static_assertions::assert_impl_all!(Engine: Send, Sync);
 
 impl Engine {
-    /// Initialize a new engine with default configuration and the standard
-    /// library available
-    pub fn new() -> Self {
-        let mut native_functions = NativeFunctionTable::default();
-        // Register the standard library
-        let globals = stdlib(&mut native_functions);
-        Self {
+    /// Create a new [EngineBuilder]
+    ///
+    ///
+    /// <div class="warning">
+    ///
+    /// By default, [EngineBuilder] does not include the PetitScript standard
+    /// library in the built engine. Use [Engine::default] to get an engine with
+    /// the standard library if you do not need customization. Otherwise, be
+    /// sure to call [EngineBuilder::with_stdlib].
+    ///
+    /// </div>
+    pub fn builder() -> EngineBuilder {
+        EngineBuilder {
             modules: Default::default(),
-            globals: Arc::new(globals),
-            native_functions,
+            globals: GlobalEnvironment::default(),
+            native_functions: NativeFunctionTable::default(),
         }
-    }
-
-    /// Register a native module, which can be imported into any PetitScript
-    /// program executed by this engine. If a module with the given name is
-    /// already registered, it will be replaced.
-    ///
-    /// ```
-    /// engine.register_module("math", todo!()).unwrap();
-    /// ```
-    ///
-    /// ```notrust
-    /// import { add } from "math";
-    /// ```
-    ///
-    /// ## Errors
-    ///
-    /// Return an error if the module name is invalid. TODO explain naming rules
-    /// here.
-    pub fn register_module(
-        &mut self,
-        name: impl Into<String>,
-        module: Exports,
-    ) -> Result<(), Error> {
-        let name: NativeModuleName = name.into().try_into()?;
-        self.modules.insert(name, module);
-        Ok(())
-    }
-
-    /// Define a native function and return it as a value so it can be included
-    /// in a module definition.
-    ///
-    /// ## Caveats
-    ///
-    /// The returned function can only be used within _this_ PetitScript engine.
-    pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
-    where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
-        Args: FromPetitArgs,
-        Out: IntoPetitResult,
-    {
-        self.native_functions.create_fn(function)
     }
 
     /// Parse some source code and return the parsed AST. The returned AST is
@@ -146,7 +115,119 @@ impl Engine {
 }
 
 impl Default for Engine {
+    /// Initialize a new engine with default configuration and the standard
+    /// library available
     fn default() -> Self {
-        Self::new()
+        Self::builder().with_stdlib().build()
+    }
+}
+
+/// A modular builder for construction [Engine]s. This builder can be used to
+/// customize an engine, such as registering native modules with
+/// [with_module](Self::with_module).
+#[derive(Debug)]
+pub struct EngineBuilder {
+    // See Engine for field descriptions
+    modules: IndexMap<NativeModuleName, Exports>,
+    globals: GlobalEnvironment,
+    native_functions: NativeFunctionTable,
+}
+
+impl EngineBuilder {
+    /// Add the PetitScript standard library to the engine's global scope.
+    pub fn with_stdlib(mut self) -> Self {
+        // Register the standard library
+        self.globals = stdlib(&mut self.native_functions);
+        self
+    }
+
+    /// Build and register a native module with the built engine. The module can
+    /// be imported into any PetitScript program executed by this engine. If
+    /// a module with the given name is already registered, it will be replaced.
+    ///
+    /// ```
+    /// fn add(_: &Process, (a, b): (Number, Number)) -> Number {
+    ///     a + b
+    /// }
+    ///
+    /// let name: NativeModuleName = "math".parse().unwrap();
+    /// EngineBuilder::new()
+    ///     .with_module(name, |builder| {
+    ///         builder.export_fn("add", add);
+    ///     })
+    ///     .build();
+    /// ```
+    ///
+    /// And now you can do this:
+    ///
+    /// ```notrust
+    /// import { add } from "math";
+    /// add(1, 2);
+    /// ```
+    pub fn with_module(
+        mut self,
+        name: NativeModuleName,
+        builder: impl FnOnce(&mut NativeModuleBuilder),
+    ) -> Self {
+        let mut module_builder = NativeModuleBuilder {
+            native_functions: &mut self.native_functions,
+            exports: Exports::default(),
+        };
+        builder(&mut module_builder);
+        self.modules.insert(name, module_builder.exports);
+        self
+    }
+
+    /// Build the engine with the defined configuration
+    pub fn build(self) -> Engine {
+        Engine {
+            modules: self.modules,
+            globals: self.globals.into(),
+            native_functions: self.native_functions,
+        }
+    }
+}
+
+/// A helper for constructing native modules. See [EngineBuilder::with_module]
+/// for usage examples.
+#[derive(Debug)]
+pub struct NativeModuleBuilder<'a> {
+    native_functions: &'a mut NativeFunctionTable,
+    exports: Exports,
+}
+
+impl<'a> NativeModuleBuilder<'a> {
+    /// Define a native function and return it as a value so it can be included
+    /// in a module definition.
+    ///
+    /// ## Caveats
+    ///
+    /// The returned function can only be used within this PetitScript engine.
+    pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
+    where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        self.native_functions.create_fn(function)
+    }
+
+    /// Define a native function and expose it as a named export from this
+    /// module.
+    ///
+    /// ## Caveats
+    ///
+    /// The created function can only be used within this PetitScript engine.
+    pub fn export_fn<F, Args, Out>(
+        &mut self,
+        name: impl Into<String>,
+        function: F,
+    ) where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        let function = self.create_fn(function);
+        self.exports.named.insert(name.into(), function.into());
     }
 }

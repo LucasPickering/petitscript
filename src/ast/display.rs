@@ -2,10 +2,10 @@
 
 use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    BinaryOperator, Binding, Block, DoWhileLoop, ExportDeclaration, Expression,
-    ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
-    FunctionParameter, FunctionPointer, Identifier, If, ImportDeclaration,
-    ImportModule, ImportNamed, Declaration, Literal, Module,
+    BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
+    ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
+    FunctionDefinition, FunctionParameter, FunctionPointer, Identifier, If,
+    ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
     NativeModuleName, Node, ObjectLiteral, ObjectPatternElement,
     ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
     Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
@@ -284,8 +284,8 @@ impl DisplayIndent for Identifier {
 impl DisplayIndent for Literal {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Null => "null".fmt(ind),
             Self::Undefined => "undefined".fmt(ind),
+            Self::Null => "null".fmt(ind),
             Self::Boolean(b) => b.fmt(ind),
             Self::Float(float) => float.fmt(ind),
             Self::Int(int) => int.fmt(ind),

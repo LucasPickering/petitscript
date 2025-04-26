@@ -13,8 +13,7 @@ pub fn prototype(functions: &mut NativeFunctionTable) -> Prototype {
 }
 
 /// `Array.includes`
-/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/includes
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/includes>
 fn includes(_: &Process, this: Array, element: Value) -> bool {
-    // TODO take &Value instead
     this.contains(&element)
 }

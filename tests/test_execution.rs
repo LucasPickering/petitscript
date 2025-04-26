@@ -1,13 +1,21 @@
 use indexmap::IndexMap;
-use petitscript::{
-    error::RuntimeError, value::Number, Engine, Error, Exports, Process, Value,
-};
-use std::{env, path::PathBuf};
+use petitscript::{value::Number, Engine, Error, Process, Value};
+use std::{env, path::PathBuf, sync::LazyLock};
 use test_case::test_case;
 
-fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
-    Ok(a + b)
+fn add(_: &Process, (a, b): (Number, Number)) -> Number {
+    a + b
 }
+
+/// Shared engine used for all tests
+static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+    Engine::builder()
+        .with_stdlib()
+        .with_module("math".parse().unwrap(), |builder| {
+            builder.export_fn("add", add);
+        })
+        .build()
+});
 
 /// Test a full compile+execution pipeline for an external PS file. This expects
 /// the script to both compile and execute successfully, and asserts on the
@@ -20,13 +28,8 @@ fn add(_: &Process, (a, b): (Number, Number)) -> Result<Number, RuntimeError> {
 #[test_case("json", true; "json")]
 #[test_case("prototype", true; "prototype")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
-    let mut engine = Engine::new();
-    let module = Exports::named([("add", engine.create_fn(add))]);
-    engine.register_module("math", module).unwrap();
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-
-    let exported =
-        execute(&engine, path).unwrap_or_else(|error| panic!("{error}"));
+    let exported = execute(path).unwrap_or_else(|error| panic!("{error}"));
     let expected_default = expected.into();
     assert_eq!(exported, expected_default);
 }
@@ -43,19 +46,15 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
 `x` is not defined";
     "stack_trace")]
 fn error(file_name: &'static str, expected_error: &'static str) {
-    let mut engine = Engine::new();
-    let module = Exports::named([("add", engine.create_fn(add))]);
-    engine.register_module("math", module).unwrap();
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-
     let cwd = env::current_dir()
         .unwrap()
         .into_os_string()
         .into_string()
         .unwrap();
-    let expected_error = expected_error // Current dir is dynamic so we have to manually replace it
-        .replace("$CWD", &cwd);
-    let error = execute(&engine, path).unwrap_err().to_string();
+    // Current dir is dynamic so we have to manually replace it
+    let expected_error = expected_error.replace("$CWD", &cwd);
+    let error = execute(path).unwrap_err().to_string();
     assert!(
         error.contains(&expected_error),
         "Expected error message to contain `{expected_error}`\nbut it was:\n\
@@ -65,12 +64,12 @@ fn error(file_name: &'static str, expected_error: &'static str) {
 
 /// Compile and execute a program. If the program succeeds, expected no named
 /// exports and return the default export
-fn execute(engine: &Engine, path: PathBuf) -> Result<Value, Error> {
+fn execute(path: PathBuf) -> Result<Value, Error> {
     if !path.exists() {
         // Sanity check
         panic!("Path {path:?} does not exist");
     }
-    let process = engine
+    let process = ENGINE
         .compile(path.clone())
         .unwrap_or_else(|error| panic!("Error compiling {path:?}: {error}"));
     let exports = process.execute()?;

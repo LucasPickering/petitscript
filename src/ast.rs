@@ -19,6 +19,7 @@ pub use walk::{AstVisitor, Walk};
 
 use crate::{compile::FunctionDefinitionId, error::ModuleNameError};
 use std::{
+    fmt::{self, Debug},
     hash::Hash,
     ops::{Deref, DerefMut},
     str::FromStr,
@@ -26,12 +27,19 @@ use std::{
 
 /// An identifier that uniquely identifies an AST node **within the AST**. These
 /// IDs are not globally unique, just within a single AST.
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Hash, PartialEq)]
 pub(crate) struct NodeId(u32);
 
 impl NodeId {
     pub fn new(id: u32) -> Self {
         Self(id)
+    }
+}
+
+impl Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The wrapper provides no debugging value, just clutter
+        self.0.fmt(f)
     }
 }
 

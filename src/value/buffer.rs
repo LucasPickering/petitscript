@@ -41,12 +41,20 @@ impl Display for Buffer {
     }
 }
 
+/// Convert static bytes into a buffer
+///
+/// Note: This conversion can't be implemented on [Value](crate::Value) because
+/// it would conflict with the conversion to an array of numbers.
 impl From<&'static [u8]> for Buffer {
     fn from(bytes: &[u8]) -> Self {
         Self(bytes.to_owned().into())
     }
 }
 
+/// Convert static bytes into a buffer
+///
+/// Note: This conversion can't be implemented on [Value](crate::Value) because
+/// it would conflict with the conversion to an array of numbers.
 impl<const N: usize> From<[u8; N]> for Buffer {
     fn from(bytes: [u8; N]) -> Self {
         Self(Bytes::from_owner(bytes))

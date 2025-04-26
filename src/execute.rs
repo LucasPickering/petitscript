@@ -97,6 +97,10 @@ impl Process {
     ///
     /// App data is keyed by its type, meaning **only one instance of any given
     /// type can be stored.**
+    ///
+    /// ## Errors
+    ///
+    /// Return an error if there is already app data of this type registered.
     pub fn set_app_data<T: Any + Send + Sync>(
         &mut self,
         data: T,

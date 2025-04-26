@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fmt::{self, Display},
     ops::{Add, Deref},
     sync::Arc,
@@ -31,6 +32,12 @@ impl From<char> for PetitString {
 
 impl From<&str> for PetitString {
     fn from(value: &str) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Cow<'_, str>> for PetitString {
+    fn from(value: Cow<'_, str>) -> Self {
         Self(value.into())
     }
 }

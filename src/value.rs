@@ -28,6 +28,7 @@ use crate::{
 };
 use indexmap::IndexMap;
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     fmt::{self, Display},
     ops::{Add, Div, Mul, Neg, Not, Rem, Sub},
@@ -71,6 +72,14 @@ pub enum Value {
 static_assertions::assert_impl_all!(Value: Send, Sync);
 
 impl Value {
+    /// Create a new byte buffer. TODO this could potentially lead to
+    /// unnecessary clones if someone already has a `Bytes`. Clean it up
+    /// somehow, or add a note pointing people to the From implementations
+    #[cfg(feature = "buffer")]
+    pub fn buffer(bytes: impl Into<Vec<u8>>) -> Self {
+        Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
+    }
+
     /// Coerce this value to a boolean. Truthy values return true, falsy values
     /// return false.
     pub fn to_bool(&self) -> bool {
@@ -414,6 +423,7 @@ impl_value_conversions!(Function, Function);
 
 // One-way conversions: `From<T> for Value`
 impl_value_from!(&str, String);
+impl_value_from!(Cow<'_, str>, String);
 impl_value_from!(char, String);
 
 // These generic conversions can't be done easily with macros

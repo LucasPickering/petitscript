@@ -10,7 +10,7 @@ use crate::{
     },
     source::QualifiedSpan,
     value::{
-        function::{FunctionId, NativeFunctionDefinition, NativeFunctionId},
+        function::{NativeFunctionDefinition, NativeFunctionId},
         Value,
     },
     Process, RuntimeError,
@@ -131,29 +131,8 @@ impl<'process> ThreadState<'process> {
                 // Convert bytes to lines and columns
                 let span = program.qualify(call_site);
 
-                // Look up the function by its ID. If the lookup fails, this
-                // indicates a bug but we're already unrolling an error so just
-                // swallow it
-                let function_name = frame
-                    .function_id
-                    .and_then(|id| match id {
-                        FunctionId::User(id) => {
-                            let function = self
-                                .program()
-                                .function_table()
-                                .get(id.definition_id)
-                                .ok()?;
-                            let name = function.name.as_ref()?;
-                            Some(name.as_str().to_owned())
-                        }
-                        FunctionId::Native(_) => {
-                            // TODO native function definitions should have
-                            // names!!
-                            None
-                        }
-                    })
-                    .unwrap_or_else(|| "<root>".to_owned());
-
+                let function_name =
+                    frame.function_name.as_deref().unwrap_or("???").to_owned();
                 StackTraceFrame {
                     span,
                     function_name,
@@ -185,10 +164,10 @@ impl<'process> ThreadState<'process> {
         &mut self,
         scope: Scope,
         call_site: CallSite,
-        function_id: FunctionId,
+        function_name: Option<String>,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        self.call_stack.push(scope, call_site, function_id);
+        self.call_stack.push(scope, call_site, function_name);
         let value = f(self);
         self.call_stack.pop();
         value
@@ -221,7 +200,8 @@ impl CallStack {
         // This root frame can never be popped
         Self(vec![CallFrame {
             call_site: CallSite::Native,
-            function_id: None, // This is the entrypoint, so there's no fn yet
+            // There's no fn call yet, so we have to make up a name
+            function_name: Some("<root>".into()),
             scope: globals.scope(),
         }])
     }
@@ -231,13 +211,11 @@ impl CallStack {
         &mut self,
         scope: Scope,
         call_site: CallSite,
-        function_id: FunctionId,
+        function_name: Option<String>,
     ) {
         self.0.push(CallFrame {
             call_site,
-            // All stacks after the first must be function calls, so the ID is
-            // always present
-            function_id: Some(function_id),
+            function_name,
             scope,
         });
     }
@@ -273,9 +251,12 @@ impl CallStack {
 struct CallFrame {
     /// Scope inside the function, including captured variables
     scope: Scope,
-    /// The ID of the *invoked* function. `None` only for the root frame, i.e.
-    /// top-level module code. Used to get the function name for stack traces
-    function_id: Option<FunctionId>,
+    /// The name of the *invoked* function. `None` only for the root frame,
+    /// i.e. top-level module code. This will have to be cloned from the
+    /// function for each call, which is potentially expensive. Could optimize
+    /// by interning function names. `None` only for calls to anonymous
+    /// functions
+    function_name: Option<String>,
     /// The location from which this function *was invoked*, i.e. the location
     /// we'll return to when this frame is popped. Used to print the stack
     /// trace

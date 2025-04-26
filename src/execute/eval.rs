@@ -3,17 +3,15 @@
 use crate::{
     ast::{
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, FunctionPointer, Literal, Node,
+        Expression, FunctionCall, FunctionDefinition, Literal, Node,
         ObjectLiteral, ObjectProperty, OptionalPropertyAccess, PropertyAccess,
         PropertyName, TemplateChunk, TemplateLiteral, UnaryOperation,
         UnaryOperator,
     },
-    error::{RuntimeError, TracedError, ValueError},
+    error::{TracedError, ValueError},
     execute::{exec::Execute, state::CallSite, ThreadState},
     value::{
-        function::{
-            Function, FunctionInner, NativeFunctionDefinition, UserFunctionId,
-        },
+        function::{Function, FunctionInner, NativeFunctionDefinition},
         Array, Number, Object, Value, ValueType,
     },
 };
@@ -169,40 +167,19 @@ impl Evaluate for TemplateLiteral {
     }
 }
 
-impl Evaluate for Node<FunctionPointer> {
+impl Evaluate for Node<FunctionDefinition> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        // All functions should have been lifted during compilation. If not,
-        // that's a compiler bug
-        match self.data() {
-            FunctionPointer::Inline(definition) => Err(RuntimeError::internal(
-                format!("Function definition {definition:?} was not lifted"),
-            ))
-            .map_err(|error| state.trace_error(error, self.id())),
-            FunctionPointer::Lifted(definition_id) => {
-                let id = UserFunctionId {
-                    process_id: state.process().id(),
-                    definition_id: *definition_id,
-                };
+        let name = self.name.as_ref().map(|name| name.to_string());
 
-                // Copy the name from the definition so the function knows its
-                // own name easily, for printing and errors
-                let definition = state
-                    .process()
-                    .program
-                    .function_table()
-                    .get(id.definition_id)
-                    .map_err(|error| state.trace_error(error, self.id()))?;
-                let name =
-                    definition.name.as_ref().map(|name| name.to_string());
+        let scope = state.scope();
+        let captures = scope
+            .captures(&self.captures)
+            .map_err(|error| state.trace_error(error, self.id()))?;
 
-                let scope = state.scope();
-                let captures = scope
-                    .captures(&definition.captures)
-                    .map_err(|error| state.trace_error(error, self.id()))?;
-
-                Ok(Function::user(id, name, captures).into())
-            }
-        }
+        Ok(
+            Function::user(Arc::new(self.data().clone()), name, captures)
+                .into(),
+        )
     }
 }
 
@@ -325,14 +302,11 @@ impl Function {
         arguments: Vec<Value>,
     ) -> Result<Value, TracedError> {
         match &*self.0 {
-            FunctionInner::User { id, captures, .. } => {
-                let definition = Arc::clone(
-                    state
-                        .program()
-                        .function_table()
-                        .get(id.definition_id)
-                        .map_err(|error| state.trace_error(error, call_site))?,
-                );
+            FunctionInner::User {
+                definition,
+                captures,
+                ..
+            } => {
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
                 let mut scope = state.process().globals.clone().scope();
@@ -375,9 +349,12 @@ impl Function {
 
                 // Push the new frame onto the stack and execute the function
                 // body
-                state.with_frame(scope, call_site, self.id(), |state| {
-                    definition.body.exec(state)
-                })
+                state.with_frame(
+                    scope,
+                    call_site,
+                    self.name().map(String::from),
+                    |state| definition.body.exec(state),
+                )
             }
             FunctionInner::Native { id, .. } => {
                 let definition = state

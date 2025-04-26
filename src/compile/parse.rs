@@ -4,13 +4,12 @@
 use crate::{
     ast::{
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
-        Block, DoWhileLoop, ExportDeclaration, Expression, FunctionBody,
-        FunctionCall, FunctionDefinition, FunctionParameter, FunctionPointer,
-        Identifier, If, ImportDeclaration, ImportModule, ImportNamed,
-        Declaration, Literal, Module, Node, NodeId, ObjectLiteral,
-        ObjectPatternElement, ObjectProperty, PropertyAccess, PropertyName,
-        Statement, TemplateChunk, TemplateLiteral, UnaryOperation,
-        UnaryOperator, Variable, WhileLoop,
+        Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
+        FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
+        Identifier, If, ImportDeclaration, ImportModule, ImportNamed, Literal,
+        Module, Node, NodeId, ObjectLiteral, ObjectPatternElement,
+        ObjectProperty, PropertyAccess, PropertyName, Statement, TemplateChunk,
+        TemplateLiteral, UnaryOperation, UnaryOperator, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
     source::{SourceId, SourceTable, Span, SpanTable},
@@ -667,7 +666,7 @@ impl Transform for ext::Name {
 }
 
 impl Transform for ext::ArrowExpr {
-    type Output = FunctionPointer;
+    type Output = FunctionDefinition;
 
     fn transform(
         self,
@@ -703,12 +702,12 @@ impl Transform for ext::ArrowExpr {
                 FunctionBody::Block(block)
             }
         };
-        Ok(FunctionPointer::Inline(FunctionDefinition {
+        Ok(FunctionDefinition {
             name: None,
             parameters,
             body,
             captures: [].into(), // Will be filled out later in the pipeline
-        }))
+        })
     }
 }
 

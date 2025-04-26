@@ -4,9 +4,9 @@
 use crate::ast::{
     ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
     Block, Declaration, ExportDeclaration, Expression, FunctionBody,
-    FunctionCall, FunctionDefinition, FunctionParameter, FunctionPointer,
-    Identifier, ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
-    Node, NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
+    FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
+    ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
+    NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
     Statement, TemplateChunk, TemplateLiteral, Variable,
 };
 
@@ -308,8 +308,8 @@ impl From<ObjectLiteral> for Expression {
 }
 
 impl From<FunctionDefinition> for Expression {
-    fn from(function: FunctionDefinition) -> Self {
-        Self::ArrowFunction(FunctionPointer::Inline(function).s())
+    fn from(definition: FunctionDefinition) -> Self {
+        Self::ArrowFunction(definition.s())
     }
 }
 

@@ -4,12 +4,12 @@ use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
     BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
     ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
-    FunctionDefinition, FunctionParameter, FunctionPointer, Identifier, If,
-    ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
-    NativeModuleName, Node, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
-    UnaryOperation, UnaryOperator, Variable, WhileLoop,
+    FunctionDefinition, FunctionParameter, Identifier, If, ImportDeclaration,
+    ImportModule, ImportNamed, Literal, Module, NativeModuleName, Node,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
+    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+    UnaryOperator, Variable, WhileLoop,
 };
 use std::{borrow::Cow, fmt};
 
@@ -115,19 +115,6 @@ impl DisplayIndent for Declaration {
 impl DisplayIndent for Variable {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         (&self.binding, self.init.as_ref().map(|init| (" = ", init))).fmt(ind)
-    }
-}
-
-impl DisplayIndent for FunctionPointer {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            // Source code generation is meant to be run on hand-crafted ASTs,
-            // so the function def should still be inline
-            Self::Inline(definition) => definition.fmt(ind),
-            // This isn't really useful, but we can't do any better without the
-            // function table
-            Self::Lifted(_) => "<lifted function>".fmt(ind),
-        }
     }
 }
 

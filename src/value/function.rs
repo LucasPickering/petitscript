@@ -1,7 +1,6 @@
 use crate::{
-    compile::FunctionDefinitionId,
+    ast::FunctionDefinition,
     error::RuntimeError,
-    execute::ProcessId,
     value::{FromPetit, IntoPetit, Value},
     Process,
 };
@@ -23,11 +22,18 @@ impl Function {
     /// Create a new function. A "user" function is a function defined in
     /// PetitScript, as opposed to a "native" function that's defined in Rust.
     pub(crate) fn user(
-        id: UserFunctionId,
+        definition: Arc<FunctionDefinition>,
         name: Option<String>,
         captures: Captures,
     ) -> Self {
-        Self(FunctionInner::User { id, name, captures }.into())
+        Self(
+            FunctionInner::User {
+                definition,
+                name,
+                captures,
+            }
+            .into(),
+        )
     }
 
     /// Create a new native function. The function must have been predefined in
@@ -53,14 +59,6 @@ impl Function {
             }
             .into(),
         )
-    }
-
-    pub(crate) fn id(&self) -> FunctionId {
-        match &*self.0 {
-            FunctionInner::User { id, .. } => FunctionId::User(*id),
-            FunctionInner::Native { id, .. }
-            | FunctionInner::Bound { id, .. } => FunctionId::Native(*id),
-        }
     }
 
     /// TODO
@@ -92,14 +90,14 @@ impl Display for Function {
 /// The implementation of a function, which is hidden from the external API
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum FunctionInner {
-    /// A function defined in PetitScript. User functions must be defined in
-    /// code and their definnitions interned at the program level during
-    /// the compilation process. Once a function _value_ is created, that
-    /// function can only be called within the process in which it was
-    /// created.
+    /// A function defined in PetitScript
     User {
-        /// A pointer to this function's definition in the user function table
-        id: UserFunctionId,
+        /// A pointer to the function's definition. This is reference counted
+        /// so the function can be cheaply clonable. We expect to clone
+        /// definitions once from the AST during value creation, but after that
+        /// the value can be cloned cheaply.
+        /// TODO use Arc in the AST as well?
+        definition: Arc<FunctionDefinition>,
         /// The name is also contained in the function definition that the ID
         /// points to, but we duplicate it here for easy access during
         /// printing/debugging
@@ -153,16 +151,7 @@ pub(crate) enum FunctionInner {
 /// engine that the function is defined and executed.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum FunctionId {
-    User(UserFunctionId),
     Native(NativeFunctionId),
-}
-
-/// A unique ID for a user function. This is unique only within the engine that
-/// the function is defined and executed.
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct UserFunctionId {
-    pub process_id: ProcessId,
-    pub definition_id: FunctionDefinitionId,
 }
 
 /// A set of captured values for a closure

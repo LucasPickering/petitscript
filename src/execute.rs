@@ -8,17 +8,14 @@ mod state;
 pub use scope::{GlobalEnvironment, Prototype};
 
 use crate::{
-    ast::{FunctionDefinition, NativeModuleName},
+    ast::NativeModuleName,
     compile::Program,
     error::RuntimeError,
     execute::{
         exec::Execute,
         state::{CallSite, ThreadState},
     },
-    value::{
-        function::{Function, FunctionInner},
-        Value,
-    },
+    value::{function::Function, Value},
     Error, NativeFunctionTable,
 };
 use indexmap::IndexMap;
@@ -26,14 +23,12 @@ use std::{
     any::{self, Any, TypeId},
     collections::{hash_map::Entry, HashMap},
     fmt::{self, Display},
-    sync::{atomic::AtomicU32, Arc},
+    sync::Arc,
 };
 
 /// TODO
 #[derive(Clone, Debug)]
 pub struct Process {
-    /// TODO
-    id: ProcessId,
     /// The program we'll be executing
     program: Arc<Program>,
     /// A clone of the module registry from the engine. This clone should be
@@ -64,24 +59,13 @@ impl Process {
         globals: Arc<GlobalEnvironment>,
         program: Program,
     ) -> Self {
-        // Within a single OS process, each process ID will be unique
-        static NEXT_ID: AtomicU32 = AtomicU32::new(0);
-        let id = ProcessId(
-            NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        );
-
         Self {
-            id,
             program: program.into(),
             modules,
             native_functions,
             globals,
             app_data: AppData::default(),
         }
-    }
-
-    fn id(&self) -> ProcessId {
-        self.id
     }
 
     /// Get a piece of app data attached to the process, downcasted to a static
@@ -122,40 +106,12 @@ impl Process {
         function: &Function,
         arguments: Vec<Value>,
     ) -> Result<Value, Error> {
-        // If this is a user function, make sure it belongs to this process.
-        // Native functions don't capture any values so they don't need this
-        if let FunctionInner::User { id, .. } = &*function.0 {
-            if id.process_id != self.id {
-                todo!("error process ID mismatch")
-            }
-        }
-
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(Arc::clone(&self.globals), self, false);
         function
             .call(&mut thread_state, CallSite::Native, arguments)
             .map_err(Error::from)
-    }
-
-    /// TODO
-    pub fn get_fn_definition(
-        &self,
-        function: &Function,
-    ) -> Result<&Arc<FunctionDefinition>, Error> {
-        match &*function.0 {
-            FunctionInner::User { id, .. } if id.process_id == self.id => {
-                Ok(self
-                    .program
-                    .function_table()
-                    .get(id.definition_id)
-                    .expect("TODO"))
-            }
-            FunctionInner::User { .. } => todo!(),
-            FunctionInner::Native { .. } | FunctionInner::Bound { .. } => {
-                todo!()
-            }
-        }
     }
 
     /// Create a new thread to evaluate a module
@@ -173,10 +129,6 @@ impl Process {
             .ok_or_else(|| RuntimeError::UnknownModule { name: name.clone() })
     }
 }
-
-/// TODO
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ProcessId(pub u32);
 
 /// Values exported from a module
 ///

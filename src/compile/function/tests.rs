@@ -1,13 +1,12 @@
 use crate::{
     ast::{
         Declaration, Expression, FunctionBody, FunctionCall,
-        FunctionDefinition, FunctionParameter, FunctionPointer, Identifier,
-        ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module,
-        ObjectLiteral, Statement,
+        FunctionDefinition, FunctionParameter, Identifier, ImportDeclaration,
+        IntoExpression, IntoNode, IntoStatement, Module, ObjectLiteral,
+        Statement,
     },
-    compile::{CapturedAst, Compiler, LabelledAst, Lifted},
+    compile::{CapturedAst, Compiler, LabelledAst},
 };
-use std::sync::Arc;
 
 // We use vecs in a lot of args here in an attempt to cut down on
 // monomorphization copies for the builder methods
@@ -132,71 +131,5 @@ fn function_capture() {
             .declare("f",)
             .into_stmt()
         ])
-    );
-}
-
-/// Test that functions get lifted from the AST to the function table
-#[test]
-fn function_lift() {
-    let Lifted {
-        module,
-        function_table,
-        ..
-    } = Compiler::new(
-        // TODO include a function in param position here: (i = () => {}) => {}
-        "
-        const f = () => {
-            const g = () => {
-                return () => {};
-            };
-        };
-        ",
-    )
-    .parse()
-    .unwrap()
-    .label()
-    .capture()
-    .lift()
-    .program;
-
-    assert_eq!(
-        module.data(),
-        &Module::new(vec![Declaration::new(
-            "f",
-            Expression::ArrowFunction(FunctionPointer::Lifted(2.into()).s())
-        )
-        .into()])
-    );
-
-    assert_eq!(
-        function_table.functions,
-        [
-            // These are defined inside-out
-            FunctionDefinition::new(vec![], FunctionBody::empty()),
-            FunctionDefinition::new(
-                vec![],
-                FunctionBody::block([Statement::Return(Some(
-                    Expression::ArrowFunction(
-                        FunctionPointer::Lifted(0.into()).s()
-                    )
-                    .s()
-                ))])
-            )
-            .with_name("g"),
-            FunctionDefinition::new(
-                vec![],
-                FunctionBody::block(vec![Declaration::new(
-                    "g",
-                    Expression::ArrowFunction(
-                        FunctionPointer::Lifted(1.into()).s()
-                    )
-                )
-                .into()])
-            )
-            .with_name("f"),
-        ]
-        .into_iter()
-        .map(Arc::new)
-        .collect::<Vec<_>>()
     );
 }

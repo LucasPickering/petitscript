@@ -2,7 +2,7 @@
 
 use crate::{
     ast::NativeModuleName,
-    compile::{FunctionDefinitionId, SUPPORTED_EXTENSIONS},
+    compile::SUPPORTED_EXTENSIONS,
     source::QualifiedSpan,
     value::{Number, ValueType},
 };
@@ -231,9 +231,6 @@ pub enum RuntimeError {
     /// Attempt to import from a module that doesn't exist
     UnknownModule { name: NativeModuleName },
 
-    /// TODO
-    UnknownUserFunction(FunctionDefinitionId),
-
     /// Error converting to/from PS values
     Value(ValueError),
 
@@ -290,9 +287,6 @@ impl Display for RuntimeError {
                 with the engine. If you meant to import from a local file, \
                 try `./{name}`"
             ),
-            Self::UnknownUserFunction(id) => {
-                write!(f, "Unknown user function with definition ID {id:?}")
-            }
             Self::Value(error) => write!(f, "{error}"),
             Self::WithContext { message, .. } => write!(f, "{message}"),
         }
@@ -313,7 +307,6 @@ impl StdError for RuntimeError {
             RuntimeError::Other(error) => error.source(),
             RuntimeError::Reference { .. } => None,
             RuntimeError::UnknownModule { .. } => None,
-            RuntimeError::UnknownUserFunction(_) => None,
             RuntimeError::Value(error) => Some(error),
             RuntimeError::WithContext { error, .. } => Some(error),
         }

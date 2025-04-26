@@ -3,12 +3,11 @@
 mod function;
 mod parse;
 
-pub use function::FunctionDefinitionId;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
     ast::{Module, Node, Walk},
-    compile::function::{CaptureFunctions, FunctionTable, LabelFunctions},
+    compile::function::{CaptureFunctions, LabelFunctions},
     source::{SourceTable, SpanTable},
     Error, Source,
 };
@@ -20,12 +19,7 @@ pub fn parse(source: impl Source) -> Result<Node<Module>, Error> {
 
 /// Parse and compile source code into an executable [Program]
 pub fn compile(source: impl Source) -> Result<Program, Error> {
-    let program = Compiler::new(source)
-        .parse()?
-        .label()
-        .capture()
-        .lift()
-        .end();
+    let program = Compiler::new(source).parse()?.label().capture().end();
     Ok(program)
 }
 
@@ -42,7 +36,6 @@ pub fn compile_ast(module: Node<Module>) -> Result<Program, Error> {
     }
     .label()
     .capture()
-    .lift()
     .end();
     Ok(program)
 }
@@ -55,7 +48,6 @@ pub struct Program {
     /// A debug table of source spans for each node. This will help us produce
     /// good error messages at runtime
     spans: SpanTable,
-    function_table: FunctionTable,
 }
 
 impl Program {
@@ -72,13 +64,6 @@ impl Program {
     /// TODO
     pub fn spans(&self) -> &SpanTable {
         &self.spans
-    }
-
-    /// The function table stores the definition of each function, including
-    /// its parameters and bodies. This is similar to the .text section of a
-    /// binary
-    pub fn function_table(&self) -> &FunctionTable {
-        &self.function_table
     }
 }
 
@@ -107,13 +92,6 @@ struct LabelledAst {
 struct CapturedAst {
     module: Node<Module>,
     spans: SpanTable,
-}
-
-/// A program after function lifting
-struct Lifted {
-    module: Node<Module>,
-    spans: SpanTable,
-    function_table: FunctionTable,
 }
 
 impl Compiler<()> {
@@ -168,29 +146,11 @@ impl Compiler<LabelledAst> {
 }
 
 impl Compiler<CapturedAst> {
-    /// Lift functions into a separate table, replacing their bodies with
-    /// references
-    fn lift(self) -> Compiler<Lifted> {
-        let mut module = self.program.module;
-        let function_table = FunctionTable::lift(&mut module);
-        Compiler {
-            sources: self.sources,
-            program: Lifted {
-                module,
-                spans: self.program.spans,
-                function_table,
-            },
-        }
-    }
-}
-
-impl Compiler<Lifted> {
     fn end(self) -> Program {
         Program {
             sources: self.sources,
             module: self.program.module,
             spans: self.program.spans,
-            function_table: self.program.function_table,
         }
     }
 }

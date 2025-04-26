@@ -3,16 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    ast::{
-        AstVisitor, Binding, Block, Expression, FunctionDefinition,
-        FunctionPointer, Identifier, ImportDeclaration, Module, Node,
-        ObjectProperty, PropertyName, Variable, Walk as _,
-    },
-    error::RuntimeError,
+use crate::ast::{
+    AstVisitor, Binding, Block, Expression, FunctionDefinition, Identifier,
+    ImportDeclaration, Node, ObjectProperty, PropertyName, Variable,
 };
 use indexmap::IndexSet;
-use std::{hash::Hash, mem, sync::Arc};
 
 /// A convenience compiler step to apply a name to functions. The function name
 /// is purely for printing/debugging, so this has no impact on semantics. This
@@ -28,13 +23,7 @@ pub struct LabelFunctions;
 impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
     fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
-        if let Expression::ArrowFunction(function) = expression {
-            let FunctionPointer::Inline(definition) = function.data_mut()
-            else {
-                // This must be run before function lifting, because definitions
-                // are immutable once they're in the function table
-                unreachable!("Function labelling must run before lifting")
-            };
+        if let Expression::ArrowFunction(definition) = expression {
             // It shouldn't be possible for this function to have a name already
             debug_assert!(
                 definition.name.is_none(),
@@ -229,72 +218,4 @@ struct Frame {
     /// function. The scope includes all functions further up (higher index in)
     /// the stack as well
     scope_index: usize,
-}
-
-/// A table of all user function definitions in a program. The definitions are
-/// moved to a single data struct in a process known as "lifting". This enables
-/// us to return function values to the user without having to copy or move the
-/// function's entire parameter and body definition.
-#[derive(Debug)]
-pub struct FunctionTable {
-    functions: Vec<Arc<FunctionDefinition>>,
-}
-
-impl FunctionTable {
-    /// Lifting is the process of moving all function definitions in the AST
-    /// into a single registry, and replacing the original definitions with
-    /// IDs into the registry. This is akin to moving all functions into the
-    /// .text section of a binary and generating pointers.
-    pub fn lift(module: &mut Module) -> Self {
-        let mut table = Self {
-            functions: Vec::new(),
-        };
-        module.walk(&mut table);
-        table
-    }
-
-    /// Look up a function definition by its ID. This is analagous to
-    /// derefencing a function pointer into the .text section. This returns
-    /// an `Arc` so the lifetime can be detached from the program if necessary
-    pub fn get(
-        &self,
-        id: FunctionDefinitionId,
-    ) -> Result<&Arc<FunctionDefinition>, RuntimeError> {
-        self.functions
-            .get(id.0 as usize)
-            .ok_or_else(|| RuntimeError::UnknownUserFunction(id))
-    }
-}
-
-impl AstVisitor for FunctionTable {
-    fn exit_function_pointer(&mut self, function: &mut FunctionPointer) {
-        // Lift functions on _exit_, so we can do it inside-out. For each
-        // function, we know its params and body have already been lifted.
-
-        // The ID is just the next index in the vec
-        let id = FunctionDefinitionId(self.functions.len() as u32);
-        let FunctionPointer::Inline(definition) =
-            mem::replace(function, FunctionPointer::Lifted(id))
-        else {
-            // Compiler bug!
-            panic!("Function {id:?} has already been lifted!")
-        };
-        self.functions.push(Arc::new(definition));
-    }
-}
-
-/// A unique identifier for a function definition. This ID is unique only within
-/// its originating program. The ID simply represents an index into the vec of
-/// function definitions.
-///
-/// Use a u32 internally so this can be packed with a process ID into a single
-/// word
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FunctionDefinitionId(pub u32);
-
-#[cfg(test)]
-impl From<u32> for FunctionDefinitionId {
-    fn from(id: u32) -> Self {
-        Self(id)
-    }
 }

@@ -17,7 +17,7 @@ mod walk;
 pub use build::{IntoExpression, IntoNode, IntoStatement};
 pub use walk::{AstVisitor, Walk};
 
-use crate::{compile::FunctionDefinitionId, error::ModuleNameError};
+use crate::error::ModuleNameError;
 use std::{
     fmt::{self, Debug},
     hash::Hash,
@@ -178,21 +178,6 @@ pub struct Declaration {
 pub struct Variable {
     pub binding: Node<Binding>,
     pub init: Option<Box<Node<Expression>>>,
-}
-
-/// A form of indirection for a function definition. Immediately after parsing,
-/// this is the actual function definition. During compilation, a step called
-/// "lifting" moves each function definition into a table and replaces it with
-/// a unique ID. At runtime, the ID is used to look up and invoke the
-/// definition.
-#[derive(Clone, Debug, PartialEq)]
-pub enum FunctionPointer {
-    /// Lifting hasn't been performed yet, the function definitions is still
-    /// inline. This code isn't executable yet!
-    Inline(FunctionDefinition),
-    /// Function definition has been lifted to the function table, and this is
-    /// just a pointer to the definition
-    Lifted(FunctionDefinitionId),
 }
 
 /// The parameters, body, and captures that constitute a user (i.e *not* native)
@@ -396,7 +381,7 @@ pub enum Expression {
     OptionalProperty(Node<OptionalPropertyAccess>),
     /// Lambda syntax: `(...) => {...}` or `() => value`. This shares the same
     /// AST node as the `function` syntax; they get combined during parsing
-    ArrowFunction(Node<FunctionPointer>),
+    ArrowFunction(Node<FunctionDefinition>),
     Unary(Node<UnaryOperation>),
     Binary(Node<BinaryOperation>),
     Ternary(Node<TernaryConditional>),

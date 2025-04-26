@@ -2,11 +2,11 @@ use crate::ast::{
     ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation, Binding,
     Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
     FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    FunctionPointer, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, Literal, Module, Node, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
-    UnaryOperation, Variable, WhileLoop,
+    Identifier, If, ImportDeclaration, ImportModule, ImportNamed, Literal,
+    Module, Node, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
+    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -171,17 +171,6 @@ impl Walk for DoWhileLoop {
         visitor.enter_do_while_loop(self);
         self.condition.walk(visitor);
         visitor.exit_do_while_loop(self);
-    }
-}
-
-impl Walk for FunctionPointer {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_function_pointer(self);
-        match self {
-            Self::Inline(definition) => definition.walk(visitor),
-            Self::Lifted(_) => {}
-        }
-        visitor.exit_function_pointer(self);
     }
 }
 
@@ -493,9 +482,6 @@ pub trait AstVisitor {
 
     fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
     fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
-
-    fn enter_function_pointer(&mut self, _: &mut FunctionPointer) {}
-    fn exit_function_pointer(&mut self, _: &mut FunctionPointer) {}
 
     fn visit_identifier(&mut self, _: &mut Identifier) {}
 

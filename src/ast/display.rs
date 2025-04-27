@@ -22,6 +22,14 @@ impl fmt::Display for Module {
     }
 }
 
+// TODO impl this automatically on all AST types
+impl fmt::Display for FunctionDefinition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut indenter = Indenter::new(f, Some("  "));
+        DisplayIndent::fmt(self, &mut indenter)
+    }
+}
+
 /// TODO
 struct Indenter<'a, 'f> {
     formatter: &'a mut fmt::Formatter<'f>,

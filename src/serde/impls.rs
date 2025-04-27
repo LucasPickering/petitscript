@@ -2,7 +2,8 @@
 //! module so the implementations don't clutter the main value modules.
 
 use crate::value::{
-    function::Function, Array, IntoPetit, Number, Object, Value,
+    function::{Function, FunctionInner},
+    Array, IntoPetit, Number, Object, Value,
 };
 use serde::{
     de::{
@@ -184,6 +185,43 @@ impl<'de> Deserialize<'de> for Number {
     }
 }
 
+/// TODO explain
+pub mod serde_function_definition {
+    use crate::{
+        ast::{Expression, FunctionDefinition, Statement},
+        compile,
+    };
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S>(
+        definition: &Arc<FunctionDefinition>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&definition.to_string())
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<Arc<FunctionDefinition>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let source = String::deserialize(deserializer)?;
+        let module = compile::parse(source).expect("TODO");
+        let Statement::Expression(expression) = &*module.statements[0] else {
+            todo!()
+        };
+        let Expression::ArrowFunction(definition) = expression.data() else {
+            todo!()
+        };
+        Ok(definition.data().clone().into())
+    }
+}
+
 impl Function {
     // TODO explain
     // TODO include note about how these have to match the attributes on
@@ -205,17 +243,28 @@ impl Function {
     pub(super) const FIELD_CAPTURES: &'static str = "captures";
     pub(super) const FIELD_RECEIVER: &'static str = "receiver";
     pub(super) const USER_FIELDS: &'static [&'static str] = &[
-        Self::FIELD_TYPE,
         Self::FIELD_DEFINITION,
         Self::FIELD_NAME,
         Self::FIELD_CAPTURES,
     ];
     pub(super) const NATIVE_FIELDS: &'static [&'static str] =
-        &[Self::FIELD_TYPE, Self::FIELD_ID, Self::FIELD_NAME];
-    pub(super) const BOUND_FIELDS: &'static [&'static str] = &[
-        Self::FIELD_TYPE,
-        Self::FIELD_ID,
-        Self::FIELD_RECEIVER,
-        Self::FIELD_NAME,
-    ];
+        &[Self::FIELD_ID, Self::FIELD_NAME];
+    pub(super) const BOUND_FIELDS: &'static [&'static str] =
+        &[Self::FIELD_ID, Self::FIELD_RECEIVER, Self::FIELD_NAME];
+
+    pub(super) fn serde_type(&self) -> &'static str {
+        match &*self.0 {
+            FunctionInner::User { .. } => Self::TYPE_USER,
+            FunctionInner::Native { .. } => Self::TYPE_NATIVE,
+            FunctionInner::Bound { .. } => Self::TYPE_BOUND,
+        }
+    }
+
+    pub(super) fn serde_fields(&self) -> &'static [&'static str] {
+        match &*self.0 {
+            FunctionInner::User { .. } => Self::USER_FIELDS,
+            FunctionInner::Native { .. } => Self::NATIVE_FIELDS,
+            FunctionInner::Bound { .. } => Self::BOUND_FIELDS,
+        }
+    }
 }

@@ -104,6 +104,10 @@ pub(crate) enum FunctionInner {
         /// definitions once from the AST during value creation, but after that
         /// the value can be cloned cheaply.
         /// TODO use Arc in the AST as well?
+        #[cfg_attr(
+            feature = "serde",
+            serde(with = "crate::serde::serde_function_definition")
+        )]
         definition: Arc<FunctionDefinition>,
         /// The name is also contained in the function definition that the ID
         /// points to, but we duplicate it here for easy access during

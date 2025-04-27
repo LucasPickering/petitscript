@@ -77,7 +77,13 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             // object. It's not perfect, but it's very unlikely to collide with
             // a real object
             Value::Function(function) => {
-                visitor.visit_map(&mut FunctionDeserializer::new(function))
+                visitor.visit_map(&mut MapDeserializer::new(
+                    [(
+                        function.serde_type(),
+                        FunctionDeserializer::new(function),
+                    )]
+                    .into_iter(),
+                ))
             }
         }
     }
@@ -124,6 +130,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
     where
         V: de::Visitor<'de>,
     {
+        // TODO can we get rid of this?
         match self.value {
             Value::Object(object) => {
                 // Deserialize an externally tagged enum
@@ -305,6 +312,8 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer {
 /// Deserialize a [Function]. It will be converted into a serde map. Generally
 /// this is only useful if deserializing back into the [Function] type on the
 /// other side.
+///
+/// TODO explain how it works
 struct FunctionDeserializer {
     fields: &'static [&'static str],
     /// TODO
@@ -315,16 +324,36 @@ struct FunctionDeserializer {
 
 impl FunctionDeserializer {
     fn new(function: Function) -> Self {
-        let fields = match &*function.0 {
-            FunctionInner::User { .. } => Function::USER_FIELDS,
-            FunctionInner::Native { .. } => Function::NATIVE_FIELDS,
-            FunctionInner::Bound { .. } => Function::BOUND_FIELDS,
-        };
         Self {
-            fields,
+            fields: function.serde_fields(),
             function: function.0,
             next_field: 0,
         }
+    }
+}
+
+impl IntoDeserializer<'_, ValueError> for FunctionDeserializer {
+    type Deserializer = Self;
+
+    fn into_deserializer(self) -> Self::Deserializer {
+        self
+    }
+}
+
+impl<'de> de::Deserializer<'de> for FunctionDeserializer {
+    type Error = ValueError;
+
+    fn deserialize_any<V>(self, visitor: V) -> Result<V::Value, Self::Error>
+    where
+        V: de::Visitor<'de>,
+    {
+        visitor.visit_map(self)
+    }
+
+    serde::forward_to_deserialize_any! {
+        unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
+        string bytes byte_buf identifier ignored_any unit_struct newtype_struct
+        struct map seq option tuple tuple_struct enum
     }
 }
 
@@ -356,15 +385,6 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
             .ok_or_else(|| ValueError::custom("TODO impossible"))?;
         self.next_field += 1;
         match *field {
-            Function::FIELD_TYPE => {
-                // Emit "__type": "<type>"
-                let type_ = match &*self.function {
-                    FunctionInner::User { .. } => Function::TYPE_USER,
-                    FunctionInner::Native { .. } => Function::TYPE_NATIVE,
-                    FunctionInner::Bound { .. } => Function::TYPE_BOUND,
-                };
-                seed.deserialize(StrDeserializer::new(type_))
-            }
             Function::FIELD_ID => {
                 let id = match &*self.function {
                     FunctionInner::User { .. } => todo!("error"),
@@ -379,6 +399,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
                     | FunctionInner::Native { name, .. }
                     | FunctionInner::Bound { name, .. } => name.as_ref(),
                 };
+                dbg!(name); // TODO
                 if let Some(name) = name {
                     seed.deserialize(StrDeserializer::new(name))
                 } else {
@@ -386,6 +407,17 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
                     // None instead of ()
                     seed.deserialize(().into_deserializer())
                 }
+            }
+            Function::FIELD_DEFINITION => {
+                // TODO explain
+                let definition = match &*self.function {
+                    FunctionInner::User { definition, .. } => definition,
+                    FunctionInner::Native { .. }
+                    | FunctionInner::Bound { .. } => todo!("error"),
+                };
+                seed.deserialize(StringDeserializer::new(
+                    definition.to_string(),
+                ))
             }
             Function::FIELD_CAPTURES => {
                 match &*self.function {
@@ -412,6 +444,7 @@ impl<'de> de::MapAccess<'de> for FunctionDeserializer {
     }
 
     fn size_hint(&self) -> Option<usize> {
+        // Get the number of fields to emit remaining
         Some(Function::USER_FIELDS.len() - self.next_field)
     }
 }

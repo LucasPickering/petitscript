@@ -10,6 +10,7 @@ mod impls;
 mod ser;
 
 pub use de::Deserializer;
+pub(crate) use impls::serde_function_definition;
 pub use ser::Serializer;
 
 use crate::{error::ValueError, Value};
@@ -88,6 +89,7 @@ mod tests {
     fn identity(value: impl Into<Value>) {
         let value = value.into();
         let deserialized: Value = from_value(value.clone()).unwrap();
+        dbg!(&value, &deserialized);
         assert_eq!(deserialized, value, "Deserialization did not math");
         let serialized = to_value(&value).unwrap();
         assert_eq!(serialized, value, "Serialization did not match");

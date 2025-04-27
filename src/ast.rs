@@ -28,6 +28,8 @@ use std::{
 /// An identifier that uniquely identifies an AST node **within the AST**. These
 /// IDs are not globally unique, just within a single AST.
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub(crate) struct NodeId(u32);
 
 impl NodeId {
@@ -82,6 +84,7 @@ impl Debug for NodeId {
 /// - ASTs parsed from source code
 /// - ASTs generated programatically
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Node<T> {
     id: NodeId,
     node: T,
@@ -134,11 +137,13 @@ impl<T: PartialEq> PartialEq for Node<T> {
 /// The root AST node for a single source file. This is the outcome of parsing a
 /// file, and may contain nested modules from local imports.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Module {
     pub statements: Box<[Node<Statement>]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Statement {
     Empty,
     Block(Node<Block>),
@@ -162,6 +167,7 @@ pub enum Statement {
 /// A collection of statements, delineated by `{ }`. This declares a new lexical
 /// scope.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Block {
     pub statements: Box<[Node<Statement>]>,
 }
@@ -169,12 +175,14 @@ pub struct Block {
 /// A single `const` declaration with one or more declared variables: `const x =
 /// 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Declaration {
     pub variables: Box<[Node<Variable>]>,
 }
 
 /// A single declared variable in a declaration or function parameter
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Variable {
     pub binding: Node<Binding>,
     pub init: Option<Box<Node<Expression>>>,
@@ -184,6 +192,7 @@ pub struct Variable {
 /// function definition. This covers both `function` functions and
 /// arrow functions, since the two are semantically equivalent in PS.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value. This
     /// is **not necessarily** the name the function is bound to; that is
@@ -204,6 +213,7 @@ pub struct FunctionDefinition {
 /// The body of a function definition, which can be either a block or a bare
 /// expression.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
     Expression(Box<Node<Expression>>),
@@ -213,6 +223,7 @@ pub enum FunctionBody {
 
 /// One parameter in a function definition
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionParameter {
     pub variable: Node<Variable>,
     pub varargs: bool,
@@ -231,6 +242,7 @@ pub struct FunctionParameter {
 /// }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct If {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -250,6 +262,7 @@ pub struct If {
 /// }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ForOfLoop {
     pub binding: Binding,
     pub iterable: Node<Expression>,
@@ -263,6 +276,7 @@ pub struct ForOfLoop {
 /// }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WhileLoop {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -275,6 +289,7 @@ pub struct WhileLoop {
 /// } while (shouldKeepRunning());
 /// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DoWhileLoop {
     pub condition: Node<Expression>,
     pub body: Box<Node<Statement>>,
@@ -284,6 +299,7 @@ pub struct DoWhileLoop {
 /// No other import formats are supported
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import>
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportDeclaration {
     /// `exportDefault`
     pub default: Option<Node<Identifier>>,
@@ -301,6 +317,7 @@ pub struct ImportDeclaration {
 ///
 /// the nameds are `export1` and `export2 as ex2`
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportNamed {
     /// `export1` or `export2`
     pub identifier: Node<Identifier>,
@@ -310,6 +327,7 @@ pub struct ImportNamed {
 
 /// Source for an imported module, i.e. the string after `from`
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImportModule {
     /// A native module provided by the engine with a static name, like
     /// `import helpers from 'helpers'`
@@ -327,6 +345,8 @@ pub enum ImportModule {
 /// - Must start with a letter `a-z` or `A-Z`
 /// - Must be at least one character long
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct NativeModuleName(String);
 
 impl TryFrom<String> for NativeModuleName {
@@ -355,6 +375,7 @@ impl FromStr for NativeModuleName {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportDeclaration {
     /// TODO
     Reexport {
@@ -368,6 +389,7 @@ pub enum ExportDeclaration {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Expression {
     Parenthesized(Box<Node<Expression>>),
     /// Primitive and complex type literals
@@ -389,6 +411,8 @@ pub enum Expression {
 
 /// TODO
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Identifier(String);
 
 impl Identifier {
@@ -405,6 +429,7 @@ impl Identifier {
 /// TODO
 /// TODO document why no spans
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Literal {
     Null,
     Undefined,
@@ -418,6 +443,7 @@ pub enum Literal {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemplateLiteral {
     /// A set of contiguous chunks that comprise the template. These will be
     /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
@@ -426,6 +452,7 @@ pub struct TemplateLiteral {
 
 /// One piece in a template. Either a static string or an expression
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplateChunk {
     /// This doesn't need a `Node` because we never refer to the literal chunks
     /// of a template on their own
@@ -435,12 +462,14 @@ pub enum TemplateChunk {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArrayLiteral {
     pub elements: Box<[Node<ArrayElement>]>,
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayElement {
     Expression(Node<Expression>),
     Spread(Node<Expression>),
@@ -448,12 +477,14 @@ pub enum ArrayElement {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectLiteral {
     pub properties: Box<[Node<ObjectProperty>]>,
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectProperty {
     /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
     Property {
@@ -468,6 +499,7 @@ pub enum ObjectProperty {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionCall {
     pub function: Box<Node<Expression>>,
     pub arguments: Box<[Node<Expression>]>,
@@ -475,6 +507,7 @@ pub struct FunctionCall {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropertyAccess {
     pub expression: Box<Node<Expression>>,
     pub property: Node<PropertyName>,
@@ -482,6 +515,7 @@ pub struct PropertyAccess {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OptionalPropertyAccess {
     pub expression: Box<Node<Expression>>,
     pub property: Node<PropertyName>,
@@ -489,6 +523,7 @@ pub struct OptionalPropertyAccess {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UnaryOperation {
     pub operator: UnaryOperator,
     pub expression: Box<Node<Expression>>,
@@ -496,6 +531,7 @@ pub struct UnaryOperation {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UnaryOperator {
     /// `!`: Boolean negation
     BooleanNot,
@@ -509,6 +545,7 @@ pub enum UnaryOperator {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BinaryOperation {
     pub operator: BinaryOperator,
     pub lhs: Box<Node<Expression>>,
@@ -517,6 +554,7 @@ pub struct BinaryOperation {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -555,6 +593,7 @@ pub enum BinaryOperator {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TernaryConditional {
     pub condition: Box<Node<Expression>>,
     pub true_expression: Box<Node<Expression>>,
@@ -563,6 +602,7 @@ pub struct TernaryConditional {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PropertyName {
     /// Normal key: `{ key: value }`
     Literal(Node<Identifier>),
@@ -572,6 +612,7 @@ pub enum PropertyName {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Binding {
     /// `const x = 3`
     Identifier(Node<Identifier>),
@@ -583,6 +624,7 @@ pub enum Binding {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectPatternElement {
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
@@ -604,6 +646,7 @@ pub enum ObjectPatternElement {
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayPatternElement {
     // TODO
 }

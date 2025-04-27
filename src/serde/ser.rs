@@ -4,7 +4,7 @@ use crate::{
     error::ValueError,
     value::{
         function::{Captures, Function},
-        IntoPetit,
+        IntoPetit, Object,
     },
     Value,
 };
@@ -50,7 +50,7 @@ impl serde::Serializer for &Serializer {
     type SerializeTupleVariant = Self;
     type SerializeMap = SerializeMap;
     type SerializeStruct = SerializeStruct;
-    type SerializeStructVariant = Self;
+    type SerializeStructVariant = SerializeFunction;
 
     serialize_into!(serialize_bool, bool);
 
@@ -192,7 +192,10 @@ impl serde::Serializer for &Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!()
+        Ok(SerializeFunction {
+            variant,
+            map: Default::default(),
+        })
     }
 }
 
@@ -333,7 +336,15 @@ impl ser::SerializeMap for SerializeMap {
     }
 }
 
-impl ser::SerializeStructVariant for &Serializer {
+/// Serialize a struct. It could become a function or an object, depending on
+/// what name serialize_struct_variant was called with
+/// TODO update comment
+pub struct SerializeFunction {
+    variant: &'static str,
+    map: IndexMap<&'static str, Value>,
+}
+
+impl ser::SerializeStructVariant for SerializeFunction {
     type Ok = Value;
     type Error = ValueError;
 
@@ -345,16 +356,20 @@ impl ser::SerializeStructVariant for &Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        todo!()
+        // Convert from T to Value
+        let value = value.serialize(&Serializer)?;
+        self.map.insert(key, value);
+        Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(self.map.into())
     }
 }
 
 /// Serialize a struct. It could become a function or an object, depending on
 /// what name serialize_struct was called with
+/// TODO simplify this to just be a map, now that functions are treated as enums
 pub enum SerializeStruct {
     Function(SerializeStructFunction),
     Map(SerializeMap),

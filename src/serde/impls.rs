@@ -8,7 +8,10 @@ use crate::value::{
 use serde::{
     de::{
         self,
-        value::{MapAccessDeserializer, SeqAccessDeserializer},
+        value::{
+            EnumAccessDeserializer, MapAccessDeserializer,
+            SeqAccessDeserializer,
+        },
         MapAccess, Visitor,
     },
     Deserialize, Serialize,
@@ -134,6 +137,7 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 A: MapAccess<'de>,
             {
+                // TODO still needed now that we have visit_enum?
                 #[derive(Deserialize)]
                 #[serde(untagged)]
                 enum FunctionOrObject {
@@ -155,6 +159,14 @@ impl<'de> serde::Deserialize<'de> for Value {
                     FunctionOrObject::Function(function) => function.into(),
                     FunctionOrObject::Object(object) => object.into(),
                 })
+            }
+
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::EnumAccess<'de>,
+            {
+                Function::deserialize(EnumAccessDeserializer::new(data))
+                    .map(Value::Function)
             }
         }
 
@@ -185,48 +197,13 @@ impl<'de> Deserialize<'de> for Number {
     }
 }
 
-/// TODO explain
-pub mod serde_function_definition {
-    use crate::{
-        ast::{Expression, FunctionDefinition, Statement},
-        compile,
-    };
-    use serde::{Deserialize, Deserializer, Serializer};
-    use std::sync::Arc;
-
-    pub fn serialize<S>(
-        definition: &Arc<FunctionDefinition>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&definition.to_string())
-    }
-
-    pub fn deserialize<'de, D>(
-        deserializer: D,
-    ) -> Result<Arc<FunctionDefinition>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let source = String::deserialize(deserializer)?;
-        let module = compile::parse(source).expect("TODO");
-        let Statement::Expression(expression) = &*module.statements[0] else {
-            todo!()
-        };
-        let Expression::ArrowFunction(definition) = expression.data() else {
-            todo!()
-        };
-        Ok(definition.data().clone().into())
-    }
-}
-
 impl Function {
     // TODO explain
     // TODO include note about how these have to match the attributes on
     // FunctionInner
 
+    /// TODO
+    pub(super) const ENUM_NAME: &'static str = "__Function";
     /// Value to use for the type field for user functions
     pub(super) const TYPE_USER: &'static str = "__UserFunction";
     /// Value to use for the type field for native functions

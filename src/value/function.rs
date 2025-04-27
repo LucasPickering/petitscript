@@ -16,6 +16,8 @@ use std::{
 /// created, and references to outside variables may be used within the function
 /// body.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Function(pub(crate) Arc<FunctionInner>);
 
 impl Function {
@@ -88,9 +90,14 @@ impl Display for Function {
 }
 
 /// The implementation of a function, which is hidden from the external API
+///
+/// TODO include note about serde attributes matching the fields defs in
+/// impls.rs
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub(crate) enum FunctionInner {
     /// A function defined in PetitScript
+    #[cfg_attr(feature = "serde", serde(rename = "__UserFunction"))]
     User {
         /// A pointer to the function's definition. This is reference counted
         /// so the function can be cheaply clonable. We expect to clone
@@ -116,6 +123,7 @@ pub(crate) enum FunctionInner {
     /// A function defined in Rust. Native function definitions are interned at
     /// the engine level. A native function _value_ can be called within any
     /// process owned by the engine that contains the native function.
+    #[cfg_attr(feature = "serde", serde(rename = "__NativeFunction"))]
     Native {
         /// A pointer to this function's definition in the native function
         /// table
@@ -130,6 +138,7 @@ pub(crate) enum FunctionInner {
     /// method receiver. This is used to implement prototype functions. In the
     /// case of `array.includes(3)`, `array.includes` represents a bound
     /// function value.
+    #[cfg_attr(feature = "serde", serde(rename = "__BoundFunction"))]
     Bound {
         /// A pointer to this function's definition in the native function
         /// table
@@ -145,13 +154,6 @@ pub(crate) enum FunctionInner {
         /// affect program behavior beyond its `toString()` output.
         name: Option<String>,
     },
-}
-
-/// A unique ID for a user OR native function. This is unique only within the
-/// engine that the function is defined and executed.
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum FunctionId {
-    Native(NativeFunctionId),
 }
 
 /// A set of captured values for a closure
@@ -210,6 +212,8 @@ impl NativeFunctionTable {
 /// TODO
 /// TODO namespace this by engine
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub(crate) struct NativeFunctionId(pub u64);
 
 /// TODO

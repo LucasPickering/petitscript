@@ -3,7 +3,7 @@
 use crate::{
     error::ValueError,
     value::{
-        function::{Captures, Function, UserFunctionId},
+        function::{Captures, Function},
         IntoPetit,
     },
     Value,
@@ -397,7 +397,6 @@ impl ser::SerializeStruct for SerializeStruct {
 /// Serialize a function as a struct
 #[derive(Default)]
 pub struct SerializeStructFunction {
-    id: Option<UserFunctionId>,
     name: Option<String>,
     captures: Option<Captures>,
 }

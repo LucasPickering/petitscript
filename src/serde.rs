@@ -31,9 +31,10 @@ pub fn from_value<'de, T: Deserialize<'de>>(
 mod tests {
     use super::*;
     use crate::{
-        compile::FunctionDefinitionId,
-        execute::ProcessId,
-        value::function::{Function, UserFunctionId},
+        ast::{
+            Expression, FunctionBody, FunctionDefinition, FunctionParameter,
+        },
+        value::function::{Function, NativeFunctionId},
     };
     use indexmap::indexmap;
     use test_case::test_case;
@@ -58,14 +59,32 @@ mod tests {
         "b".to_owned() => 32.into(),
         "c".to_owned() => indexmap! {"d".to_owned() => true.into()}.into()
     }; "object")]
-    #[test_case(Function::user(
-        UserFunctionId {
-            process_id: ProcessId(0),
-            definition_id: FunctionDefinitionId(0),
-        },
-        None,
-        indexmap! {"cap".to_owned() => 32.into()},
-    ); "function")]
+    #[test_case(
+        Function::user(
+            FunctionDefinition::new(
+                [FunctionParameter::identifier("x")],
+                FunctionBody::expression(Expression::reference("x")),
+            )
+                .with_name("func")
+                .with_captures(["cap"])
+                .into(),
+            Some("func".into()),
+            indexmap! {"cap".to_owned() => 32.into()},
+        );
+        "function_user"
+    )]
+    #[test_case(
+        Function::native(NativeFunctionId(0), Some("func".into()));
+        "function_native"
+    )]
+    #[test_case(
+        Function::bound(
+            NativeFunctionId(0),
+            [1, 2, 3].into(),
+            "func".into(),
+        );
+        "function_bound"
+    )]
     fn identity(value: impl Into<Value>) {
         let value = value.into();
         let deserialized: Value = from_value(value.clone()).unwrap();

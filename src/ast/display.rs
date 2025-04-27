@@ -17,7 +17,8 @@ use std::{borrow::Cow, fmt};
 
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut indenter = Indenter::new(f, Some("  "));
+        let indent = if f.alternate() { Some("  ") } else { None };
+        let mut indenter = Indenter::new(f, indent);
         DisplayIndent::fmt(self, &mut indenter)
     }
 }
@@ -25,7 +26,8 @@ impl fmt::Display for Module {
 // TODO impl this automatically on all AST types
 impl fmt::Display for FunctionDefinition {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut indenter = Indenter::new(f, Some("  "));
+        let indent = if f.alternate() { Some("  ") } else { None };
+        let mut indenter = Indenter::new(f, indent);
         DisplayIndent::fmt(self, &mut indenter)
     }
 }

@@ -1,7 +1,7 @@
-export function add(a, b) {
+export const add = (a, b) => {
   return a + b;
-}
+};
 
-export default function () {
+export default () => {
   console.log("I am the default export!!");
-}
+};

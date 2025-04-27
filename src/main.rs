@@ -11,8 +11,13 @@ fn main() {
             return;
         }
     };
+
     match process.execute() {
-        Ok(exports) => println!("Exported:\n{exports:#}"),
+        Ok(exports) => {
+            println!("Exported:\n{exports:#}");
+            let json = serde_json::to_string_pretty(&exports.default).unwrap();
+            println!("JSON: {json}");
+        }
         Err(error) => eprintln!("{error}"),
     }
 }

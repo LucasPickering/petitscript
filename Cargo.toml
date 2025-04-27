@@ -7,11 +7,15 @@ name = "petitscript"
 repository = "https://github.com/LucasPickering/petitscript"
 version = "0.1.0"
 # Keep in sync w/ rust-toolchain.toml
+homepage = "https://petitscript.org"
+keywords = ["TODO"]
 rust-version = "1.82.0"
 
+# TODO separate CLI crate
 [[bin]]
 name = "petitscript"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [dependencies]
 bytes = {version = "1.0.0", default-features = false, optional = true}
@@ -19,10 +23,12 @@ indexmap = {version = "2.7.0"}
 normalize-path = "0.2.1"
 rslint_parser = "0.3.1"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
+serde_json = {version = "1.0.140", optional = true}
 winnow = "0.7.4"
 
 [features]
 buffer = ["dep:bytes"]
+cli = ["dep:serde_json", "serde"]
 default = []
 serde = ["dep:serde", "indexmap/serde"]
 

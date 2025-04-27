@@ -12,8 +12,9 @@ mod ser;
 pub use de::Deserializer;
 pub use ser::Serializer;
 
-use crate::{error::ValueError, Value};
+use crate::{error::ValueError, value::Function, Value};
 use serde::{Deserialize, Serialize};
+use std::{cell::RefCell, collections::BTreeMap};
 
 /// Serialize an instance of type `T` into a PetitScript value
 pub fn to_value<T: Serialize>(data: &T) -> Result<Value, ValueError> {
@@ -25,6 +26,51 @@ pub fn from_value<'de, T: Deserialize<'de>>(
     value: Value,
 ) -> Result<T, ValueError> {
     T::deserialize(Deserializer::new(value))
+}
+
+/// TODO
+/// https://lucumr.pocoo.org/2021/11/14/abusing-serde/
+struct FunctionPool {
+    next_id: u64,
+    pool: BTreeMap<u64, Function>,
+}
+
+impl FunctionPool {
+    /// TODO
+    const STRUCT_NAME: &'static str = "$petitscript::Function";
+
+    thread_local! {
+        static POOL: RefCell<FunctionPool> = const {
+            RefCell::new(FunctionPool::new())
+        };
+    }
+
+    const fn new() -> Self {
+        Self {
+            next_id: 0,
+            pool: BTreeMap::new(),
+        }
+    }
+
+    /// TODO
+    fn insert(function: Function) -> u64 {
+        Self::POOL.with_borrow_mut(|pool| {
+            let id = pool.next_id;
+            // It's exceptionally unlikely we'll ever wrap around these IDs, but
+            // if we do it's even more unlikely that the the original IDs are
+            // still in the pool. Zero-cost preventative maintenance
+            pool.next_id = pool.next_id.wrapping_add(1);
+            pool.pool.insert(id, function);
+            id
+        })
+    }
+
+    /// TODO
+    fn take(id: u64) -> Result<Function, ValueError> {
+        Self::POOL
+            .with_borrow_mut(|pool| pool.pool.remove(&id))
+            .ok_or_else(|| todo!())
+    }
 }
 
 #[cfg(test)]

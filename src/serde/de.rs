@@ -1,19 +1,13 @@
 use crate::{
     error::ValueError,
-    value::{
-        function::{Function, FunctionInner},
-        Number, Value,
-    },
+    serde::FunctionPool,
+    value::{Function, Number, Value},
 };
-use indexmap::IndexMap;
 use serde::de::{
     self,
-    value::{
-        MapDeserializer, SeqDeserializer, StrDeserializer, StringDeserializer,
-    },
-    Deserializer as _, IntoDeserializer, Unexpected,
+    value::{MapDeserializer, SeqDeserializer},
+    Deserializer as _, IntoDeserializer,
 };
-use serde_json::json;
 use std::fmt::Display;
 
 impl de::Error for ValueError {
@@ -72,13 +66,8 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             #[cfg(feature = "buffer")]
             // TODO can we support zero-copy here?
             Value::Buffer(buffer) => visitor.visit_bytes(&buffer),
-            // Functions are represented as a map of static fields, with a
-            // __type field set to a specific value, to distinguish this from an
-            // object. It's not perfect, but it's very unlikely to collide with
-            // a real object
-            // TODO update comment
             Value::Function(function) => {
-                visitor.visit_enum(FunctionEnumDeserializer { function })
+                visitor.visit_newtype_struct(FunctionDeserializer { function })
             }
         }
     }
@@ -93,73 +82,10 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
         }
     }
 
-    fn deserialize_tuple<V>(
-        self,
-        _len: usize,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.deserialize_seq(visitor)
-    }
-
-    fn deserialize_tuple_struct<V>(
-        self,
-        _name: &'static str,
-        _len: usize,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        self.deserialize_seq(visitor)
-    }
-
-    fn deserialize_enum<V>(
-        self,
-        _name: &'static str,
-        _variants: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        // TODO can we get rid of this?
-        match self.value {
-            Value::Object(object) => {
-                // Deserialize an externally tagged enum
-                let mut map: IndexMap<_, _> = object.into();
-                // We expect a map with exactly one entry: {key: value}
-                if map.len() != 1 {
-                    return Err(de::Error::invalid_length(
-                        map.len(),
-                        // TODO include variant names in error msg
-                        &"map of length 1 for an externally tagged enum",
-                    ));
-                }
-                let (variant, value) = map.swap_remove_index(0).unwrap();
-                visitor.visit_enum(EnumDeserializer {
-                    variant,
-                    value: Some(value),
-                })
-            }
-            Value::String(variant) => visitor.visit_enum(EnumDeserializer {
-                variant: variant.into(),
-                value: None,
-            }),
-            _ => Err(de::Error::invalid_type(
-                // TODO break this out into different variants of Unexpected
-                Unexpected::Other("TODO"),
-                &"string or object",
-            )),
-        }
-    }
-
     serde::forward_to_deserialize_any! {
         unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
         string bytes byte_buf identifier ignored_any unit_struct newtype_struct
-        struct map seq
+        struct map seq tuple tuple_struct enum
     }
 }
 
@@ -208,195 +134,41 @@ impl<'de> de::VariantAccess<'de> for Deserializer {
     }
 }
 
-/// Deserialize an enum
-struct EnumDeserializer {
-    variant: String,
-    value: Option<Value>,
-}
-
-impl<'de> de::EnumAccess<'de> for EnumDeserializer {
-    type Error = ValueError;
-    type Variant = VariantDeserializer;
-
-    fn variant_seed<V>(
-        self,
-        seed: V,
-    ) -> Result<(V::Value, Self::Variant), Self::Error>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        let key = seed.deserialize(StringDeserializer::<Self::Error>::new(
-            self.variant,
-        ))?;
-        Ok((key, VariantDeserializer { value: self.value }))
-    }
-}
-
-/// Deserialize an enum variant value
-struct VariantDeserializer {
-    value: Option<Value>,
-}
-
-impl<'de> de::VariantAccess<'de> for VariantDeserializer {
-    type Error = ValueError;
-
-    fn unit_variant(self) -> Result<(), Self::Error> {
-        match self.value {
-            Some(_) => Err(de::Error::invalid_type(
-                de::Unexpected::NewtypeVariant,
-                &"unit variant",
-            )),
-            None => Ok(()),
-        }
-    }
-
-    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value, Self::Error>
-    where
-        T: de::DeserializeSeed<'de>,
-    {
-        match self.value {
-            Some(value) => seed.deserialize(value.into_deserializer()),
-            None => Err(de::Error::invalid_type(
-                de::Unexpected::UnitVariant,
-                &"newtype variant",
-            )),
-        }
-    }
-
-    fn tuple_variant<V>(
-        self,
-        _len: usize,
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        match self.value {
-            Some(value) => serde::Deserializer::deserialize_seq(
-                value.into_deserializer(),
-                visitor,
-            ),
-            None => Err(de::Error::invalid_type(
-                de::Unexpected::UnitVariant,
-                &"tuple variant",
-            )),
-        }
-    }
-
-    fn struct_variant<V>(
-        self,
-        _fields: &'static [&'static str],
-        visitor: V,
-    ) -> Result<V::Value, Self::Error>
-    where
-        V: de::Visitor<'de>,
-    {
-        match self.value {
-            Some(value) => serde::Deserializer::deserialize_map(
-                value.into_deserializer(),
-                visitor,
-            ),
-            None => Err(de::Error::invalid_type(
-                de::Unexpected::UnitVariant,
-                &"struct variant",
-            )),
-        }
-    }
-}
-
 /// TODO
-struct FunctionEnumDeserializer {
-    /// TODO
+struct FunctionDeserializer {
     function: Function,
 }
 
-impl<'de> de::EnumAccess<'de> for FunctionEnumDeserializer {
-    type Error = ValueError;
-    type Variant = Self;
-
-    fn variant_seed<V>(
-        self,
-        seed: V,
-    ) -> Result<(V::Value, Self::Variant), Self::Error>
-    where
-        V: de::DeserializeSeed<'de>,
-    {
-        let variant = seed.deserialize(StrDeserializer::<Self::Error>::new(
-            self.function.serde_type(),
-        ))?;
-        Ok((variant, self))
-    }
-}
-
-// We'll produce a map of the static fields in a function
-impl<'de> de::VariantAccess<'de> for FunctionEnumDeserializer {
+impl<'de> de::Deserializer<'de> for FunctionDeserializer {
     type Error = ValueError;
 
-    fn unit_variant(self) -> Result<(), Self::Error> {
-        // A function can only be a struct variant
-        Err(de::Error::invalid_type(
-            Unexpected::StructVariant,
-            &"unit variant",
-        ))
-    }
-
-    fn newtype_variant_seed<T>(self, _seed: T) -> Result<T::Value, Self::Error>
-    where
-        T: de::DeserializeSeed<'de>,
-    {
-        // A function can only be a struct variant
-        Err(de::Error::invalid_type(
-            Unexpected::StructVariant,
-            &"newtype variant",
-        ))
-    }
-
-    fn tuple_variant<V>(
-        self,
-        _len: usize,
-        _visitor: V,
-    ) -> Result<V::Value, Self::Error>
+    fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        // A function can only be a struct variant
-        Err(de::Error::invalid_type(
-            Unexpected::StructVariant,
-            &"tuple variant",
-        ))
+        todo!("not supported, return error")
     }
 
-    fn struct_variant<V>(
+    fn deserialize_newtype_struct<V>(
         self,
-        _fields: &'static [&'static str],
+        name: &'static str,
         visitor: V,
     ) -> Result<V::Value, Self::Error>
     where
         V: de::Visitor<'de>,
     {
-        // TODO clean up
-        let json = match &*self.function.0 {
-            FunctionInner::User {
-                definition,
-                name,
-                captures,
-            } => {
-                json!({
-                    "definition": serde_json::to_value(definition).unwrap(),
-                    "name": serde_json::to_value(name).unwrap(),
-                    "captures": serde_json::to_value(captures).unwrap(),
-                })
-            }
-            FunctionInner::Native { id, name } => json!({
-                "id": serde_json::to_value(id).unwrap(),
-                "name": serde_json::to_value(name).unwrap(),
-            }),
-            FunctionInner::Bound { id, receiver, name } => json!({
-                "id": serde_json::to_value(id).unwrap(),
-                "receiver": serde_json::to_value(receiver).unwrap(),
-                "name": serde_json::to_value(name).unwrap(),
-            }),
-        };
-        json.deserialize_any(visitor).map_err(ValueError::other)
+        // TODO explain
+        if name == FunctionPool::STRUCT_NAME {
+            let id = FunctionPool::insert(self.function);
+            visitor.visit_u64(id)
+        } else {
+            self.deserialize_any(visitor)
+        }
+    }
+
+    serde::forward_to_deserialize_any! {
+        unit bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str
+        string bytes byte_buf identifier ignored_any unit_struct struct map seq
+        tuple tuple_struct enum option
     }
 }

@@ -2,6 +2,7 @@
 
 use crate::{
     error::ValueError,
+    serde::FunctionPool,
     value::{
         function::{Captures, Function},
         IntoPetit, Object,
@@ -48,9 +49,9 @@ impl serde::Serializer for &Serializer {
     type SerializeTuple = SerializeSeq;
     type SerializeTupleStruct = SerializeSeq;
     type SerializeTupleVariant = Self;
-    type SerializeMap = SerializeMap;
-    type SerializeStruct = SerializeStruct;
-    type SerializeStructVariant = SerializeFunction;
+    type SerializeMap = SerializeMap<String>;
+    type SerializeStruct = SerializeMap<&'static str>;
+    type SerializeStructVariant = SerializeMap<&'static str>;
 
     serialize_into!(serialize_bool, bool);
 
@@ -109,13 +110,23 @@ impl serde::Serializer for &Serializer {
 
     fn serialize_newtype_struct<T>(
         self,
-        _name: &'static str,
+        name: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + serde::Serialize,
     {
-        value.serialize(self)
+        if name == FunctionPool::STRUCT_NAME {
+            // A function can only be serialized from a function. The Serialize
+            // impl should've put it into the function pool and we'll grab it
+            // back out by ID
+            let id: u64 = value.serialize(U64Serializer)?;
+            let function = FunctionPool::take(id)?;
+            Ok(Value::Function(function))
+        } else {
+            // Pretend the newtype isn't there and serialize the inner value
+            value.serialize(self)
+        }
     }
 
     fn serialize_newtype_variant<T>(
@@ -176,13 +187,7 @@ impl serde::Serializer for &Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        // Functions serialize as structs. In order to distinguish between a
-        // function and a user's struct type, we use the name of the struct.
-        if name == Function::TYPE_USER || name == Function::TYPE_NATIVE {
-            Ok(SerializeStruct::Function(SerializeStructFunction::default()))
-        } else {
-            Ok(SerializeStruct::Map(SerializeMap::new(Some(len))))
-        }
+        Ok(SerializeMap::new(Some(len)))
     }
 
     fn serialize_struct_variant(
@@ -192,10 +197,7 @@ impl serde::Serializer for &Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Ok(SerializeFunction {
-            variant,
-            map: Default::default(),
-        })
+        Ok(SerializeMap::new(Some(len)))
     }
 }
 
@@ -289,12 +291,12 @@ impl ser::SerializeTupleVariant for &Serializer {
 }
 
 /// Serialize a map into an object
-pub struct SerializeMap {
-    map: IndexMap<String, Value>,
-    next_key: Option<String>,
+pub struct SerializeMap<K> {
+    map: IndexMap<K, Value>,
+    next_key: Option<K>,
 }
 
-impl SerializeMap {
+impl<K> SerializeMap<K> {
     fn new(len: Option<usize>) -> Self {
         let map = if let Some(len) = len {
             IndexMap::with_capacity(len)
@@ -308,7 +310,7 @@ impl SerializeMap {
     }
 }
 
-impl ser::SerializeMap for SerializeMap {
+impl ser::SerializeMap for SerializeMap<String> {
     type Ok = Value;
     type Error = ValueError;
 
@@ -336,15 +338,30 @@ impl ser::SerializeMap for SerializeMap {
     }
 }
 
-/// Serialize a struct. It could become a function or an object, depending on
-/// what name serialize_struct_variant was called with
-/// TODO update comment
-pub struct SerializeFunction {
-    variant: &'static str,
-    map: IndexMap<&'static str, Value>,
+/// Serialize structs as maps
+impl ser::SerializeStruct for SerializeMap<&'static str> {
+    type Ok = Value;
+    type Error = ValueError;
+
+    fn serialize_field<T>(
+        &mut self,
+        key: &'static str,
+        value: &T,
+    ) -> Result<(), Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        let value = value.serialize(&Serializer)?;
+        self.map.insert(key, value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(self.map.into())
+    }
 }
 
-impl ser::SerializeStructVariant for SerializeFunction {
+impl ser::SerializeStructVariant for SerializeMap<&'static str> {
     type Ok = Value;
     type Error = ValueError;
 
@@ -367,51 +384,191 @@ impl ser::SerializeStructVariant for SerializeFunction {
     }
 }
 
-/// Serialize a struct. It could become a function or an object, depending on
-/// what name serialize_struct was called with
-/// TODO simplify this to just be a map, now that functions are treated as enums
-pub enum SerializeStruct {
-    Function(SerializeStructFunction),
-    Map(SerializeMap),
-}
-
-impl ser::SerializeStruct for SerializeStruct {
-    type Ok = Value;
-    type Error = ValueError;
-
-    fn serialize_field<T>(
-        &mut self,
-        key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error>
-    where
-        T: ?Sized + ser::Serialize,
-    {
-        match self {
-            Self::Function(_) => match key {
-                Function::FIELD_TYPE => todo!("ensure value is valid"),
-                Function::FIELD_ID => todo!("TODO"),
-                _ => todo!("unexpected key"),
-            },
-            Self::Map(map) => {
-                let value = value.serialize(&Serializer)?;
-                map.map.insert(key.into(), value);
-                Ok(())
-            }
-        }
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        match self {
-            Self::Function { .. } => todo!(),
-            Self::Map(map) => Ok(map.map.into()),
-        }
-    }
-}
-
 /// Serialize a function as a struct
 #[derive(Default)]
 pub struct SerializeStructFunction {
     name: Option<String>,
     captures: Option<Captures>,
+}
+
+struct U64Serializer;
+
+impl ser::Serializer for U64Serializer {
+    type Ok = u64;
+    type Error = ValueError;
+    type SerializeSeq = ser::Impossible<u64, ValueError>;
+    type SerializeTuple = ser::Impossible<u64, ValueError>;
+    type SerializeTupleStruct = ser::Impossible<u64, ValueError>;
+    type SerializeTupleVariant = ser::Impossible<u64, ValueError>;
+    type SerializeMap = ser::Impossible<u64, ValueError>;
+    type SerializeStruct = ser::Impossible<u64, ValueError>;
+    type SerializeStructVariant = ser::Impossible<u64, ValueError>;
+
+    fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
+        Ok(v)
+    }
+
+    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        todo!()
+    }
+
+    fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_unit_struct(
+        self,
+        name: &'static str,
+    ) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_unit_variant(
+        self,
+        name: &'static str,
+        variant_index: u32,
+        variant: &'static str,
+    ) -> Result<Self::Ok, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_newtype_struct<T>(
+        self,
+        name: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        todo!()
+    }
+
+    fn serialize_newtype_variant<T>(
+        self,
+        name: &'static str,
+        variant_index: u32,
+        variant: &'static str,
+        value: &T,
+    ) -> Result<Self::Ok, Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        todo!()
+    }
+
+    fn serialize_seq(
+        self,
+        len: Option<usize>,
+    ) -> Result<Self::SerializeSeq, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_tuple(
+        self,
+        len: usize,
+    ) -> Result<Self::SerializeTuple, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_tuple_struct(
+        self,
+        name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_tuple_variant(
+        self,
+        name: &'static str,
+        variant_index: u32,
+        variant: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_map(
+        self,
+        len: Option<usize>,
+    ) -> Result<Self::SerializeMap, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_struct(
+        self,
+        name: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStruct, Self::Error> {
+        todo!()
+    }
+
+    fn serialize_struct_variant(
+        self,
+        name: &'static str,
+        variant_index: u32,
+        variant: &'static str,
+        len: usize,
+    ) -> Result<Self::SerializeStructVariant, Self::Error> {
+        todo!()
+    }
 }

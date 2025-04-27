@@ -15,9 +15,9 @@ use std::{
 /// PetitScript are closures, meaning they capture their environment when
 /// created, and references to outside variables may be used within the function
 /// body.
+///
+/// TODO can we eliminate this arc? the underlying data is Arc'd as well
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Function(pub(crate) Arc<FunctionInner>);
 
 impl Function {
@@ -90,15 +90,9 @@ impl Display for Function {
 }
 
 /// The implementation of a function, which is hidden from the external API
-///
-/// TODO include note about serde attributes matching the fields defs in
-/// impls.rs
 #[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(rename = "__Function"))]
 pub(crate) enum FunctionInner {
     /// A function defined in PetitScript
-    #[cfg_attr(feature = "serde", serde(rename = "__UserFunction"))]
     User {
         /// A pointer to the function's definition. This is reference counted
         /// so the function can be cheaply clonable. We expect to clone
@@ -124,7 +118,6 @@ pub(crate) enum FunctionInner {
     /// A function defined in Rust. Native function definitions are interned at
     /// the engine level. A native function _value_ can be called within any
     /// process owned by the engine that contains the native function.
-    #[cfg_attr(feature = "serde", serde(rename = "__NativeFunction"))]
     Native {
         /// A pointer to this function's definition in the native function
         /// table
@@ -139,7 +132,6 @@ pub(crate) enum FunctionInner {
     /// method receiver. This is used to implement prototype functions. In the
     /// case of `array.includes(3)`, `array.includes` represents a bound
     /// function value.
-    #[cfg_attr(feature = "serde", serde(rename = "__BoundFunction"))]
     Bound {
         /// A pointer to this function's definition in the native function
         /// table

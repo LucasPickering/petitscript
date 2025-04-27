@@ -1,17 +1,14 @@
 //! Custom implementations of `Serialize` and `Deserialize`. This is in its own
 //! module so the implementations don't clutter the main value modules.
 
-use crate::value::{
-    function::{Function, FunctionInner},
-    Array, IntoPetit, Number, Object, Value,
+use crate::{
+    serde::FunctionPool,
+    value::{function::Function, Array, IntoPetit, Number, Object, Value},
 };
 use serde::{
     de::{
         self,
-        value::{
-            EnumAccessDeserializer, MapAccessDeserializer,
-            SeqAccessDeserializer,
-        },
+        value::{MapAccessDeserializer, SeqAccessDeserializer},
         MapAccess, Visitor,
     },
     Deserialize, Serialize,
@@ -137,36 +134,26 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 A: MapAccess<'de>,
             {
-                // TODO still needed now that we have visit_enum?
-                #[derive(Deserialize)]
-                #[serde(untagged)]
-                enum FunctionOrObject {
-                    Function(Function),
-                    Object(Object),
-                }
-
-                // A map could hold a function OR an object. Try it as a
-                // function first because it's much more specific, then fall
-                // back to an object. We leverage serde's generated impl on the
-                // enum to buffer the deserialized object. This is potentially
-                // a bottleneck for deserializing objects; if so we can
-                // deserialize directly into an IndexMap, then check if it looks
-                // like a function
-                let deserialized = FunctionOrObject::deserialize(
-                    MapAccessDeserializer::new(map),
-                )?;
-                Ok(match deserialized {
-                    FunctionOrObject::Function(function) => function.into(),
-                    FunctionOrObject::Object(object) => object.into(),
-                })
+                Object::deserialize(MapAccessDeserializer::new(map))
+                    .map(Value::Object)
             }
 
-            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            fn visit_enum<A>(self, _data: A) -> Result<Self::Value, A::Error>
             where
                 A: de::EnumAccess<'de>,
             {
-                Function::deserialize(EnumAccessDeserializer::new(data))
-                    .map(Value::Function)
+                todo!("Create externally tagged enum")
+            }
+
+            fn visit_newtype_struct<D>(
+                self,
+                deserializer: D,
+            ) -> Result<Self::Value, D::Error>
+            where
+                D: de::Deserializer<'de>,
+            {
+                // TODO how to handle if this fails
+                Function::deserialize(deserializer).map(Value::Function)
             }
         }
 
@@ -197,51 +184,49 @@ impl<'de> Deserialize<'de> for Number {
     }
 }
 
-impl Function {
-    // TODO explain
-    // TODO include note about how these have to match the attributes on
-    // FunctionInner
-
-    /// TODO
-    pub(super) const ENUM_NAME: &'static str = "__Function";
-    /// Value to use for the type field for user functions
-    pub(super) const TYPE_USER: &'static str = "__UserFunction";
-    /// Value to use for the type field for native functions
-    pub(super) const TYPE_NATIVE: &'static str = "__NativeFunction";
-    /// Value to use for the type field for bound functions, which are
-    /// native functions bound to a receiver
-    pub(super) const TYPE_BOUND: &'static str = "__BoundFunction";
-    /// A marker field to indicate that a map is actually a function definition.
-    /// The value is one of the above types
-    pub(super) const FIELD_TYPE: &'static str = "__type";
-    pub(super) const FIELD_ID: &'static str = "id";
-    pub(super) const FIELD_DEFINITION: &'static str = "definition";
-    pub(super) const FIELD_NAME: &'static str = "name";
-    pub(super) const FIELD_CAPTURES: &'static str = "captures";
-    pub(super) const FIELD_RECEIVER: &'static str = "receiver";
-    pub(super) const USER_FIELDS: &'static [&'static str] = &[
-        Self::FIELD_DEFINITION,
-        Self::FIELD_NAME,
-        Self::FIELD_CAPTURES,
-    ];
-    pub(super) const NATIVE_FIELDS: &'static [&'static str] =
-        &[Self::FIELD_ID, Self::FIELD_NAME];
-    pub(super) const BOUND_FIELDS: &'static [&'static str] =
-        &[Self::FIELD_ID, Self::FIELD_RECEIVER, Self::FIELD_NAME];
-
-    pub(super) fn serde_type(&self) -> &'static str {
-        match &*self.0 {
-            FunctionInner::User { .. } => Self::TYPE_USER,
-            FunctionInner::Native { .. } => Self::TYPE_NATIVE,
-            FunctionInner::Bound { .. } => Self::TYPE_BOUND,
-        }
+impl Serialize for Function {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Serialize a function into a function: we put it in the pool and the
+        // serializer will take it back out
+        let id = FunctionPool::insert(self.clone());
+        serializer.serialize_newtype_struct(FunctionPool::STRUCT_NAME, &id)
     }
+}
 
-    pub(super) fn serde_fields(&self) -> &'static [&'static str] {
-        match &*self.0 {
-            FunctionInner::User { .. } => Self::USER_FIELDS,
-            FunctionInner::Native { .. } => Self::NATIVE_FIELDS,
-            FunctionInner::Bound { .. } => Self::BOUND_FIELDS,
+impl<'de> Deserialize<'de> for Function {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: de::Deserializer<'de>,
+    {
+        struct FunctionVisitor;
+
+        impl<'de> Visitor<'de> for FunctionVisitor {
+            type Value = Function;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "u64")
+            }
+
+            // The newtype struct gets unwrapped by the call below to
+            // deserialize_newtype_struct. We expect to find a u64 inside which
+            // is the ID of the function in the pool
+            fn visit_u64<E>(self, id: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                FunctionPool::take(id).map_err(de::Error::custom)
+            }
         }
+
+        // Deserialize a function into a function: the deserializer put it in
+        // the pool and created a newtype struct to hold the ID. We'll take the
+        // ID and redeem it for the original function
+        deserializer.deserialize_newtype_struct(
+            FunctionPool::STRUCT_NAME,
+            FunctionVisitor,
+        )
     }
 }

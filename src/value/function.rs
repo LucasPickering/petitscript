@@ -24,24 +24,37 @@ impl Function {
     /// Create a new function. A "user" function is a function defined in
     /// PetitScript, as opposed to a "native" function that's defined in Rust.
     pub(crate) fn user(
-        definition: Arc<FunctionDefinition>,
         name: Option<String>,
+        definition: Arc<FunctionDefinition>,
         captures: Captures,
     ) -> Self {
         Self(
             FunctionInner::User {
-                definition,
                 name,
+                definition,
                 captures,
             }
             .into(),
         )
     }
 
-    /// Create a new native function. The function must have been predefined in
-    /// the engine. This is just a "pointer" to the function definition.
-    pub(crate) fn native(id: NativeFunctionId, name: Option<String>) -> Self {
-        Self(FunctionInner::Native { id, name }.into())
+    /// Create a new native function. This is not exposed outside the crate to
+    /// force users to use [Object::insert_fn](crate::value::Object::insert_fn)
+    /// or [Exports::export_fn](crate::Exports::export_fn) to create native
+    /// functions.
+    pub(crate) fn native<F, Args, Out>(name: String, function: F) -> Self
+    where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        Self(
+            FunctionInner::Native {
+                name,
+                function: NativeFunction::new(function),
+            }
+            .into(),
+        )
     }
 
     /// Create a bound function. This will bind the function definition to the
@@ -49,15 +62,15 @@ impl Function {
     /// because they're only accessible through the prototype, which can only
     /// be accessed via string keys.
     pub(crate) fn bound(
-        id: NativeFunctionId,
-        receiver: Value,
         name: String,
+        function: BoundFunction,
+        receiver: Value,
     ) -> Self {
         Self(
             FunctionInner::Bound {
-                id,
+                name,
+                function,
                 receiver,
-                name: Some(name),
             }
             .into(),
         )
@@ -66,9 +79,9 @@ impl Function {
     /// TODO
     pub fn name(&self) -> Option<&str> {
         match &*self.0 {
-            FunctionInner::User { name, .. }
-            | FunctionInner::Native { name, .. }
-            | FunctionInner::Bound { name, .. } => name.as_deref(),
+            FunctionInner::User { name, .. } => name.as_deref(),
+            FunctionInner::Native { name, .. }
+            | FunctionInner::Bound { name, .. } => Some(name),
         }
     }
 }
@@ -94,16 +107,16 @@ impl Display for Function {
 pub(crate) enum FunctionInner {
     /// A function defined in PetitScript
     User {
+        /// The name is also contained in the function definition that the ID
+        /// points to, but we duplicate it here for easy access during
+        /// printing/debugging
+        name: Option<String>,
         /// A pointer to the function's definition. This is reference counted
         /// so the function can be cheaply clonable. We expect to clone
         /// definitions once from the AST during value creation, but after that
         /// the value can be cloned cheaply.
         /// TODO use Arc in the AST as well?
         definition: Arc<FunctionDefinition>,
-        /// The name is also contained in the function definition that the ID
-        /// points to, but we duplicate it here for easy access during
-        /// printing/debugging
-        name: Option<String>,
         /// All external bound values captured by this function. It would be
         /// much easier to just store a pointer to the parent's scope, but we
         /// need functions to be serializable so we have to store the raw
@@ -119,127 +132,55 @@ pub(crate) enum FunctionInner {
     /// the engine level. A native function _value_ can be called within any
     /// process owned by the engine that contains the native function.
     Native {
+        /// Display name for this function. Native functions should always be
+        /// created via [Function::native], which requires a name to be given.
+        /// There's no such thing as an anonymous native function. This is for
+        /// labelling purposes only; it does not affect program behavior beyond
+        /// its `toString()` output.
+        name: String,
         /// A pointer to this function's definition in the native function
         /// table
-        id: NativeFunctionId,
-        /// Display name for this function. This may not be available when the
-        /// function is created, but it should be set once the function is
-        /// bound to a value. This is for labelling purposes only; it does not
-        /// affect program behavior beyond its `toString()` output.
-        name: Option<String>,
+        function: NativeFunction,
     },
     /// A special case of a native function that is bound to a particular
     /// method receiver. This is used to implement prototype functions. In the
     /// case of `array.includes(3)`, `array.includes` represents a bound
     /// function value.
     Bound {
+        /// Display name for this function. Native functions should always be
+        /// created via [Function::bound], which requires a name to be given.
+        /// There's no such thing as an anonymous native function. This is for
+        /// labelling purposes only; it does not affect program behavior beyond
+        /// its `toString()` output.
+        name: String,
         /// A pointer to this function's definition in the native function
         /// table
-        id: NativeFunctionId,
+        function: BoundFunction,
         /// The value bound to this method. This is akin to the `self` value in
         /// Rust or Python methods. Unlike JS, PS doesn't support accessing the
         /// receiver via the `this` keyword, because bound functions can only
         /// be defined natively and not in PS code.
         receiver: Value,
-        /// Display name for this function. This may not be available when the
-        /// function is created, but it should be set once the function is
-        /// bound to a value. This is for labelling purposes only; it does not
-        /// affect program behavior beyond its `toString()` output.
-        name: Option<String>,
     },
 }
 
 /// A set of captured values for a closure
 pub(crate) type Captures = IndexMap<String, Value>;
 
-/// A pool of interned native function definitions. Each engine gets one pool.
-/// When a process is spawned, the pool is cloned so that subsequent additions
-/// to the pool are _not_ reflected in existing processes. The function
-/// definitions are wrapped
-#[derive(Clone, Debug, Default)]
-pub(crate) struct NativeFunctionTable(Vec<NativeFunctionDefinition>);
-
-impl NativeFunctionTable {
-    /// Look up a function definition by its ID. This is analagous to
-    /// derefencing a function pointer into the .text section
-    pub fn get(
-        &self,
-        id: NativeFunctionId,
-    ) -> Result<&NativeFunctionDefinition, RuntimeError> {
-        self.0.get(id.0 as usize).ok_or_else(|| todo!())
-    }
-
-    /// Add a Rust native function definition to the table and return a pointer
-    /// to it
-    pub fn create_fn<F, Args, Out>(&mut self, function: F) -> Function
-    where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
-        Args: FromPetitArgs,
-        Out: IntoPetitResult,
-    {
-        let id = NativeFunctionId(self.0.len() as u64);
-        self.0.push(NativeFunctionDefinition::static_(function));
-        Function::native(id, None)
-    }
-
-    /// Define a native function that must be bound to a receiver to be called.
-    /// This can't create a [Function] because we don't know what value it will
-    /// be bound to. The returned ID can be stored in a prototype to be used
-    /// later.
-    pub fn create_bound<F, This, Args, Out>(
-        &mut self,
-        function: F,
-    ) -> NativeFunctionId
-    where
-        F: 'static + Fn(&Process, This, Args) -> Out + Send + Sync,
-        This: FromPetit,
-        Args: FromPetitArgs,
-        Out: IntoPetitResult,
-    {
-        let id = NativeFunctionId(self.0.len() as u64);
-        self.0.push(NativeFunctionDefinition::bound(function));
-        id
-    }
-}
-
 /// TODO
-/// TODO namespace this by engine
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub(crate) struct NativeFunctionId(pub u64);
-
-/// TODO
-/// TODO split this into two structs in two tables
 #[derive(Clone)]
-pub(crate) enum NativeFunctionDefinition {
-    /// A function that can be from anywhere with no receiver
-    Static(
-        #[allow(clippy::type_complexity)]
-        Arc<
-            dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
-                + Send
-                + Sync,
-        >,
-    ),
-    /// A function bound to a receiver value. This is used to define prototype
-    /// functions. Bound functions take an additional argument, which is the
-    /// bound method receiver. For example, in `a.includes(1)`, `a` is the
-    /// receiver and `[1]` is the argument list.
-    Bound(
-        #[allow(clippy::type_complexity)]
-        Arc<
-            dyn Fn(&Process, &Value, Vec<Value>) -> Result<Value, RuntimeError>
-                + Send
-                + Sync,
-        >,
-    ),
-}
+pub(crate) struct NativeFunction(
+    #[allow(clippy::type_complexity)]
+    pub  Arc<
+        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
+            + Send
+            + Sync,
+    >,
+);
 
-impl NativeFunctionDefinition {
+impl NativeFunction {
     /// TODO
-    /// TODO better name
-    pub fn static_<F, Args, Out>(f: F) -> Self
+    fn new<F, Args, Out>(f: F) -> Self
     where
         F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
@@ -252,11 +193,36 @@ impl NativeFunctionDefinition {
             let output = f(process, args).into_petit_result()?;
             output.into_petit().map_err(RuntimeError::Value)
         };
-        Self::Static(Arc::new(function))
+        Self(Arc::new(function))
     }
+}
 
+impl Debug for NativeFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("StaticNativeFunction").finish()
+    }
+}
+
+impl PartialEq for NativeFunction {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+/// TODO
+#[derive(Clone)]
+pub(crate) struct BoundFunction(
+    #[allow(clippy::type_complexity)]
+    pub  Arc<
+        dyn Fn(&Process, &Value, Vec<Value>) -> Result<Value, RuntimeError>
+            + Send
+            + Sync,
+    >,
+);
+
+impl BoundFunction {
     /// TODO
-    pub fn bound<F, This, Args, Out>(f: F) -> Self
+    pub fn new<F, This, Args, Out>(f: F) -> Self
     where
         F: 'static + Fn(&Process, This, Args) -> Out + Send + Sync,
         This: FromPetit,
@@ -274,25 +240,19 @@ impl NativeFunctionDefinition {
                 let output = f(process, this, args).into_petit_result()?;
                 output.into_petit().map_err(RuntimeError::Value)
             };
-        Self::Bound(Arc::new(function))
+        Self(Arc::new(function))
     }
 }
 
-impl Debug for NativeFunctionDefinition {
+impl Debug for BoundFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("NativeFunction").field(&"..").finish()
+        f.debug_tuple("BoundNativeFunction").finish()
     }
 }
 
-impl PartialEq for NativeFunctionDefinition {
+impl PartialEq for BoundFunction {
     fn eq(&self, other: &Self) -> bool {
-        // If we point to the same function, we're the same
-        match (self, other) {
-            (Self::Static(f0), Self::Static(f1)) => Arc::ptr_eq(f0, f1),
-            (Self::Bound(f0), Self::Bound(f1)) => Arc::ptr_eq(f0, f1),
-            (Self::Static(_), Self::Bound(_))
-            | (Self::Bound(_), Self::Static(_)) => false,
-        }
+        Arc::ptr_eq(&self.0, &other.0)
     }
 }
 

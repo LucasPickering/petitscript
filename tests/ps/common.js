@@ -1,8 +1,3 @@
-export function error() {
-  // Always throw an error
-  return x;
-}
-
-export function add(a, b) {
-  return a + b;
-}
+// Always throw an error
+export const error = () => x;
+export const add = (a, b) => a + b;

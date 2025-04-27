@@ -9,10 +9,7 @@ use crate::{
         Exports,
     },
     source::QualifiedSpan,
-    value::{
-        function::{NativeFunctionDefinition, NativeFunctionId},
-        Value,
-    },
+    value::Value,
     Process, RuntimeError,
 };
 use indexmap::map::Entry;
@@ -53,14 +50,6 @@ impl<'process> ThreadState<'process> {
     /// Get the program being executed
     pub fn program(&self) -> &Program {
         &self.process.program
-    }
-
-    /// Get a native function from the table by its ID
-    pub fn native_fn(
-        &self,
-        id: NativeFunctionId,
-    ) -> Result<&NativeFunctionDefinition, RuntimeError> {
-        self.process().native_functions.get(id)
     }
 
     /// Set a named export value

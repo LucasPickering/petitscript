@@ -2,13 +2,15 @@
 //! module and its prototype
 
 use crate::{
-    execute::Prototype, value::Array, NativeFunctionTable, Process, Value,
+    execute::Prototype,
+    value::{function::BoundFunction, Array},
+    Process, Value,
 };
 
 /// Define all prototype functions for the `Array` type.
-pub fn prototype(functions: &mut NativeFunctionTable) -> Prototype {
+pub fn prototype() -> Prototype {
     let mut prototype = Prototype::default();
-    prototype.declare("includes", functions.create_bound(includes));
+    prototype.declare("includes", BoundFunction::new(includes));
     prototype
 }
 

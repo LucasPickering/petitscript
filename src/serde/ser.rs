@@ -48,7 +48,7 @@ impl serde::Serializer for &Serializer {
     type SerializeSeq = SerializeSeq;
     type SerializeTuple = SerializeSeq;
     type SerializeTupleStruct = SerializeSeq;
-    type SerializeTupleVariant = Self;
+    type SerializeTupleVariant = SerializeSeq;
     type SerializeMap = SerializeMap<String>;
     type SerializeStruct = SerializeMap<&'static str>;
     type SerializeStructVariant = SerializeMap<&'static str>;
@@ -133,13 +133,13 @@ impl serde::Serializer for &Serializer {
         self,
         _name: &'static str,
         _variant_index: u32,
-        variant: &'static str,
+        _variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + serde::Serialize,
     {
-        todo!()
+        value.serialize(self)
     }
 
     fn serialize_seq(
@@ -172,7 +172,7 @@ impl serde::Serializer for &Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        todo!()
+        Ok(SerializeSeq::new(Some(len)))
     }
 
     fn serialize_map(
@@ -258,7 +258,7 @@ impl ser::SerializeTuple for SerializeSeq {
     }
 }
 
-impl ser::SerializeTupleStruct for SerializeSeq {
+impl ser::SerializeTupleVariant for SerializeSeq {
     type Ok = Value;
     type Error = ValueError;
 
@@ -274,7 +274,7 @@ impl ser::SerializeTupleStruct for SerializeSeq {
     }
 }
 
-impl ser::SerializeTupleVariant for &Serializer {
+impl ser::SerializeTupleStruct for SerializeSeq {
     type Ok = Value;
     type Error = ValueError;
 
@@ -282,11 +282,11 @@ impl ser::SerializeTupleVariant for &Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        todo!()
+        self.serialize_element(value)
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        Ok(self.values.into())
     }
 }
 
@@ -384,13 +384,7 @@ impl ser::SerializeStructVariant for SerializeMap<&'static str> {
     }
 }
 
-/// Serialize a function as a struct
-#[derive(Default)]
-pub struct SerializeStructFunction {
-    name: Option<String>,
-    captures: Option<Captures>,
-}
-
+/// TODO explain or figure out a way to get rid of this
 struct U64Serializer;
 
 impl ser::Serializer for U64Serializer {

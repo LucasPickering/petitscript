@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use petitscript::{value::Number, Engine, Error, Process, Value};
+use petitscript::{value::Number, Engine, Error, Exports, Process, Value};
 use std::{env, path::PathBuf, sync::LazyLock};
 use test_case::test_case;
 
@@ -9,11 +9,11 @@ fn add(_: &Process, (a, b): (Number, Number)) -> Number {
 
 /// Shared engine used for all tests
 static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
+    let mut exports = Exports::default();
+    exports.export_fn("add", add);
     Engine::builder()
         .with_stdlib()
-        .with_module("math".parse().unwrap(), |builder| {
-            builder.export_fn("add", add);
-        })
+        .with_module("math".parse().unwrap(), exports)
         .build()
 });
 

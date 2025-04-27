@@ -1,12 +1,8 @@
 import { add } from "math";
 
-function add2(a, b) {
-  // Make sure the imported name is captured
-  return add(a, b);
-}
+// Make sure the imported name is captured
+const add2 = (a, b) => add(a, b);
 
-function call(f, ...args) {
-  return f(...args);
-}
+const call = (f, ...args) => f(...args);
 
 export default add(1, 2) + add2(1, 2) + call(add, 1, 2);

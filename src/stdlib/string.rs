@@ -2,7 +2,9 @@
 //! module and its prototype
 
 use crate::{
-    execute::Prototype, value::PetitString, NativeFunctionTable, Process, Value,
+    execute::Prototype,
+    value::{function::BoundFunction, PetitString},
+    Process, Value,
 };
 
 /// Coerce a value to a string
@@ -12,11 +14,11 @@ pub fn constructor(_: &Process, value: Value) -> PetitString {
 }
 
 /// Define all prototype functions for the `String` type.
-pub fn prototype(functions: &mut NativeFunctionTable) -> Prototype {
+pub fn prototype() -> Prototype {
     let mut prototype = Prototype::default();
-    prototype.declare("trim", functions.create_bound(trim));
-    prototype.declare("trimStart", functions.create_bound(trim_start));
-    prototype.declare("trimEnd", functions.create_bound(trim_end));
+    prototype.declare("trim", BoundFunction::new(trim));
+    prototype.declare("trimStart", BoundFunction::new(trim_start));
+    prototype.declare("trimEnd", BoundFunction::new(trim_end));
     prototype
 }
 

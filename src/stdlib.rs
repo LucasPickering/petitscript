@@ -8,21 +8,21 @@ use crate::{
     error::RuntimeError,
     execute::GlobalEnvironment,
     value::{function::Varargs, Number, Object, Value, ValueType},
-    NativeFunctionTable, Process,
+    Process,
 };
 
 /// Create a scope containing the entire standard library. This needs to be
 /// recreated for every execution
-pub fn stdlib(functions: &mut NativeFunctionTable) -> GlobalEnvironment {
+pub fn stdlib() -> GlobalEnvironment {
     let mut scope = GlobalEnvironment::default();
-    scope.declare("Boolean", functions.create_fn(boolean));
-    scope.declare("Number", functions.create_fn(number));
-    scope.declare("String", functions.create_fn(string::constructor));
-    scope.declare("Object", object::module(functions));
-    scope.declare("console", console(functions));
-    scope.declare("JSON", json(functions));
-    scope.declare_prototype(ValueType::String, string::prototype(functions));
-    scope.declare_prototype(ValueType::Array, array::prototype(functions));
+    scope.declare_fn("Boolean", boolean);
+    scope.declare_fn("Number", number);
+    scope.declare_fn("String", string::constructor);
+    scope.declare("Object", object::module());
+    scope.declare("console", console());
+    scope.declare("JSON", json());
+    scope.declare_prototype(ValueType::String, string::prototype());
+    scope.declare_prototype(ValueType::Array, array::prototype());
     scope
 }
 
@@ -38,10 +38,10 @@ fn number(_: &Process, value: Value) -> Number {
 }
 
 /// `console` module
-fn console(functions: &mut NativeFunctionTable) -> Object {
+fn console() -> Object {
     Object::default()
-        .insert("debug", functions.create_fn(console_debug))
-        .insert("log", functions.create_fn(console_log))
+        .insert_fn("debug", console_debug)
+        .insert_fn("log", console_log)
 }
 
 /// Log values to stdout
@@ -68,10 +68,10 @@ fn console_debug(_: &Process, Varargs(values): Varargs) {
 
 /// `JSON` module
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON
-pub fn json(functions: &mut NativeFunctionTable) -> Object {
+pub fn json() -> Object {
     Object::default()
-        .insert("parse", functions.create_fn(json_parse))
-        .insert("stringify", functions.create_fn(json_stringify))
+        .insert_fn("parse", json_parse)
+        .insert_fn("stringify", json_stringify)
 }
 
 /// Stringify a value to JSON

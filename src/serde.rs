@@ -80,7 +80,7 @@ mod tests {
         ast::{
             Expression, FunctionBody, FunctionDefinition, FunctionParameter,
         },
-        value::function::{Function, NativeFunctionId},
+        value::function::{BoundFunction, Function},
     };
     use indexmap::indexmap;
     use test_case::test_case;
@@ -107,6 +107,7 @@ mod tests {
     }; "object")]
     #[test_case(
         Function::user(
+            Some("func".into()),
             FunctionDefinition::new(
                 [FunctionParameter::identifier("x")],
                 FunctionBody::expression(Expression::reference("x")),
@@ -114,20 +115,21 @@ mod tests {
                 .with_name("func")
                 .with_captures(["cap"])
                 .into(),
-            Some("func".into()),
             indexmap! {"cap".to_owned() => 32.into()},
         );
         "function_user"
     )]
     #[test_case(
-        Function::native(NativeFunctionId(0), Some("func".into()));
+        // This will do pointer equality to ensure it's the same fn
+        Function::native("func".into(), |_, _: Value| 0);
         "function_native"
     )]
     #[test_case(
         Function::bound(
-            NativeFunctionId(0),
-            [1, 2, 3].into(),
             "func".into(),
+            // This will do pointer equality to ensure it's the same fn
+            BoundFunction::new(|_, _: Value, _: Value| 0),
+            [1, 2, 3].into(),
         );
         "function_bound"
     )]

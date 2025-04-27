@@ -15,8 +15,8 @@ use crate::{
         exec::Execute,
         state::{CallSite, ThreadState},
     },
-    value::{function::Function, Value},
-    Error, NativeFunctionTable,
+    value::{function::Function, FromPetitArgs, IntoPetitResult, Value},
+    Error,
 };
 use indexmap::IndexMap;
 use std::{
@@ -37,11 +37,6 @@ pub struct Process {
     /// process being spawned, allowing the engine to register new modules as
     /// needed without interfering with running modules.
     modules: IndexMap<NativeModuleName, Exports>,
-    /// Intern pool of native function definitions. This is read-only; native
-    /// functions can only be registered in the engine. Once a process is
-    /// spawned, new native functions cannot be added to it. Anything added to
-    /// the engine after spawning will not be reflected here.
-    native_functions: NativeFunctionTable,
     /// Global values available to the program, i.e. the stdlib
     globals: Arc<GlobalEnvironment>,
     /// Arbitrary user-defined data attached to this process
@@ -55,14 +50,12 @@ impl Process {
     /// TODO
     pub(super) fn new(
         modules: IndexMap<NativeModuleName, Exports>,
-        native_functions: NativeFunctionTable,
         globals: Arc<GlobalEnvironment>,
         program: Program,
     ) -> Self {
         Self {
             program: program.into(),
             modules,
-            native_functions,
             globals,
             app_data: AppData::default(),
         }
@@ -139,6 +132,47 @@ pub struct Exports {
     pub default: Option<Value>,
     /// Named exported values
     pub named: IndexMap<String, Value>,
+}
+
+impl Exports {
+    /// Export a some values as named exports. This allows the exports to be
+    /// imported as a native module like so:
+    ///
+    /// ```notrust
+    /// import { add } from "module";
+    ///
+    /// add(1, 2);
+    /// ```
+    pub fn named<K, V>(exports: impl IntoIterator<Item = (K, V)>) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let named = exports
+            .into_iter()
+            .map(|(name, value)| (name.into(), value.into()))
+            .collect();
+        Self {
+            named,
+            default: None,
+        }
+    }
+
+    /// Create a native function and export it with the given name
+    pub fn export_fn<F, Args, Out>(
+        &mut self,
+        name: impl Into<String>,
+        function: F,
+    ) where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        // Use the naem as the and also attach it to the function for printing
+        let name = name.into();
+        self.named
+            .insert(name.clone(), Function::native(name, function).into());
+    }
 }
 
 impl Display for Exports {

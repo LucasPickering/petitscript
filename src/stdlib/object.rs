@@ -2,15 +2,15 @@
 
 use crate::{
     value::{Array, Object},
-    NativeFunctionTable, Process, Value,
+    Process, Value,
 };
 
 /// `Object` module
-pub fn module(functions: &mut NativeFunctionTable) -> Object {
+pub fn module() -> Object {
     Object::default()
-        .insert("entries", functions.create_fn(entries))
-        .insert("keys", functions.create_fn(keys))
-        .insert("values", functions.create_fn(values))
+        .insert_fn("entries", entries)
+        .insert_fn("keys", keys)
+        .insert_fn("values", values)
 }
 
 /// `Object.entries`, to get the entries of an object as an array of `[[key,

@@ -1,4 +1,7 @@
-use crate::value::Value;
+use crate::{
+    value::{FromPetitArgs, Function, IntoPetitResult, Value},
+    Process,
+};
 use indexmap::IndexMap;
 use std::{
     fmt::{self, Display},
@@ -46,6 +49,22 @@ impl Object {
         self.with_inner(|map| {
             map.insert(name.into(), value.into());
         })
+    }
+
+    /// Insert a native function into this object
+    pub fn insert_fn<F, Args, Out>(
+        self,
+        name: impl Into<String>,
+        function: F,
+    ) -> Self
+    where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        // Use the naem as the and also attach it to the function for printing
+        let name = name.into();
+        self.insert(name.clone(), Value::from(Function::native(name, function)))
     }
 
     /// Return an iterator over the key-value pairs of this object, in order of

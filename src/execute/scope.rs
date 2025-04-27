@@ -3,9 +3,11 @@
 
 use crate::{
     ast::{Binding, Identifier},
-    value:: function::{Captures, NativeFunctionId},
-    value::{Value, ValueType},
-    RuntimeError,
+    value::{
+        function::{BoundFunction, Captures},
+        FromPetitArgs, Function, IntoPetitResult, Value, ValueType,
+    },
+    Process, RuntimeError,
 };
 use indexmap::IndexMap;
 use std::{iter, sync::Arc};
@@ -84,13 +86,11 @@ impl Scope {
         &self,
         value_type: ValueType,
         name: &str,
-    ) -> Option<NativeFunctionId> {
-        let definition_id = self
-            .globals
+    ) -> Option<&BoundFunction> {
+        self.globals
             .prototypes
             .get(&value_type)
-            .and_then(|prototype| prototype.0.get(name))?;
-        Some(*definition_id)
+            .and_then(|prototype| prototype.0.get(name))
     }
 
     /// Declare a new binding in this scope. The binding can be a single
@@ -180,6 +180,23 @@ impl GlobalEnvironment {
         self.environment.declare(name.into(), value.into());
     }
 
+    /// Declare a native function in this scope
+    pub fn declare_fn<F, Args, Out>(
+        &mut self,
+        name: impl Into<String>,
+        function: F,
+    ) where
+        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        Args: FromPetitArgs,
+        Out: IntoPetitResult,
+    {
+        let name = name.into();
+        self.environment.declare(
+            name.clone(),
+            Value::from(Function::native(name, function)),
+        );
+    }
+
     /// Set the entire prototype for a single type. If the type already has a
     /// prototype defined, panic as that's a bug
     pub fn declare_prototype(
@@ -221,15 +238,15 @@ impl Environment {
 /// functions must be bound to a value before being called. As such, the
 /// included native functions must point to a bound function, not a static one.
 #[derive(Clone, Debug, Default)]
-pub struct Prototype(IndexMap<String, NativeFunctionId>);
+pub struct Prototype(IndexMap<String, BoundFunction>);
 
 impl Prototype {
     /// Add a function to this prototype
     pub fn declare(
         &mut self,
         name: impl Into<String>,
-        definition_id: NativeFunctionId,
+        function: BoundFunction,
     ) {
-        self.0.insert(name.into(), definition_id);
+        self.0.insert(name.into(), function);
     }
 }

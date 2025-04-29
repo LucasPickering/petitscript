@@ -18,7 +18,7 @@ use std::{cell::RefCell, collections::BTreeMap};
 
 /// Serialize an instance of type `T` into a PetitScript value
 pub fn to_value<T: Serialize>(data: &T) -> Result<Value, ValueError> {
-    data.serialize(&Serializer)
+    data.serialize(Serializer)
 }
 
 /// Deserialize an instance of type `T` from a PetitScript value
@@ -28,7 +28,39 @@ pub fn from_value<'de, T: Deserialize<'de>>(
     T::deserialize(Deserializer::new(value))
 }
 
-/// TODO
+/// A tool for out-of-band serialization and deserialization of functions.
+/// Functions are challenging to serialize and serve little value as raw data.
+/// The only meaningful use case to ser/de functions is going between [Value]
+/// and another type `T` that contains a `Function` internally. So we only need
+/// to support pass-through ser/de, in which a `Function` is mapped right back
+/// to a `Function`. Rather than trying to shove the function through serde's
+/// data model and mapping it back out, it's much easier to store the function
+/// externally (using TLS) and write a simple identifier. We'll extract the ID
+/// on the other side and give it to the pool to redeem it for the original
+/// function.
+///
+/// This pattern allows user functions to avoid serializing their entire
+/// definition (which could be large), and enables inline storage of native
+/// functions, as there is no way to serialize native code (or pointers to it)
+/// without `unsafe`.
+///
+/// This works by create a newtype struct in the data model with a unique name,
+/// such that it's very unlikely for a user to accidentally create another
+/// struct with the same name. The struct contains a single u64, which uniquely
+/// identifies a corresponding function in the pool.
+///
+/// This of course comes with the limitation that both ends of the ser/de
+/// pipeline must run in the same thread, which prohibits any persistence of
+/// functions.
+///
+/// There are two paths supported by this:
+/// - Serialization: `T` contains a Function and wants to serialize to a
+///   `Value`. `T::serialize`` will insert the function into the pool, and our
+///   `Serializer` will pull it back out and create a `Value` from it.
+/// - Deserialization: Our `Deserializer` encounters a Function and inserts it
+///   into the pool. If `T` wants a Function in that position, it will pull it
+///   back out from the pool.
+///
 /// https://lucumr.pocoo.org/2021/11/14/abusing-serde/
 struct FunctionPool {
     next_id: u64,
@@ -36,7 +68,18 @@ struct FunctionPool {
 }
 
 impl FunctionPool {
-    /// TODO
+    /// Unique identifier for the newtype struct that we create in the serde
+    /// data model. Pick a string that's extremely unlikely to collide with
+    /// anything a user would actually write.
+    ///
+    /// If we were to serialize a function to JSON, it would look like:
+    ///
+    /// ```notrust
+    /// {"$petitscript::Function": 0}
+    /// ```
+    ///
+    /// TODO is that true? would serde_json just serialize the int? should we
+    /// use smth else to make sure it's wrapped correctly?
     const STRUCT_NAME: &'static str = "$petitscript::Function";
 
     thread_local! {
@@ -52,7 +95,7 @@ impl FunctionPool {
         }
     }
 
-    /// TODO
+    /// Add a function to the pool and return a new unique ID for it
     fn insert(function: Function) -> u64 {
         Self::POOL.with_borrow_mut(|pool| {
             let id = pool.next_id;
@@ -65,11 +108,14 @@ impl FunctionPool {
         })
     }
 
-    /// TODO
+    /// Take a function from the pool corresponding to the given ID. Return an
+    /// error if the function isn't in the pool. This typically indicates a user
+    /// tried to deserialize from a format other than [Value] into a [Function],
+    /// which is not supported.
     fn take(id: u64) -> Result<Function, ValueError> {
         Self::POOL
             .with_borrow_mut(|pool| pool.pool.remove(&id))
-            .ok_or_else(|| todo!())
+            .ok_or(ValueError::FunctionSerde)
     }
 }
 
@@ -80,10 +126,104 @@ mod tests {
         ast::{
             Expression, FunctionBody, FunctionDefinition, FunctionParameter,
         },
-        value::function::{BoundFunction, Function},
+        value::{
+            function::{BoundFunction, Function},
+            Array, Object,
+        },
     };
     use indexmap::indexmap;
+    use serde::de::{DeserializeOwned, Visitor};
+    use std::fmt::{self, Debug};
     use test_case::test_case;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct UnitStruct;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct NewtypeStruct(i64);
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct TupleStruct(i64, bool);
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct FieldStruct {
+        s: String,
+        b: bool,
+        i: i64,
+        f: f64,
+    }
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    enum UnitEnum {
+        /// "A"
+        A,
+        /// "B"
+        B,
+    }
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    enum TaggedEnum {
+        /// {Unit: undefined}
+        Unit,
+        /// {Newtype: 3}
+        Newtype(i64),
+        /// {Tuple: [3, true]}
+        Tuple(i64, bool),
+        /// {Struct: {b: true}}
+        Struct { b: bool },
+    }
+
+    /// A custom struct containing a function. This tests nested ser/de of
+    /// Function, which has special logic
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct FunctionStruct {
+        f: Function,
+    }
+
+    /// Custom byte buffer to testing buffer ser/de. The only byte struct that
+    /// serde supports out of the box is &[u8], which doesn't work for us
+    /// because our Deserializer doesn't support borrowed deserialization.
+    /// bytes::Bytes doesn't support serde either.
+    #[derive(Debug, PartialEq)]
+    struct Bytes(Vec<u8>);
+
+    impl Serialize for Bytes {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.serialize_bytes(&self.0)
+        }
+    }
+
+    impl<'de> Deserialize<'de> for Bytes {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            struct BytesVisitor;
+
+            impl<'de> Visitor<'de> for BytesVisitor {
+                type Value = Bytes;
+
+                fn expecting(
+                    &self,
+                    formatter: &mut fmt::Formatter,
+                ) -> fmt::Result {
+                    write!(formatter, "bytes")
+                }
+
+                fn visit_byte_buf<E>(self, v: Vec<u8>) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    Ok(Bytes(v))
+                }
+            }
+
+            deserializer.deserialize_byte_buf(BytesVisitor)
+        }
+    }
 
     /// Serializing a `Value` to a `Value`, and deserializing back, should yield
     /// the same value each time. This is for the case when someone is
@@ -133,11 +273,172 @@ mod tests {
         );
         "function_bound"
     )]
-    fn identity(value: impl Into<Value>) {
+    fn value_identity(value: impl Into<Value>) {
         let value = value.into();
-        let deserialized: Value = from_value(value.clone()).unwrap();
-        assert_eq!(deserialized, value, "Deserialization did not math");
-        let serialized = to_value(&value).unwrap();
+        let deserialized: Value = from_value(value.clone())
+            .unwrap_or_else(|error| panic!("Deserialization failed: {error}"));
+        assert_eq!(deserialized, value, "Deserialization did not match");
+        let serialized = to_value(&value)
+            .unwrap_or_else(|error| panic!("Serialization failed: {error}"));
         assert_eq!(serialized, value, "Serialization did not match");
+    }
+
+    /// Serialize/deserialize directly into/from a Function, without the Value
+    /// wrapper. This takes different code paths through Serializer/Deserializer
+    #[test_case(
+        Function::user(
+            Some("func".into()),
+            FunctionDefinition::new(
+                [FunctionParameter::identifier("x")],
+                FunctionBody::expression(Expression::reference("x")),
+            )
+                .with_name("func")
+                .with_captures(["cap"])
+                .into(),
+            indexmap! {"cap".to_owned() => 32.into()},
+        );
+        "user"
+    )]
+    #[test_case(
+        // This will do pointer equality to ensure it's the same fn
+        Function::native("func".into(), |_, _: Value| 0);
+        "native"
+    )]
+    #[test_case(
+        Function::bound(
+            "func".into(),
+            // This will do pointer equality to ensure it's the same fn
+            BoundFunction::new(|_, _: Value, _: Value| 0),
+            [1, 2, 3].into(),
+        );
+        "bound"
+    )]
+    fn function_identity(function: Function) {
+        let deserialized: Function = from_value(Value::Function(
+            function.clone(),
+        ))
+        .unwrap_or_else(|error| panic!("Deserialization failed: {error}"));
+        assert_eq!(deserialized, function, "Deserialization did not match");
+        let serialized = to_value(&function)
+            .unwrap_or_else(|error| panic!("Serialization failed: {error}"));
+        assert_eq!(
+            serialized,
+            Value::Function(function),
+            "Serialization did not match"
+        );
+    }
+
+    /// Serialize/deserialize between Value and some external types
+    #[test_case(true, true.into(); "bool")]
+    #[test_case(3, 3.into(); "int")]
+    #[test_case(3.5, 3.5.into(); "float")]
+    #[test_case("hi".to_owned(), "hi".into(); "string")]
+    #[test_case([1, 2, 3], [1, 2, 3].into(); "array")]
+    #[test_case(
+        indexmap! {"a".to_owned() => 2, "b".to_owned() => 4},
+        Object::new().insert("a", 2).insert("b", 4).into();
+        "object indexmap"
+    )]
+    #[test_case(
+        Bytes(vec![0u8, 1u8, 2u8]),
+        Value::Buffer([0u8, 1u8, 2u8].as_slice().into());
+        "buffer"
+    )]
+    #[test_case(None::<&str>, Value::Null; "option none")]
+    #[test_case(Some("hi".to_owned()), "hi".into(); "option some")]
+    #[test_case(UnitStruct, Value::Undefined; "unit_struct")]
+    #[test_case(NewtypeStruct(3), 3.into(); "newtype_struct")]
+    #[test_case(
+        TupleStruct(3, true),
+        Array::new().push(3).push(true).into();
+        "tuple_struct"
+    )]
+    #[test_case(
+        FieldStruct { s: "hi".into(), b: true, i: 67, f: 123.4 },
+        Object::new()
+            .insert("s", "hi")
+            .insert("b", true)
+            .insert("i", 67)
+            .insert("f", 123.4)
+            .into();
+        "field_struct"
+    )]
+    #[test_case(UnitEnum::A, "A".into(); "unit_enum")]
+    #[test_case(TaggedEnum::Unit, "Unit".into(); "tagged_enum unit")]
+    #[test_case(
+        TaggedEnum::Newtype(3),
+        Object::new().insert("Newtype", 3).into();
+        "tagged_enum newtype"
+    )]
+    #[test_case(
+        TaggedEnum::Tuple(3, true),
+        Object::new()
+            .insert("Tuple", Array::new().push(3).push(true))
+            .into();
+        "tagged_enum tuple"
+    )]
+    #[test_case(
+        TaggedEnum::Struct { b: true },
+        Object::new()
+            .insert("Struct", Object::new().insert("b", true))
+            .into();
+        "tagged_enum struct"
+    )]
+    #[test_case(
+        FunctionStruct {
+            f: Function::user(
+                Some("f".into()),
+                FunctionDefinition::new([], FunctionBody::expression(3.into()))
+                    .into(),
+                Default::default(),
+            ),
+        },
+        Object::new()
+            .insert(
+                "f",
+                // This works because user functions use structural equality
+                Function::user(
+                    Some("f".into()),
+                    FunctionDefinition::new(
+                        [],
+                        FunctionBody::expression(3.into()),
+                    ).into(),
+                    Default::default(),
+                ),
+            )
+            .into();
+        "function_struct"
+    )]
+    fn external_types_round_trip<'de, T>(external: T, value: Value)
+    where
+        T: Debug + PartialEq + Serialize + Deserialize<'de>,
+    {
+        let deserialized: T = from_value(value.clone())
+            .unwrap_or_else(|error| panic!("Deserialization failed: {error}"));
+        assert_eq!(deserialized, external, "Deserialization did not match");
+
+        let serialized = to_value(&external)
+            .unwrap_or_else(|error| panic!("Serialization failed: {error}"));
+        assert_eq!(serialized, value, "Serialization did not match");
+    }
+
+    /// Test deserialization only of certain external values. There are some
+    /// values that we expect to be able to deserialize from, but not serialize
+    /// back to. E.g. unit values can deserialize from `null` OR `undefined`,
+    /// but only serialize back to the latter
+    #[test_case(
+        // By default unit variants are serialized as just "Variant", but we
+        // will also accept {Variant: undefined}
+        TaggedEnum::Unit,
+        Object::new().insert("Unit", Value::Undefined).into();
+        "tagged_enum unit undefined"
+    )]
+    fn external_types_deserialize<T>(external: T, value: Value)
+    where
+        T: Debug + PartialEq + DeserializeOwned,
+    {
+        let deserialized: T = from_value(value.clone())
+            .unwrap_or_else(|error| panic!("Deserialization failed: {error}"));
+        assert_eq!(deserialized, external, "Deserialization did not match");
     }
 }

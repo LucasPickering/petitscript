@@ -335,6 +335,12 @@ pub enum ValueError {
     /// A custom error message, e.g. for deserialization
     Custom(String),
 
+    /// Attempted to deserialize into a [Function] from a data format other
+    /// than [Value]. [Function] can only be serialized into/deserialized from
+    /// [Function]; it cannot be represented in other serde data formats or
+    /// transformed into another data type.
+    FunctionSerde,
+
     /// Attempted to convert non-UTF-8 bytes to a string
     InvalidUtf8(FromUtf8Error),
 
@@ -369,6 +375,15 @@ impl Display for ValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Custom(message) => write!(f, "{message}"),
+            Self::FunctionSerde => {
+                write!(
+                    f,
+                    "Invalid function serialization/deserialization. \
+                    PetitScript functions can only be serialized into and \
+                    deserialized from petitscript::Value. Other data formats \
+                    are not supported."
+                )
+            }
             Self::InvalidUtf8(error) => write!(f, "{error}"),
             Self::Number {
                 expected,
@@ -390,6 +405,7 @@ impl StdError for ValueError {
     fn cause(&self) -> Option<&dyn StdError> {
         match self {
             Self::Custom(_) => None,
+            Self::FunctionSerde { .. } => None,
             Self::InvalidUtf8(error) => Some(error),
             Self::Number { .. } => None,
             Self::Other(error) => Some(&**error),

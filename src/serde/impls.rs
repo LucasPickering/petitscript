@@ -3,12 +3,15 @@
 
 use crate::{
     serde::FunctionPool,
-    value::{function::Function, Array, IntoPetit, Number, Object, Value},
+    value::{function::Function, Array, Number, Object, Value},
 };
 use serde::{
     de::{
         self,
-        value::{MapAccessDeserializer, SeqAccessDeserializer},
+        value::{
+            EnumAccessDeserializer, MapAccessDeserializer,
+            SeqAccessDeserializer,
+        },
         MapAccess, Visitor,
     },
     Deserialize, Serialize,
@@ -82,7 +85,8 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 E: de::Error,
             {
-                i.into_petit().map_err(|_| todo!())
+                let number = Number::try_from(i).map_err(de::Error::custom)?;
+                Ok(Value::Number(number))
             }
 
             fn visit_f64<E>(self, f: f64) -> Result<Self::Value, E>
@@ -138,11 +142,14 @@ impl<'de> serde::Deserialize<'de> for Value {
                     .map(Value::Object)
             }
 
-            fn visit_enum<A>(self, _data: A) -> Result<Self::Value, A::Error>
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
             where
                 A: de::EnumAccess<'de>,
             {
-                todo!("Create externally tagged enum")
+                // Deserialize into an externally tagged object:
+                // {Variant1: {field1: 1, field2: 2}}
+                Object::deserialize(EnumAccessDeserializer::new(data))
+                    .map(Value::Object)
             }
 
             fn visit_newtype_struct<D>(
@@ -158,29 +165,6 @@ impl<'de> serde::Deserialize<'de> for Value {
         }
 
         deserializer.deserialize_any(ValueVisitor)
-    }
-}
-
-impl Serialize for Number {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Number::Int(i) => i.serialize(serializer),
-            Number::Float(f) => f.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Number {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // TODO deserialize as int first if possible
-        let number = f64::deserialize(deserializer)?;
-        Ok(Number::Float(number))
     }
 }
 
@@ -207,23 +191,40 @@ impl<'de> Deserialize<'de> for Function {
             type Value = Function;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "u64")
+                write!(f, "newtype struct {}(u64)", FunctionPool::STRUCT_NAME)
             }
 
-            // The newtype struct gets unwrapped by the call below to
-            // deserialize_newtype_struct. We expect to find a u64 inside which
-            // is the ID of the function in the pool
+            // We end up hitting both of these visitor fns because of the
+            // circuitous code path serde takes. I tried and failed to eliminate
+            // one of them
+
             fn visit_u64<E>(self, id: u64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 FunctionPool::take(id).map_err(de::Error::custom)
             }
+
+            fn visit_newtype_struct<D>(
+                self,
+                deserializer: D,
+            ) -> Result<Self::Value, D::Error>
+            where
+                D: de::Deserializer<'de>,
+            {
+                let id = u64::deserialize(deserializer)?;
+                self.visit_u64(id)
+            }
         }
 
         // Deserialize a function into a function: the deserializer put it in
         // the pool and created a newtype struct to hold the ID. We'll take the
-        // ID and redeem it for the original function
+        // ID and redeem it for the original function.
+        //
+        // The struct name doesn't actually matter here because we can't check
+        // it in visit_newtype_struct anyway. We're trusting that if a newtype
+        // struct is actually present, it's the one put there for the function.
+        // Otherwise we'll get an error trying to read the ID
         deserializer.deserialize_newtype_struct(
             FunctionPool::STRUCT_NAME,
             FunctionVisitor,

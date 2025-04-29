@@ -23,7 +23,8 @@ pub struct Function(pub(crate) Arc<FunctionInner>);
 impl Function {
     /// Create a new function. A "user" function is a function defined in
     /// PetitScript, as opposed to a "native" function that's defined in Rust.
-    pub(crate) fn user(
+    /// TODO rename to `new`?
+    pub fn user(
         name: Option<String>,
         definition: Arc<FunctionDefinition>,
         captures: Captures,

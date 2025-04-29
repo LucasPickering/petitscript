@@ -8,6 +8,8 @@ use std::{
 
 /// A 64-bit float or 64-bit signed integer. Bit ints are *not* supported.
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(untagged))]
 pub enum Number {
     Int(i64),
     Float(f64),

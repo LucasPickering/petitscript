@@ -1,16 +1,11 @@
-#![allow(unused)] // TODO remove
-
 use crate::{
     error::ValueError,
     serde::FunctionPool,
-    value::{
-        function::{Captures, Function},
-        IntoPetit, Object,
-    },
+    value::{IntoPetit, Object},
     Value,
 };
 use indexmap::IndexMap;
-use serde::ser;
+use serde::ser::{self, SerializeStruct};
 use std::fmt::Display;
 
 impl ser::Error for ValueError {
@@ -19,7 +14,8 @@ impl ser::Error for ValueError {
     }
 }
 
-/// TODO
+/// Serialize any type that implements [Serialize](serde::Serialize) into a
+/// [Value]
 pub struct Serializer;
 
 /// Serialize a `T` into `Value` using its `From<T>` impl
@@ -42,16 +38,16 @@ macro_rules! serialize_into_fallible {
     };
 }
 
-impl serde::Serializer for &Serializer {
+impl serde::Serializer for Serializer {
     type Ok = Value;
     type Error = ValueError;
     type SerializeSeq = SerializeSeq;
     type SerializeTuple = SerializeSeq;
     type SerializeTupleStruct = SerializeSeq;
-    type SerializeTupleVariant = SerializeSeq;
-    type SerializeMap = SerializeMap<String>;
-    type SerializeStruct = SerializeMap<&'static str>;
-    type SerializeStructVariant = SerializeMap<&'static str>;
+    type SerializeTupleVariant = SerializeVariant<SerializeSeq>;
+    type SerializeMap = SerializeMap;
+    type SerializeStruct = SerializeMap;
+    type SerializeStructVariant = SerializeVariant<SerializeMap>;
 
     serialize_into!(serialize_bool, bool);
 
@@ -82,7 +78,7 @@ impl serde::Serializer for &Serializer {
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        Ok(v.to_owned().into())
+        Ok(Value::Buffer(v.to_owned().into()))
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
@@ -96,7 +92,7 @@ impl serde::Serializer for &Serializer {
         self,
         _name: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        Ok(Value::Null)
+        Ok(Value::Undefined)
     }
 
     fn serialize_unit_variant(
@@ -121,10 +117,14 @@ impl serde::Serializer for &Serializer {
             // impl should've put it into the function pool and we'll grab it
             // back out by ID
             let id: u64 = value.serialize(U64Serializer)?;
+            // The only way we can hit an error here is:
+            // - A bug in our code somewhere (impossible)
+            // - User tried to serialize something that looks like a Function
+            //   but isn't (i.e. serializes as a struct with our special name),
+            //   which is extremely unlikely
             let function = FunctionPool::take(id)?;
             Ok(Value::Function(function))
         } else {
-            // Pretend the newtype isn't there and serialize the inner value
             value.serialize(self)
         }
     }
@@ -133,13 +133,15 @@ impl serde::Serializer for &Serializer {
         self,
         _name: &'static str,
         _variant_index: u32,
-        _variant: &'static str,
+        variant: &'static str,
         value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + serde::Serialize,
     {
-        value.serialize(self)
+        // Wrap the inner value in an external tag object: {Variant: inner}
+        let value = value.serialize(self)?;
+        Ok(Object::new().insert(variant, value).into())
     }
 
     fn serialize_seq(
@@ -167,12 +169,15 @@ impl serde::Serializer for &Serializer {
 
     fn serialize_tuple_variant(
         self,
-        name: &'static str,
-        variant_index: u32,
+        _name: &'static str,
+        _variant_index: u32,
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        Ok(SerializeSeq::new(Some(len)))
+        Ok(SerializeVariant {
+            variant,
+            inner: SerializeSeq::new(Some(len)),
+        })
     }
 
     fn serialize_map(
@@ -184,7 +189,7 @@ impl serde::Serializer for &Serializer {
 
     fn serialize_struct(
         self,
-        name: &'static str,
+        _name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         Ok(SerializeMap::new(Some(len)))
@@ -192,12 +197,15 @@ impl serde::Serializer for &Serializer {
 
     fn serialize_struct_variant(
         self,
-        name: &'static str,
-        variant_index: u32,
+        _name: &'static str,
+        _variant_index: u32,
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        Ok(SerializeMap::new(Some(len)))
+        Ok(SerializeVariant {
+            variant,
+            inner: SerializeMap::new(Some(len)),
+        })
     }
 }
 
@@ -220,7 +228,7 @@ impl SerializeSeq {
     where
         T: ?Sized + ser::Serialize,
     {
-        let value = value.serialize(&Serializer)?;
+        let value = value.serialize(Serializer)?;
         self.values.push(value);
         Ok(())
     }
@@ -258,22 +266,6 @@ impl ser::SerializeTuple for SerializeSeq {
     }
 }
 
-impl ser::SerializeTupleVariant for SerializeSeq {
-    type Ok = Value;
-    type Error = ValueError;
-
-    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
-    where
-        T: ?Sized + ser::Serialize,
-    {
-        self.serialize_element(value)
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(self.values.into())
-    }
-}
-
 impl ser::SerializeTupleStruct for SerializeSeq {
     type Ok = Value;
     type Error = ValueError;
@@ -291,12 +283,12 @@ impl ser::SerializeTupleStruct for SerializeSeq {
 }
 
 /// Serialize a map into an object
-pub struct SerializeMap<K> {
-    map: IndexMap<K, Value>,
-    next_key: Option<K>,
+pub struct SerializeMap {
+    map: IndexMap<String, Value>,
+    next_key: Option<String>,
 }
 
-impl<K> SerializeMap<K> {
+impl SerializeMap {
     fn new(len: Option<usize>) -> Self {
         let map = if let Some(len) = len {
             IndexMap::with_capacity(len)
@@ -310,7 +302,7 @@ impl<K> SerializeMap<K> {
     }
 }
 
-impl ser::SerializeMap for SerializeMap<String> {
+impl ser::SerializeMap for SerializeMap {
     type Ok = Value;
     type Error = ValueError;
 
@@ -318,7 +310,8 @@ impl ser::SerializeMap for SerializeMap<String> {
     where
         T: ?Sized + ser::Serialize,
     {
-        let key = key.serialize(&Serializer)?.try_into_string().expect("TODO");
+        // Keys must be strings
+        let key = key.serialize(Serializer)?.try_into_string()?;
         self.next_key = Some(key.into());
         Ok(())
     }
@@ -328,7 +321,7 @@ impl ser::SerializeMap for SerializeMap<String> {
         T: ?Sized + ser::Serialize,
     {
         let key = self.next_key.take().expect("TODO");
-        let value = value.serialize(&Serializer)?;
+        let value = value.serialize(Serializer)?;
         self.map.insert(key, value);
         Ok(())
     }
@@ -339,7 +332,7 @@ impl ser::SerializeMap for SerializeMap<String> {
 }
 
 /// Serialize structs as maps
-impl ser::SerializeStruct for SerializeMap<&'static str> {
+impl ser::SerializeStruct for SerializeMap {
     type Ok = Value;
     type Error = ValueError;
 
@@ -351,8 +344,9 @@ impl ser::SerializeStruct for SerializeMap<&'static str> {
     where
         T: ?Sized + ser::Serialize,
     {
-        let value = value.serialize(&Serializer)?;
-        self.map.insert(key, value);
+        // Serialize the inner &T to Value
+        let value = value.serialize(Serializer)?;
+        self.map.insert(key.to_owned(), value);
         Ok(())
     }
 
@@ -361,7 +355,34 @@ impl ser::SerializeStruct for SerializeMap<&'static str> {
     }
 }
 
-impl ser::SerializeStructVariant for SerializeMap<&'static str> {
+/// Serialize an enum object with an external tag:
+///
+/// `{Tuple: [1, 2]}` or `{Struct: {a: 1}}`
+pub struct SerializeVariant<T> {
+    variant: &'static str,
+    inner: T,
+}
+
+/// Serialize tuple variants as arrays
+impl ser::SerializeTupleVariant for SerializeVariant<SerializeSeq> {
+    type Ok = Value;
+    type Error = ValueError;
+
+    fn serialize_field<T>(&mut self, value: &T) -> Result<(), Self::Error>
+    where
+        T: ?Sized + ser::Serialize,
+    {
+        self.inner.serialize_element(value)
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        // Wrap the inner array in an external tag object: {Variant: inner}
+        Ok(Object::new().insert(self.variant, self.inner.values).into())
+    }
+}
+
+/// Serialize struct variants as objects
+impl ser::SerializeStructVariant for SerializeVariant<SerializeMap> {
     type Ok = Value;
     type Error = ValueError;
 
@@ -373,20 +394,19 @@ impl ser::SerializeStructVariant for SerializeMap<&'static str> {
     where
         T: ?Sized + ser::Serialize,
     {
-        // Convert from T to Value
-        let value = value.serialize(&Serializer)?;
-        self.map.insert(key, value);
-        Ok(())
+        self.inner.serialize_field(key, value)
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(self.map.into())
+        // Wrap the inner map in an external tag object: {Variant: inner}
+        Ok(Object::new().insert(self.variant, self.inner.map).into())
     }
 }
 
 /// TODO explain or figure out a way to get rid of this
 struct U64Serializer;
 
+#[allow(unused)] // TODO remove this
 impl ser::Serializer for U64Serializer {
     type Ok = u64;
     type Error = ValueError;
@@ -398,35 +418,35 @@ impl ser::Serializer for U64Serializer {
     type SerializeStruct = ser::Impossible<u64, ValueError>;
     type SerializeStructVariant = ser::Impossible<u64, ValueError>;
 
-    fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
+    fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
+    fn serialize_i8(self, _v: i8) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
+    fn serialize_i16(self, _v: i16) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
+    fn serialize_i32(self, _v: i32) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+    fn serialize_i64(self, _v: i64) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
+    fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
+    fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
+    fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
@@ -434,23 +454,23 @@ impl ser::Serializer for U64Serializer {
         Ok(v)
     }
 
-    fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
+    fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
+    fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
+    fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+    fn serialize_str(self, _v: &str) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 
-    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+    fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok, Self::Error> {
         todo!()
     }
 

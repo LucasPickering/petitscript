@@ -10,6 +10,13 @@ use std::{
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PetitString(Arc<str>);
 
+impl PetitString {
+    /// Extract a string slice containing the entire string
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 impl Deref for PetitString {
     type Target = str;
 
@@ -53,7 +60,8 @@ impl From<PetitString> for String {
         // It'd be nice to be able to reuse the allocated string if we own the
         // last copy of the wrapping Arc, but I can't find a way to do that
         // since str is unsized, so we have to clone all the data
-        string.0.deref().to_owned()
+        // TODO take another stab at this
+        string.as_str().to_owned()
     }
 }
 

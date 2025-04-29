@@ -17,6 +17,8 @@ pub enum Number {
 
 impl Number {
     /// Not a Number
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/NaN>
     pub const NAN: Self = Self::Float(f64::NAN);
 
     /// `false` if this value is 0 or `NaN`, `true` otherwise
@@ -24,6 +26,15 @@ impl Number {
         match self {
             Number::Int(i) => i != 0,
             Number::Float(f) => f != 0.0 && !f.is_nan(),
+        }
+    }
+
+    /// Return `true` if this value is NaN. See [Number::NAN]
+    pub fn is_nan(self) -> bool {
+        if let Self::Float(f) = self {
+            f.is_nan()
+        } else {
+            false
         }
     }
 }

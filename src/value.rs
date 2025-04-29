@@ -113,6 +113,15 @@ impl Value {
         }
     }
 
+    /// Return `true` if this value is NaN. See [Number::NAN]
+    pub fn is_nan(&self) -> bool {
+        if let Self::Number(n) = self {
+            n.is_nan()
+        } else {
+            false
+        }
+    }
+
     /// Coerce this value to a string. This intentionally shadows
     /// [ToString::to_string] to prevent accidentally using display rules for
     /// coercion. The [Display] impl is intended just for debug printing in
@@ -583,7 +592,15 @@ mod tests {
     #[test_case(Buffer::from([1, 2]), None::<Number>; "buffer")]
     // TODO test function
     fn to_number(value: impl Into<Value>, expected: Option<impl Into<Number>>) {
-        assert_eq!(value.into().to_number(), expected.map(|n| n.into()));
+        let actual = value.into().to_number();
+        let expected = expected.map(|n| n.into());
+        // NaN != NaN, so we need to use a different check if that's what we're
+        // looking for
+        if expected.is_some_and(Number::is_nan) {
+            assert!(actual.is_some_and(Number::is_nan), "TODO");
+        } else {
+            assert_eq!(actual, expected);
+        }
     }
 
     /// Test string coercion (NOT string displaying)
@@ -657,9 +674,18 @@ mod tests {
     ) {
         let a = a.into();
         let b = b.into();
-        let expected = Value::from(expected.into());
-        assert_eq!(a.clone() + b.clone(), expected);
-        assert_eq!(b + a, expected);
+        let expected: Number = expected.into();
+        let a_plus_b = a.clone() + b.clone();
+        let b_plus_a = b + a;
+        // NaN != NaN, so we need to use a different check if that's what we're
+        // looking for
+        if expected.is_nan() {
+            assert!(a_plus_b.is_nan(), "Expected NaN but received {a_plus_b}");
+            assert!(b_plus_a.is_nan(), "Expected NaN but received {b_plus_a}");
+        } else {
+            assert_eq!(a_plus_b, Value::Number(expected));
+            assert_eq!(b_plus_a, Value::Number(expected));
+        }
     }
 
     /// Test addition operations that return a string. Since string

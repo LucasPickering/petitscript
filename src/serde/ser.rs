@@ -77,8 +77,15 @@ impl serde::Serializer for Serializer {
         Ok(Value::Null)
     }
 
+    #[cfg(feature = "buffer")]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
         Ok(Value::Buffer(v.to_owned().into()))
+    }
+
+    #[cfg(not(feature = "buffer"))]
+    fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+        // TODO write a test for this case
+        Ok(Value::Array(v.to_owned().into()))
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>

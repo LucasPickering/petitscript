@@ -102,23 +102,18 @@ impl FunctionDefinition {
         Declaration::new(identifier, self.into())
     }
 
-    /// Attach a name to this function definition. This is only useful in tests
-    /// because:
-    /// - The name on a function definition isn't used in code generation.
-    /// - The name *is* useful at runtime, but if the built AST is going to be
-    ///   executed it needs to be run through the compiler first, which will
-    ///   attach the name automatically.
-    #[cfg(test)]
-    pub(crate) fn with_name(mut self, name: impl Into<Identifier>) -> Self {
+    /// Attach a name to this function definition. This does not affect code
+    /// generation at all and is only helpful if the AST is being compiled or
+    /// used for test assertions.
+    pub fn with_name(mut self, name: impl Into<Identifier>) -> Self {
         self.name = Some(name.into().s());
         self
     }
 
-    /// Define what identifiers should be captured by this function. This is
-    /// only needed in tests, for assertions. Users should never have to worry
-    /// about captures themselves
-    #[cfg(test)]
-    pub(crate) fn with_captures(
+    /// Define what identifiers should be captured by this function. This does
+    /// not affect code generation at all and is only helpful if the AST is
+    /// being compiled or used for test assertions.
+    pub fn with_captures(
         mut self,
         captures: impl IntoIterator<Item = &'static str>,
     ) -> Self {

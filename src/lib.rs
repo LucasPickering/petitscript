@@ -35,7 +35,7 @@ use std::sync::Arc;
 /// An engine defines how code should be executed and what modules are available
 /// to executed code. Engines are created using the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
 /// and are immutable after creation. This immutability allows an engine to be
-/// shared among many processes cheaply, through the joys of reference counting.
+/// shared among many processes cheaply through the joys of reference counting.
 #[derive(Debug)]
 pub struct Engine {
     /// Modules registered by the user that can be imported into any script.
@@ -69,6 +69,11 @@ impl Engine {
             modules: Default::default(),
             globals: GlobalEnvironment::default(),
         }
+    }
+
+    /// Get a reference to a registered name module by its name
+    pub fn module(&self, name: &str) -> Option<&Exports> {
+        self.modules.get(name)
     }
 
     /// Parse some source code and return the parsed AST. The returned AST is

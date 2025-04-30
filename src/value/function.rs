@@ -25,10 +25,10 @@ impl Function {
     /// PetitScript, as opposed to a "native" function that's defined in Rust.
     /// TODO rename to `new`?
     pub fn user(
-        name: Option<String>,
         definition: Arc<FunctionDefinition>,
         captures: Captures,
     ) -> Self {
+        let name = definition.name.as_ref().map(|name| name.to_string());
         Self(
             FunctionInner::User {
                 name,
@@ -200,7 +200,12 @@ impl NativeFunction {
 
 impl Debug for NativeFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("StaticNativeFunction").finish()
+        write!(
+            f,
+            "NativeFunction(0x{:x})",
+            // Print the pointer to the function as something identifying
+            Arc::as_ptr(&self.0) as *const () as usize
+        )
     }
 }
 
@@ -247,7 +252,12 @@ impl BoundFunction {
 
 impl Debug for BoundFunction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("BoundNativeFunction").finish()
+        write!(
+            f,
+            "BoundFunction(0x{:x})",
+            // Print the pointer to the function as something identifying
+            Arc::as_ptr(&self.0) as *const () as usize
+        )
     }
 }
 

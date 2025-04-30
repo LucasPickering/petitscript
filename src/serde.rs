@@ -72,14 +72,13 @@ impl FunctionPool {
     /// data model. Pick a string that's extremely unlikely to collide with
     /// anything a user would actually write.
     ///
-    /// If we were to serialize a function to JSON, it would look like:
-    ///
-    /// ```notrust
-    /// {"$petitscript::Function": 0}
-    /// ```
-    ///
-    /// TODO is that true? would serde_json just serialize the int? should we
-    /// use smth else to make sure it's wrapped correctly?
+    /// This string **does not actually get serialized** in most data formats,
+    /// as struct names are typically thrown away and the wrapped value is
+    /// serialized alone. The deserializer has to know that the value in that
+    /// position is intended to be a function pool ID. It knows this because
+    /// the Deserialize impl requests a newtype struct of this name. So the name
+    /// is used during serialization and deserialization time, but doesn't
+    /// actually appear in the serialized output.
     const STRUCT_NAME: &'static str = "$petitscript::Function";
 
     thread_local! {
@@ -151,6 +150,7 @@ mod tests {
         b: bool,
         i: i64,
         f: f64,
+        unit_enum: UnitEnum,
     }
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -247,7 +247,6 @@ mod tests {
     }; "object")]
     #[test_case(
         Function::user(
-            Some("func".into()),
             FunctionDefinition::new(
                 [FunctionParameter::identifier("x")],
                 FunctionBody::expression(Expression::reference("x")),
@@ -287,7 +286,6 @@ mod tests {
     /// wrapper. This takes different code paths through Serializer/Deserializer
     #[test_case(
         Function::user(
-            Some("func".into()),
             FunctionDefinition::new(
                 [FunctionParameter::identifier("x")],
                 FunctionBody::expression(Expression::reference("x")),
@@ -339,10 +337,13 @@ mod tests {
         Object::new().insert("a", 2).insert("b", 4).into();
         "object indexmap"
     )]
-    #[test_case(
-        Bytes(vec![0u8, 1u8, 2u8]),
-        Value::Buffer([0u8, 1u8, 2u8].as_slice().into());
-        "buffer"
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(
+           Bytes(vec![0u8, 1u8, 2u8]),
+            Value::Buffer([0u8, 1u8, 2u8].as_slice().into());
+            "buffer"
+        ),
     )]
     #[test_case(None::<&str>, Value::Null; "option none")]
     #[test_case(Some("hi".to_owned()), "hi".into(); "option some")]
@@ -354,12 +355,20 @@ mod tests {
         "tuple_struct"
     )]
     #[test_case(
-        FieldStruct { s: "hi".into(), b: true, i: 67, f: 123.4 },
+        FieldStruct {
+            s:
+            "hi".into(),
+            b: true,
+            i: 67,
+            f: 123.4,
+            unit_enum: UnitEnum::A,
+        },
         Object::new()
             .insert("s", "hi")
             .insert("b", true)
             .insert("i", 67)
             .insert("f", 123.4)
+            .insert("unit_enum", "A")
             .into();
         "field_struct"
     )]
@@ -387,8 +396,8 @@ mod tests {
     #[test_case(
         FunctionStruct {
             f: Function::user(
-                Some("f".into()),
                 FunctionDefinition::new([], FunctionBody::expression(3.into()))
+                    .with_name("f")
                     .into(),
                 Default::default(),
             ),
@@ -398,11 +407,12 @@ mod tests {
                 "f",
                 // This works because user functions use structural equality
                 Function::user(
-                    Some("f".into()),
                     FunctionDefinition::new(
                         [],
                         FunctionBody::expression(3.into()),
-                    ).into(),
+                    )
+                    .with_name("f")
+                    .into(),
                     Default::default(),
                 ),
             )

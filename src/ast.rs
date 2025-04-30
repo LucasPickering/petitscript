@@ -19,6 +19,7 @@ pub use walk::{AstVisitor, Walk};
 
 use crate::error::ModuleNameError;
 use std::{
+    borrow::Borrow,
     fmt::{self, Debug},
     hash::Hash,
     ops::{Deref, DerefMut},
@@ -349,12 +350,19 @@ pub enum ImportModule {
 #[cfg_attr(feature = "serde", serde(transparent))]
 pub struct NativeModuleName(String);
 
+// Enables map lookups with &str
+impl Borrow<str> for NativeModuleName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
 impl TryFrom<String> for NativeModuleName {
     type Error = ModuleNameError;
 
     fn try_from(name: String) -> Result<Self, Self::Error> {
         fn is_valid(c: char) -> bool {
-            c.is_alphanumeric() || ['-', '_'].contains(&c)
+            c.is_ascii_alphanumeric() || ['-', '_'].contains(&c)
         }
 
         if !name.is_empty() && name.chars().all(is_valid) {

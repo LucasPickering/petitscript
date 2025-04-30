@@ -565,8 +565,14 @@ mod tests {
     #[test_case([1,2], true; "array")]
     #[test_case(Object::default(), true; "object_empty")]
     #[test_case([("a", 1)], true; "object")]
-    #[test_case(Buffer::default(), true; "buffer_empty")]
-    #[test_case(Buffer::from([1, 2]), true; "buffer")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::default(), true; "buffer_empty"),
+    )]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1, 2]), true; "buffer"),
+    )]
     // TODO test function
     fn to_bool(value: impl Into<Value>, expected: bool) {
         assert_eq!(value.into().to_bool(), expected);
@@ -588,8 +594,14 @@ mod tests {
     #[test_case([1, 2], None::<Number>; "array_2")]
     #[test_case(Object::default(), None::<Number>; "object_empty")]
     #[test_case([("a", 1)], None::<Number>; "object")]
-    #[test_case(Buffer::default(), None::<Number>; "buffer_empty")]
-    #[test_case(Buffer::from([1, 2]), None::<Number>; "buffer")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::default(), None::<Number>; "buffer_empty"),
+    )]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1, 2]), None::<Number>; "buffer"),
+    )]
     // TODO test function
     fn to_number(value: impl Into<Value>, expected: Option<impl Into<Number>>) {
         let actual = value.into().to_number();
@@ -613,7 +625,10 @@ mod tests {
     #[test_case("test", "test"; "string")]
     #[test_case([1, 2], "1,2"; "array")]
     #[test_case([("a", 1)], "[Object object]"; "object")]
-    #[test_case(Buffer::from([1, 2]), "TODO"; "buffer")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1, 2]), "TODO"; "buffer"),
+    )]
     // TODO test function
     fn to_string(value: impl Into<Value>, expected: &str) {
         assert_eq!(&*value.into().to_string(), expected);
@@ -631,7 +646,10 @@ mod tests {
     #[test_case("hello", "hello"; "string")]
     #[test_case([1, 2], [1, 2]; "array")]
     #[test_case([("a", 1)], [("a", 1)]; "object")]
-    #[test_case(Buffer::from([1u8, 2u8]), [1u8, 2u8].as_slice(); "buffer")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1u8, 2u8]), [1u8, 2u8].as_slice(); "buffer")
+    )]
     // TODO test functions
     fn equal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_eq!(a.into(), b.into());
@@ -646,7 +664,10 @@ mod tests {
     #[test_case(1, "1"; "number string")]
     #[test_case([1], [1, 2]; "array")]
     #[test_case([("a", 1)], [("a", 2)]; "object")]
-    #[test_case(Buffer::from([1, 2]), Buffer::from([1, 3]); "buffer")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1, 2]), Buffer::from([1, 3]); "buffer"),
+    )]
     // TODO test functions
     fn unequal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_ne!(a.into(), b.into());
@@ -703,7 +724,10 @@ mod tests {
         [("a", 1), ("b", 2)], "s", "[Object object]s", "s[Object object]";
         "object string"
     )]
-    #[test_case(Buffer::from([1, 2]), "s", "TODOs", "sTODO"; "buffer string")]
+    #[cfg_attr(
+        feature = "buffer",
+        test_case(Buffer::from([1, 2]), "s", "TODOs", "sTODO"; "buffer string"),
+    )]
     // TODO test functions
     fn add_string(
         a: impl Into<Value>,

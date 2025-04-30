@@ -148,6 +148,7 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Number(Number::Int(int)) => Unexpected::Signed(int),
             Value::Number(Number::Float(float)) => Unexpected::Float(float),
             Value::Array(_) => Unexpected::Seq,
+            #[cfg(feature = "buffer")]
             Value::Buffer(_) => Unexpected::Other("bytes"),
             Value::Function(_) => Unexpected::Other("function"),
         };

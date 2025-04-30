@@ -169,17 +169,12 @@ impl Evaluate for TemplateLiteral {
 
 impl Evaluate for Node<FunctionDefinition> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        let name = self.name.as_ref().map(|name| name.to_string());
-
         let scope = state.scope();
         let captures = scope
             .captures(&self.captures)
             .map_err(|error| state.trace_error(error, self.id()))?;
 
-        Ok(
-            Function::user(name, Arc::new(self.data().clone()), captures)
-                .into(),
-        )
+        Ok(Function::user(Arc::new(self.data().clone()), captures).into())
     }
 }
 

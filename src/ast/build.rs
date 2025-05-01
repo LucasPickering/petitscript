@@ -254,24 +254,28 @@ impl From<bool> for Expression {
     }
 }
 
+/// Create an integer literal
 impl From<i64> for Expression {
     fn from(i: i64) -> Self {
         Self::Literal(Literal::Int(i).s())
     }
 }
 
+/// Create a float literal
 impl From<f64> for Expression {
     fn from(f: f64) -> Self {
         Self::Literal(Literal::Float(f).s())
     }
 }
 
+/// Create a string literal
 impl From<&str> for Expression {
     fn from(s: &str) -> Self {
         Self::Literal(Literal::String(s.to_owned()).s())
     }
 }
 
+/// Create a string literal
 impl From<String> for Expression {
     fn from(s: String) -> Self {
         Self::Literal(Literal::String(s).s())

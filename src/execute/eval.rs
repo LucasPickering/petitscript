@@ -10,10 +10,7 @@ use crate::{
     },
     error::{TracedError, ValueError},
     execute::{exec::Execute, state::CallSite, ThreadState},
-    value::{
-        function::{Function, FunctionInner},
-        Array, Number, Object, Value, ValueType,
-    },
+    value::{function::Function, Array, Number, Object, Value, ValueType},
 };
 use std::{borrow::Cow, sync::Arc};
 
@@ -300,11 +297,10 @@ impl Function {
         call_site: CallSite,
         arguments: Vec<Value>,
     ) -> Result<Value, TracedError> {
-        match &*self.0 {
-            FunctionInner::User {
+        match self {
+            Self::User {
                 definition,
                 captures,
-                ..
             } => {
                 // Create a new scope based on the global namespace, with
                 // captured bindings applied
@@ -355,13 +351,15 @@ impl Function {
                     |state| definition.body.exec(state),
                 )
             }
-            FunctionInner::Native { function, .. } => {
-                (function.0)(state.process(), arguments)
-                    .map_err(|error| state.trace_error(error, call_site))
-            }
-            FunctionInner::Bound {
+            Self::Native { function, .. } => function
+                .call(state.process(), arguments)
+                .map_err(|error| state.trace_error(error, call_site)),
+            Self::Bound {
                 function, receiver, ..
-            } => (function.0)(state.process(), receiver, arguments)
+            } => function
+                // Clone is necessary on receiver because there could be
+                // multiple references to `this.f`
+                .call(state.process(), Value::clone(receiver), arguments)
                 .map_err(|error| state.trace_error(error, call_site)),
         }
     }

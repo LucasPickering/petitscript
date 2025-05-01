@@ -84,7 +84,7 @@ impl Debug for NodeId {
 /// use cases:
 /// - ASTs parsed from source code
 /// - ASTs generated programatically
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Node<T> {
     id: NodeId,
@@ -108,6 +108,13 @@ impl<T> Node<T> {
     /// Get a mutable reference to the contained node value
     pub fn data_mut(&mut self) -> &mut T {
         &mut self.node
+    }
+}
+
+impl<T: Debug> Debug for Node<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The wrapper adds a lot of noise in test output without much value
+        self.node.fmt(f)
     }
 }
 

@@ -318,6 +318,18 @@ impl From<FunctionCall> for Expression {
     }
 }
 
+impl From<&str> for Literal {
+    fn from(value: &str) -> Self {
+        Self::String(value.into())
+    }
+}
+
+impl From<String> for Literal {
+    fn from(value: String) -> Self {
+        Self::String(value)
+    }
+}
+
 impl TemplateLiteral {
     /// Create a new template literal from chunks
     pub fn new(chunks: impl IntoIterator<Item = TemplateChunk>) -> Self {
@@ -337,8 +349,8 @@ impl From<Expression> for TemplateChunk {
     }
 }
 
-impl From<&'static str> for TemplateChunk {
-    fn from(value: &'static str) -> Self {
+impl From<&str> for TemplateChunk {
+    fn from(value: &str) -> Self {
         TemplateChunk::Literal(value.to_owned())
     }
 }

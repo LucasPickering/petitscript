@@ -100,6 +100,11 @@ impl<T> Node<T> {
         self.id
     }
 
+    /// Move the contained node value out
+    pub fn into_data(self) -> T {
+        self.node
+    }
+
     /// Get a reference to the contained node value
     pub fn data(&self) -> &T {
         &self.node

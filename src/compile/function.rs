@@ -94,38 +94,6 @@ impl CaptureFunctions {
         let scope = self.scope_stack.last_mut().expect("Scope stack is empty");
         scope.insert(identifier);
     }
-
-    /// Track a reference to an identifier. We'll decide if it's accesible in
-    /// the current scope or needs to be captured
-    fn refer(&mut self, identifier: Identifier) {
-        // Find the innermost (last) scope that provides this name
-        let Some(providing_scope_index) = self
-            .scope_stack
-            .iter()
-            .rev()
-            .position(|scope| scope.contains(&identifier))
-            // Found index is from the *end* - we need to flip it around
-            .map(|index| self.scope_stack.len() - 1 - index)
-        else {
-            // The name doesn't exist anywhere; let's assume it's in the global
-            // scope and therefore doesn't need to be captured. Otherwise, this
-            // reference will trigger an error at runtime
-            return;
-        };
-
-        // When capturing a name, we can't just capture it in the innermost
-        // function. Every function between its declaration and usage has to
-        // capture it.
-        self.function_stack
-            .iter_mut()
-            .rev()
-            // If the providing scope is lower on the stack than the function's
-            // outermost scope, we have to capture
-            .filter(|frame| providing_scope_index < frame.scope_index)
-            .for_each(|frame| {
-                frame.captures.insert(identifier.clone());
-            });
-    }
 }
 
 impl AstVisitor for CaptureFunctions {
@@ -189,20 +157,36 @@ impl AstVisitor for CaptureFunctions {
         }
     }
 
-    // Check all the ways an identifier can be used to reference its value. We
-    // can't just use visit_identifier, because that's also called for
-    // identifiers in declarations
+    /// Track a reference to an identifier. We'll decide if it's accesible in
+    /// the current scope or needs to be captured
+    fn visit_reference(&mut self, identifier: &mut Identifier) {
+        // Find the innermost (last) scope that provides this name
+        let Some(providing_scope_index) = self
+            .scope_stack
+            .iter()
+            .rev()
+            .position(|scope| scope.contains(identifier))
+            // Found index is from the *end* - we need to flip it around
+            .map(|index| self.scope_stack.len() - 1 - index)
+        else {
+            // The name doesn't exist anywhere; let's assume it's in the global
+            // scope and therefore doesn't need to be captured. Otherwise, this
+            // reference will trigger an error at runtime
+            return;
+        };
 
-    fn enter_expression(&mut self, expression: &mut Expression) {
-        if let Expression::Identifier(identifier) = expression {
-            self.refer(identifier.data().clone());
-        }
-    }
-
-    fn enter_object_property(&mut self, property: &mut ObjectProperty) {
-        if let ObjectProperty::Identifier(identifier) = property {
-            self.refer(identifier.data().clone());
-        }
+        // When capturing a name, we can't just capture it in the innermost
+        // function. Every function between its declaration and usage has to
+        // capture it.
+        self.function_stack
+            .iter_mut()
+            .rev()
+            // If the providing scope is lower on the stack than the function's
+            // outermost scope, we have to capture
+            .filter(|frame| providing_scope_index < frame.scope_index)
+            .for_each(|frame| {
+                frame.captures.insert(identifier.clone());
+            });
     }
 }
 

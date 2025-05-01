@@ -414,8 +414,11 @@ pub enum Expression {
     Parenthesized(Box<Node<Expression>>),
     /// Primitive and complex type literals
     Literal(Node<Literal>),
+    /// String template
     Template(Node<TemplateLiteral>),
+    /// Reference to an identifier
     Identifier(Node<Identifier>),
+    /// Function call
     Call(Node<FunctionCall>),
     /// The static or dynamic property accessors: `.` or `[]`
     Property(Node<PropertyAccess>),

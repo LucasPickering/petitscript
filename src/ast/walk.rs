@@ -75,7 +75,13 @@ impl Walk for Expression {
             Self::Parenthesized(expression) => expression.walk(visitor),
             Self::Literal(literal) => literal.walk(visitor),
             Self::Template(template) => template.walk(visitor),
-            Self::Identifier(identifier) => identifier.walk(visitor),
+            Self::Identifier(identifier) => {
+                // This is a referential usage of the identifier, so call the
+                // extra visitor method. This is the primary way to reference
+                // an identifier
+                visitor.visit_reference(identifier.data_mut());
+                identifier.walk(visitor);
+            }
             Self::Call(call) => call.walk(visitor),
             Self::Property(property) => property.walk(visitor),
             Self::OptionalProperty(property) => property.walk(visitor),
@@ -307,7 +313,11 @@ impl Walk for ObjectProperty {
         visitor.enter_object_property(self);
         match self {
             Self::Property { expression, .. } => expression.walk(visitor),
-            Self::Identifier(_) => {}
+            Self::Identifier(identifier) => {
+                // This a referential usage of the identifier
+                visitor.visit_reference(identifier.data_mut());
+                identifier.walk(visitor);
+            }
             Self::Spread(expression) => expression.walk(visitor),
         }
         visitor.exit_object_property(self);
@@ -483,8 +493,6 @@ pub trait AstVisitor {
     fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
     fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
 
-    fn visit_identifier(&mut self, _: &mut Identifier) {}
-
     fn enter_if(&mut self, _: &mut If) {}
     fn exit_if(&mut self, _: &mut If) {}
 
@@ -541,4 +549,13 @@ pub trait AstVisitor {
 
     fn enter_while_loop(&mut self, _: &mut WhileLoop) {}
     fn exit_while_loop(&mut self, _: &mut WhileLoop) {}
+
+    /// Visit any usage of an identifier, including references and declarations
+    fn visit_identifier(&mut self, _: &mut Identifier) {}
+
+    /// Visit a reference to an identifier. Unlike
+    /// [AstVisitor::visit_identifier], this is *not* called for declarations;
+    /// it only visits identifiers in an expression position as `x + 1` or
+    /// `{ x }`
+    fn visit_reference(&mut self, _: &mut Identifier) {}
 }

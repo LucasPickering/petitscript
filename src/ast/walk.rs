@@ -183,7 +183,6 @@ impl Walk for DoWhileLoop {
 impl Walk for FunctionDefinition {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_function_definition(self);
-        self.name.walk(visitor);
         self.parameters.walk(visitor);
         self.body.walk(visitor);
         visitor.exit_function_definition(self);

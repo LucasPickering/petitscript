@@ -95,10 +95,12 @@ impl FunctionDefinition {
         }
     }
 
-    /// Declare this function with the given name
-    pub fn declare(mut self, name: impl Into<Identifier>) -> Declaration {
+    /// Declare this function with the given name. The name will *not* be
+    /// attached to the function definition, for explicitness/simplicity. There
+    /// are some test cases where the attached name causes havok, so it's easier
+    /// to leave it out and users can attach it manually with [Self::with_name].
+    pub fn declare(self, name: impl Into<Identifier>) -> Declaration {
         let identifier = name.into();
-        self.name = Some(identifier.clone().s());
         Declaration::new(identifier, self.into())
     }
 

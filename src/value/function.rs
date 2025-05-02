@@ -43,7 +43,7 @@ pub enum Function {
         /// There's no such thing as an anonymous native function. This is for
         /// labelling purposes only; it does not affect program behavior beyond
         /// its `toString()` output.
-        name: String,
+        name: Arc<str>,
         /// A pointer to this function's definition in the native function
         /// table
         function: NativeFunction,
@@ -62,7 +62,7 @@ pub enum Function {
         /// There's no such thing as an anonymous native function. This is for
         /// labelling purposes only; it does not affect program behavior beyond
         /// its `toString()` output.
-        name: String,
+        name: Arc<str>,
         /// A pointer to this function's definition in the native function
         /// table
         function: BoundFunction,
@@ -98,7 +98,7 @@ impl Function {
         Out: IntoPetitResult,
     {
         Self::Native {
-            name,
+            name: name.into(),
             function: NativeFunction::new(function),
         }
     }
@@ -113,7 +113,7 @@ impl Function {
         receiver: Value,
     ) -> Self {
         Self::Bound {
-            name,
+            name: name.into(),
             function,
             receiver: Box::new(receiver),
         }

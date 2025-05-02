@@ -303,7 +303,8 @@ mod tests {
                         .s()
                     )])
                 )
-                .declare("log",)
+                .with_name("log")
+                .declare("log")
                 .into_stmt(),
                 Declaration::new("x", 2.into()).into_stmt(),
                 FunctionDefinition::new(
@@ -336,6 +337,7 @@ mod tests {
                         .return_()
                     ]),
                 )
+                .with_name("f")
                 .with_captures(vec!["log", "add", "x"])
                 .declare("f",)
                 .into_stmt()

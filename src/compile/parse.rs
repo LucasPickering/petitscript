@@ -1291,3 +1291,54 @@ impl<T> IntoNode for T {
         Node::new(context.node_id(range), self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::IntoExpression;
+
+    /// Test an escaped newline `\n` in a string literal
+    /// ```notrust
+    /// "test\nnewline"
+    /// // parses to
+    /// `test
+    /// newline`
+    /// ```
+    #[test]
+    fn string_literal_newline() {
+        let source = r#"'test\nnewline'"#;
+        let module = parse_test(source);
+        assert_eq!(
+            module.data(),
+            &Module::new(["test\nnewline".into_expr().into()])
+        )
+    }
+
+    /// Test \ before a literal newline escapes the newline, allowing for
+    /// wrapped strings:
+    ///
+    /// ```notrust
+    /// "test \
+    /// no newline"
+    /// // parses to
+    /// "test no newline"
+    /// ```
+    #[test]
+    fn string_literal_escape_newline() {
+        let source = r#"'test \
+no newline'"#;
+        let module = parse_test(source);
+        assert_eq!(
+            module.data(),
+            &Module::new(["test no newline".into_expr().into()])
+        )
+    }
+
+    fn parse_test(source: &'static str) -> Node<Module> {
+        let mut source_table = SourceTable::default();
+        source_table.insert(source);
+        let (module, _) =
+            parse(&mut source_table).unwrap_or_else(|error| panic!("{error}"));
+        module
+    }
+}

@@ -236,7 +236,7 @@ impl DisplayIndent for ImportNamed {
 impl DisplayIndent for ImportModule {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            ImportModule::Native(name) => ("'", &name.0, "'").fmt(ind),
+            ImportModule::Native(name) => ("'", name.as_str(), "'").fmt(ind),
             ImportModule::Local(path) => ("'", path, "'").fmt(ind),
         }
     }
@@ -274,7 +274,7 @@ impl DisplayIndent for Expression {
 
 impl DisplayIndent for Identifier {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        self.0.fmt(ind)
+        self.as_str().fmt(ind)
     }
 }
 
@@ -289,6 +289,7 @@ impl DisplayIndent for Literal {
             Self::String(s) => {
                 // If any invalid chars are in the string, use a template
                 // literal because they're more forgiving
+                // TODO escape with \ instead. Requires fixes to the parser
                 if s.contains('"') || s.contains('\n') {
                     // TODO escape backticks
                     ("`", s, "`").fmt(ind)
@@ -706,13 +707,13 @@ where
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.as_str())
     }
 }
 
 impl fmt::Display for NativeModuleName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.as_str())
     }
 }
 

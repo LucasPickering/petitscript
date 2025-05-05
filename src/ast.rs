@@ -14,16 +14,16 @@ mod build;
 mod display;
 mod walk;
 
+// Re-export this because it fits conceptually here
+pub use crate::name::Identifier;
 pub use build::{IntoExpression, IntoNode, IntoStatement};
 pub use walk::{AstVisitor, Walk};
 
-use crate::error::ModuleNameError;
+use crate::name::NativeModuleName;
 use std::{
-    borrow::Borrow,
     fmt::{self, Debug},
     hash::Hash,
     ops::{Deref, DerefMut},
-    str::FromStr,
 };
 
 /// An identifier that uniquely identifies an AST node **within the AST**. These
@@ -351,48 +351,6 @@ pub enum ImportModule {
     Local(Node<Module>),
 }
 
-/// TODO move this somewhere
-/// The name of a native module registered with the PS engine. Native module
-/// names must adhere to these rules:
-/// - Allowed characters are `a-z`, `A-Z`, `0-9`, `_` and `-`
-/// - Must start with a letter `a-z` or `A-Z`
-/// - Must be at least one character long
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct NativeModuleName(String);
-
-// Enables map lookups with &str
-impl Borrow<str> for NativeModuleName {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for NativeModuleName {
-    type Error = ModuleNameError;
-
-    fn try_from(name: String) -> Result<Self, Self::Error> {
-        fn is_valid(c: char) -> bool {
-            c.is_ascii_alphanumeric() || ['-', '_'].contains(&c)
-        }
-
-        if !name.is_empty() && name.chars().all(is_valid) {
-            Ok(Self(name))
-        } else {
-            Err(ModuleNameError { name })
-        }
-    }
-}
-
-impl FromStr for NativeModuleName {
-    type Err = ModuleNameError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.to_owned().try_into()
-    }
-}
-
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -430,23 +388,6 @@ pub enum Expression {
     Unary(Node<UnaryOperation>),
     Binary(Node<BinaryOperation>),
     Ternary(Node<TernaryConditional>),
-}
-
-/// TODO
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Identifier(String);
-
-impl Identifier {
-    /// TODO
-    pub fn new(s: impl Into<String>) -> Self {
-        Self(s.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 /// TODO

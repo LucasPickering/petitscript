@@ -1,10 +1,10 @@
 //! Sometimes bad things happen
 
 use crate::{
-    ast::NativeModuleName,
     compile::SUPPORTED_EXTENSIONS,
     source::QualifiedSpan,
     value::{Number, ValueType},
+    NativeModuleName,
 };
 use rslint_parser::ParserError;
 use std::{
@@ -420,7 +420,27 @@ impl From<FromUtf8Error> for ValueError {
     }
 }
 
-/// TODO
+/// Error while parsing a string to
+/// [Identifier](crate::ast::Identifier)
+#[derive(Debug)]
+pub struct IdentifierError {
+    pub identifier: String,
+}
+
+impl Display for IdentifierError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { identifier } = self;
+        write!(
+            f,
+            "Invalid identifier: `{identifier}`; identifiers must not be \
+            empty, TODO update this"
+        )
+    }
+}
+
+impl StdError for IdentifierError {}
+
+/// Error while parsing a string to [NativeModuleName]
 #[derive(Debug)]
 pub struct ModuleNameError {
     pub name: String,

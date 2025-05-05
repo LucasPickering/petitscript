@@ -334,8 +334,12 @@ impl Transform for ext::Specifier {
         self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
-        let identifier = Identifier::new(self.name().required()?.to_string())
-            .into_node(context, self.range());
+        let identifier =
+            Identifier::try_from(self.name().required()?.to_string())
+                // Parsing should never fail because we theoretically use the
+                // same parsing rules as rslint
+                .map_err(|_| todo!())?
+                .into_node(context, self.range());
         // Optional `as x` rename
         let rename = self.alias().transform_node_opt(context)?;
         Ok(ImportNamed { identifier, rename })
@@ -653,7 +657,10 @@ impl Transform for ext::NameRef {
     type Output = Identifier;
 
     fn transform(self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        Ok(Identifier::new(self.ident_token().required()?.to_string()))
+        Identifier::try_from(self.ident_token().required()?.to_string())
+            // Parsing should never fail because we theoretically use the
+            // same parsing rules as rslint
+            .map_err(|_| todo!())
     }
 }
 
@@ -661,7 +668,10 @@ impl Transform for ext::Name {
     type Output = Identifier;
 
     fn transform(self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        Ok(Identifier::new(self.text()))
+        Identifier::try_from(self.text())
+            // Parsing should never fail because we theoretically use the
+            // same parsing rules as rslint
+            .map_err(|_| todo!())
     }
 }
 

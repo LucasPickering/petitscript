@@ -8,13 +8,13 @@ mod state;
 pub use scope::{GlobalEnvironment, Prototype};
 
 use crate::{
-    ast::NativeModuleName,
     compile::Program,
     error::RuntimeError,
     execute::{
         exec::Execute,
         state::{CallSite, ThreadState},
     },
+    name::NativeModuleName,
     value::{function::Function, FromPetitArgs, IntoPetitResult, Value},
     Error,
 };

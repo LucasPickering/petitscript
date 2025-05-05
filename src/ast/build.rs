@@ -345,9 +345,16 @@ impl TemplateLiteral {
     }
 }
 
+impl TemplateChunk {
+    /// Create a template chunk from an expression
+    pub fn expression(expression: Expression) -> Self {
+        Self::Expression(expression.s())
+    }
+}
+
 impl From<Expression> for TemplateChunk {
     fn from(expression: Expression) -> Self {
-        TemplateChunk::Expression(expression.s())
+        Self::expression(expression)
     }
 }
 
@@ -421,14 +428,16 @@ impl PropertyName {
     /// name (`x.y`) if possible. If the name isn't a valid identifier, use
     /// the expression syntax instead (`x["not-identifier"]`).
     pub fn new(name: impl Into<String>) -> Self {
-        // TODO if name isn't a valid identifier, use a dynamic property
         let name = name.into();
-        if name.contains('-') {
-            // This is a hack; make it more generic based on the identifier
-            // parser
-            Self::Expression(Expression::from(name).s().into())
-        } else {
-            Self::Literal(Identifier::new(name.to_string()).s())
+        // If name is a valid identifier, then it can be a literal property
+        // name. Otherwise, it has to be an expression.
+        //
+        // parse() would clone, so we use try_from()
+        match Identifier::try_from(name) {
+            Ok(identifier) => Self::Literal(identifier.s()),
+            Err(error) => {
+                Self::Expression(Expression::from(error.identifier).s().into())
+            }
         }
     }
 }
@@ -478,7 +487,7 @@ impl From<&'static str> for Identifier {
     /// is not a valid identifier. The `'static` restriction aims to mitigate
     /// the risk of this panic by restricting it to string literals.
     fn from(s: &'static str) -> Self {
-        Self::new(s)
+        s.parse().unwrap()
     }
 }
 

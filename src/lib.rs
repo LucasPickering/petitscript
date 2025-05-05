@@ -5,6 +5,7 @@ pub mod ast;
 mod compile;
 pub mod error;
 mod execute;
+mod name;
 #[cfg(feature = "serde")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serde")))] // TODO make this work
 pub mod serde;
@@ -13,9 +14,9 @@ mod stdlib;
 pub mod value;
 
 pub use crate::{
-    ast::NativeModuleName,
     error::Error,
     execute::{Exports, Process},
+    name::NativeModuleName,
     source::Source,
     value::Value,
 };

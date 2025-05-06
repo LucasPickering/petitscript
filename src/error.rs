@@ -228,6 +228,9 @@ pub enum RuntimeError {
     /// Reference to an identifier that isn't bound
     Reference { name: String },
 
+    /// Attempt to import a name that a module doesn't export
+    UnknownImport { identifier: String },
+
     /// Attempt to import from a module that doesn't exist
     UnknownModule { name: NativeModuleName },
 
@@ -281,6 +284,9 @@ impl Display for RuntimeError {
             Self::JsonParse { error } => write!(f, "TODO: {error}"),
             Self::Other(error) => write!(f, "{error}"),
             Self::Reference { name } => write!(f, "`{name}` is not defined"),
+            Self::UnknownImport { identifier } => {
+                write!(f, "Module does not export the name `{identifier}`")
+            }
             Self::UnknownModule { name } => write!(
                 f,
                 "Unknown module `{name}`. Native modules must be registered \
@@ -296,19 +302,20 @@ impl Display for RuntimeError {
 impl StdError for RuntimeError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            RuntimeError::AlreadyExported { .. } => None,
-            RuntimeError::IllegalExport => None,
-            RuntimeError::IllegalReturn => None,
-            RuntimeError::Internal(_) => None,
-            RuntimeError::ImmutableAssign { .. } => None,
-            RuntimeError::JsonParse { .. } => None,
+            Self::AlreadyExported { .. } => None,
+            Self::IllegalExport => None,
+            Self::IllegalReturn => None,
+            Self::Internal(_) => None,
+            Self::ImmutableAssign { .. } => None,
+            Self::JsonParse { .. } => None,
             // This is a transparent wrapper. We're going to print the error
             // in our display, so don't print it again as the source
-            RuntimeError::Other(error) => error.source(),
-            RuntimeError::Reference { .. } => None,
-            RuntimeError::UnknownModule { .. } => None,
-            RuntimeError::Value(error) => Some(error),
-            RuntimeError::WithContext { error, .. } => Some(error),
+            Self::Other(error) => error.source(),
+            Self::Reference { .. } => None,
+            Self::UnknownImport { .. } => None,
+            Self::UnknownModule { .. } => None,
+            Self::Value(error) => Some(error),
+            Self::WithContext { error, .. } => Some(error),
         }
     }
 }

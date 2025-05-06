@@ -45,6 +45,11 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
   in error at $CWD/tests/ps/common.js:3:10
 `x` is not defined";
     "stack_trace")]
+#[test_case(
+    "importUnknown",
+    "Module does not export the name `unknown`";
+    "import_unknown"
+)]
 fn error(file_name: &'static str, expected_error: &'static str) {
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
     let cwd = env::current_dir()

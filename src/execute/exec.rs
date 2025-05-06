@@ -2,16 +2,15 @@
 
 use crate::{
     ast::{
-        Block, DoWhileLoop, ExportDeclaration, ForOfLoop, FunctionBody, If,
-        ImportDeclaration, ImportModule, Declaration, Module, Node,
+        Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
+        FunctionBody, If, ImportDeclaration, ImportModule, Module, Node,
         Statement, WhileLoop,
     },
-    error::TracedError,
+    error::{RuntimeError, TracedError},
     execute::{eval::Evaluate, ThreadState},
     value::Value,
     Exports,
 };
-use std::borrow::Cow;
 
 // TODO normalize whether we use Node<T> or just T on all impls
 
@@ -128,27 +127,28 @@ impl Execute for Node<ImportDeclaration> {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
-        let exports = self.module.exec(state)?;
+        let mut exports = self.module.exec(state)?;
 
-        let scope = state.scope_mut();
         if let Some(name) = &self.default {
-            scope.declare(
+            state.scope_mut().declare(
                 name.as_str(),
-                // TODO only clone as needed
-                exports.default.clone().ok_or_else(|| todo!())?,
+                exports.default.ok_or_else(|| todo!())?,
             );
         }
         for named in &self.named {
             let name = named.rename.as_ref().unwrap_or(&named.identifier);
-            scope.declare(
-                name.as_str(),
-                // TODO only clone as needed
-                exports
-                    .named
-                    .get(named.identifier.as_str())
-                    .expect("TODO")
-                    .clone(),
-            );
+            let value = exports
+                .named
+                .swap_remove(named.identifier.as_str())
+                .ok_or_else(|| {
+                    state.trace_error(
+                        RuntimeError::UnknownImport {
+                            identifier: named.identifier.to_string(),
+                        },
+                        named.id(),
+                    )
+                })?;
+            state.scope_mut().declare(name.as_str(), value);
         }
 
         Ok(())
@@ -156,26 +156,25 @@ impl Execute for Node<ImportDeclaration> {
 }
 
 impl Execute for Node<ImportModule> {
-    type Output<'process> = Cow<'process, Exports>;
+    type Output<'process> = Exports;
 
     /// Resolve a module name/path into its exports. For native modules this
     /// just grabs the exports from the registry. For paths, it will execute
     /// the external program
-    fn exec<'process>(
-        &self,
-        state: &mut ThreadState<'process>,
-    ) -> Result<Cow<'process, Exports>, TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<Exports, TracedError> {
         match &self.data() {
             ImportModule::Native(name) => state
                 .process()
                 .native_module(name)
-                .map(Cow::Borrowed)
+                // The clone is not strictly necessary, but the consuming logic
+                // gets a lot more complicated if we don't
+                .cloned()
                 .map_err(|error| state.trace_error(error, self.id())),
             ImportModule::Local(ast) => {
                 let mut thread_state = state.process().create_thread();
                 ast.exec(&mut thread_state)?;
                 let exports = thread_state.into_exports().unwrap();
-                Ok(Cow::Owned(exports))
+                Ok(exports)
             }
         }
     }

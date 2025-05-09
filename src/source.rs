@@ -16,13 +16,14 @@ use std::{
 /// Examples of a `Source` are a string literal containing code or a path to a
 /// source file.
 pub trait Source: 'static + Debug + Send + Sync {
-    /// Descriptive user-friendly display name for this source
-    fn name(&self) -> Option<String>;
+    /// For file-based sources, the path to the source. Return `None` if the
+    /// source isn't a file
+    fn path(&self) -> Option<&Path>;
 
     /// Root path for local module imports. Import paths will be relative to
     /// this path. For file-less source strings, return `None` and the current
     /// working directory will be used.
-    fn import_root(&self) -> Option<&Path>;
+    fn import_root(&self) -> Result<PathBuf, Error>;
 
     /// Load source code from this source
     fn text(&self) -> Result<Cow<'_, str>, Error>;
@@ -30,13 +31,13 @@ pub trait Source: 'static + Debug + Send + Sync {
 
 /// Load source code from a string literal
 impl Source for &'static str {
-    fn name(&self) -> Option<String> {
+    fn path(&self) -> Option<&Path> {
         None
     }
 
-    fn import_root(&self) -> Option<&Path> {
-        // Use cwd for imports
-        None
+    fn import_root(&self) -> Result<PathBuf, Error> {
+        // We don't have a path here, so use the current dir
+        env::current_dir().map_err(Error::CurrentDir)
     }
 
     fn text(&self) -> Result<Cow<'_, str>, Error> {
@@ -46,13 +47,13 @@ impl Source for &'static str {
 
 /// Load source code directly from a string
 impl Source for String {
-    fn name(&self) -> Option<String> {
+    fn path(&self) -> Option<&Path> {
         None
     }
 
-    fn import_root(&self) -> Option<&Path> {
-        // Use cwd for imports
-        None
+    fn import_root(&self) -> Result<PathBuf, Error> {
+        // We don't have a path here, so use the current dir
+        env::current_dir().map_err(Error::CurrentDir)
     }
 
     fn text(&self) -> Result<Cow<'_, str>, Error> {
@@ -62,27 +63,18 @@ impl Source for String {
 
 /// Load source code from a file
 impl Source for PathBuf {
-    fn name(&self) -> Option<String> {
-        // Absolute-ify the path and normalize it, but do _not_ canonicalize.
-        // Resolving links may lead to surprising behavior for the user. We use
-        // absolute paths because PS doesn't use any singular project root
-        env::current_dir()
-            .ok()?
-            .join(self)
-            .normalize()
-            .into_os_string()
-            .into_string()
-            .ok()
+    fn path(&self) -> Option<&Path> {
+        Some(self)
     }
 
-    fn import_root(&self) -> Option<&Path> {
-        Some(self)
+    fn import_root(&self) -> Result<PathBuf, Error> {
+        self.parent().map(PathBuf::from).ok_or_else(|| todo!())
     }
 
     fn text(&self) -> Result<Cow<'_, str>, Error> {
         Ok(fs::read_to_string(self)
             .map_err(|error| Error::Io {
-                path: Some(self.clone()),
+                path: self.clone(),
                 error,
             })?
             .into())
@@ -121,6 +113,11 @@ impl SourceTable {
         id
     }
 
+    /// Get an iterator over the sources
+    pub fn iter(&self) -> impl Iterator<Item = &dyn Source> {
+        self.0.iter().map(|s| &**s)
+    }
+
     /// Map a span from cheap IDs and byte offsets to user-friendly source names
     /// and lines/columns
     pub fn qualify(&self, span: Span) -> QualifiedSpan {
@@ -156,7 +153,10 @@ impl SourceTable {
         }
 
         QualifiedSpan::Source {
-            source_name: source.name().unwrap_or_else(|| "???".into()),
+            source_name: source
+                .path()
+                .and_then(display_source_path)
+                .unwrap_or_else(|| "???".into()),
             start_line,
             start_column,
             end_line,
@@ -239,4 +239,24 @@ impl SpanTable {
             panic!("AST node {id:?} already has an entry in the span table");
         }
     }
+}
+
+/// Format a source path for display. This gives consistent behavior regardless
+/// of the current directory.
+///
+/// This will absolute-ify the path and normalize it, but will _not_
+/// canonicalize. Resolving links may lead to surprising behavior for the user.
+/// We use absolute paths because PS doesn't use any singular project root.
+///
+/// If an error occurs loading the current directory, the input path will be
+/// displayed as-is. If the path fails to encode to UTF-8, return `None`
+pub fn display_source_path(path: &Path) -> Option<String> {
+    env::current_dir()
+        .map(|cwd| cwd.join(path).normalize())
+        // If we can't get the cwd, just use the relative path
+        .unwrap_or_else(|_| path.to_owned())
+        .into_os_string()
+        .into_string()
+        // If encoding to UTF-8 fails, return None
+        .ok()
 }

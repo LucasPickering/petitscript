@@ -19,6 +19,9 @@ use winnow::error::ContextError;
 /// Any error that can occur within PetitScript
 #[derive(Debug)]
 pub enum Error {
+    /// Error getting the current directory
+    CurrentDir(io::Error),
+
     /// Attempted to register two values of the same type as app data
     DuplicateAppData { type_name: &'static str },
 
@@ -29,10 +32,7 @@ pub enum Error {
     InvalidModuleName(ModuleNameError),
 
     /// Error occurred while loading source code from a file
-    Io {
-        error: io::Error,
-        path: Option<PathBuf>,
-    },
+    Io { error: io::Error, path: PathBuf },
 
     /// Error occurred while parsing source code. This indicates the source is
     /// not valid ECMAScript code
@@ -63,6 +63,9 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CurrentDir(_) => {
+                write!(f, "Error getting current directory")
+            }
             Self::DuplicateAppData { type_name } => write!(
                 f,
                 "Multiple app data values of type `{type_name}` were registered"
@@ -73,11 +76,9 @@ impl Display for Error {
                 "Unsupported extension for imported module at path {path:?}. \
                 Supported extensions are: {SUPPORTED_EXTENSIONS:?}"
             ),
-            Self::Io {
-                error,
-                path: Some(path),
-            } => write!(f, "Error loading {path:?}: {error}"),
-            Self::Io { error, path: None } => write!(f, "I/O error: {error}"),
+            Self::Io { error, path } => {
+                write!(f, "Error loading {path:?}: {error}")
+            }
             Self::Parse(error) => write!(f, "{error}"),
             Self::Transform { error, span } => {
                 write!(f, "Error transforming AST at {span}: {error}")
@@ -95,6 +96,7 @@ impl Display for Error {
 impl StdError for Error {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
+            Self::CurrentDir(error) => Some(error),
             Self::DuplicateAppData { .. } => None,
             Self::Io { error, .. } => Some(error),
             Self::InvalidExtension { .. } => None,

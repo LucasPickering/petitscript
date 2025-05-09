@@ -16,7 +16,7 @@ use crate::{
     },
     name::NativeModuleName,
     value::{function::Function, FromPetitArgs, IntoPetitResult, Value},
-    Error,
+    Error, Source,
 };
 use indexmap::IndexMap;
 use std::{
@@ -59,6 +59,13 @@ impl Process {
             globals,
             app_data: AppData::default(),
         }
+    }
+
+    /// Get an iterator over all sources in the program. The first will be the
+    /// root source passed to the compiler, and subsequent items will be other
+    /// imported modules (excluding native modules).
+    pub fn sources(&self) -> impl Iterator<Item = &dyn Source> {
+        self.program.sources().iter()
     }
 
     /// Get a piece of app data attached to the process, downcasted to a static

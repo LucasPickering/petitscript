@@ -12,18 +12,14 @@ use crate::{
         TemplateLiteral, UnaryOperation, UnaryOperator, Variable, WhileLoop,
     },
     error::{Error, ParseError, TransformError},
-    source::{SourceId, SourceTable, Span, SpanTable},
+    source::{self, SourceId, SourceTable, Span, SpanTable},
     Source,
 };
 use rslint_parser::{
     ast::{self as ext},
     AstNode as _, TextRange,
 };
-use std::{
-    any, env,
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use std::{any, ffi::OsStr, path::PathBuf};
 
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
@@ -57,7 +53,7 @@ fn parse_module(mut context: ParseContext) -> Result<Node<Module>, Error> {
     let ast = rslint_parser::parse_module(&code, 0)
         .ok()
         .map_err(|errors| ParseError {
-            source_name: source.name().map(String::from),
+            source_name: source.path().and_then(source::display_source_path),
             errors,
         })?;
     let module = ast.transform_node(&mut context).map_err(|error| {
@@ -307,14 +303,7 @@ fn resolve_module(
         todo!("error");
     }
 
-    let path =
-        if let Some(dir) = parent_source.import_root().and_then(Path::parent) {
-            dir.join(path)
-        } else {
-            env::current_dir()
-                .map_err(|error| Error::Io { error, path: None })?
-                .join(path)
-        };
+    let path = parent_source.import_root()?.join(path);
 
     // Ensure the path is a file with a supported extension
     if path

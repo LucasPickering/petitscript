@@ -235,8 +235,7 @@ mod tests {
         let expected_statement_1 = Declaration::new(
             "f",
             FunctionDefinition::new(vec![], FunctionBody::empty())
-                .with_name("f")
-                .into(),
+                .with_name("f"),
         )
         .into();
         let expected_statement_2 = Declaration::new(
@@ -246,8 +245,7 @@ mod tests {
                 FunctionDefinition::new([], FunctionBody::empty())
                     .with_name("g")
                     .into_expr(),
-            )])
-            .into(),
+            )]),
         )
         .into();
 
@@ -306,11 +304,11 @@ mod tests {
                 .with_name("log")
                 .declare("log")
                 .into_stmt(),
-                Declaration::new("x", 2.into()).into_stmt(),
+                Declaration::new("x", 2).into_stmt(),
                 FunctionDefinition::new(
                     vec![],
                     FunctionBody::block(vec![
-                        Declaration::new("y", 3.into()).into_stmt(),
+                        Declaration::new("y", 3).into_stmt(),
                         FunctionDefinition::new(
                             vec![FunctionParameter::identifier("z")],
                             FunctionBody::block(vec![Statement::Expression(

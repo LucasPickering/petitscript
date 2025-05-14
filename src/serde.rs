@@ -398,7 +398,7 @@ mod tests {
     #[test_case(
         FunctionStruct {
             f: Function::user(
-                FunctionDefinition::new([], FunctionBody::expression(3.into()))
+                FunctionDefinition::new([], FunctionBody::expression(3))
                     .with_name("f")
                     .into(),
                 Default::default(),
@@ -411,7 +411,7 @@ mod tests {
                 Function::user(
                     FunctionDefinition::new(
                         [],
-                        FunctionBody::expression(3.into()),
+                        FunctionBody::expression(3),
                     )
                     .with_name("f")
                     .into(),

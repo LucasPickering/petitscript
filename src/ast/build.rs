@@ -63,10 +63,13 @@ impl ImportDeclaration {
 
 impl Declaration {
     /// Create a lexical declaration statement: `const x = <expression>`
-    pub fn new(name: impl Into<Identifier>, expression: Expression) -> Self {
+    pub fn new(
+        name: impl Into<Identifier>,
+        expression: impl Into<Expression>,
+    ) -> Self {
         Self {
-            variables: [Variable::identifier(name, Some(expression)).s()]
-                .into(),
+            variables:
+                [Variable::identifier(name, Some(expression.into())).s()].into(),
         }
     }
 
@@ -101,7 +104,7 @@ impl FunctionDefinition {
     /// to leave it out and users can attach it manually with [Self::with_name].
     pub fn declare(self, name: impl Into<Identifier>) -> Declaration {
         let identifier = name.into();
-        Declaration::new(identifier, self.into())
+        Declaration::new(identifier, self)
     }
 
     /// Attach a name to this function definition. This does not affect code
@@ -137,8 +140,8 @@ impl FunctionParameter {
 impl FunctionBody {
     /// Create an expression function body, which evaluates a single expression
     /// and returns its value
-    pub fn expression(expression: Expression) -> Self {
-        Self::Expression(expression.s().into())
+    pub fn expression(expression: impl Into<Expression>) -> Self {
+        Self::Expression(expression.into().s().into())
     }
 
     /// Create a block function body
@@ -169,11 +172,11 @@ impl FunctionBody {
 impl FunctionCall {
     /// Call an expression as a function
     pub fn new(
-        function: Expression,
+        function: impl Into<Expression>,
         arguments: impl IntoIterator<Item = Expression>,
     ) -> Self {
         Self {
-            function: function.s().into(),
+            function: function.into().s().into(),
             arguments: arguments
                 .into_iter()
                 .map(IntoNode::s)
@@ -347,8 +350,8 @@ impl TemplateLiteral {
 
 impl TemplateChunk {
     /// Create a template chunk from an expression
-    pub fn expression(expression: Expression) -> Self {
-        Self::Expression(expression.s())
+    pub fn expression(expression: impl Into<Expression>) -> Self {
+        Self::Expression(expression.into().s())
     }
 }
 

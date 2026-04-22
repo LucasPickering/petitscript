@@ -8,7 +8,7 @@ A minimal and embeddable _subset_ of JavaScript. PetitScript is in very early de
 
 ## What is PetitScript?
 
-PetitScript is a minimal (let me say that again: minimal!) subset of JavaScript targeting simple applications such as dynamic configuration and embedded scripts. PS aims to fill a similar niche as [KDL](https://kdl.dev/), [KCL](https://github.com/kcl-lang/kcl), [Nickel](https://nickel-lang.org/), [HCL](https://github.com/hashicorp/hcl), and others with one distinct advantage: you already know it. No new syntax, no new semantics. It's JavaScript, but without the thorns. Or the flowers. Or the leaves. By the branches are still there, and by golly are they familiar. Some key features of PetitScript are:
+PetitScript is a minimal (let me say that again: minimal!) subset of JavaScript targeting simple applications such as dynamic configuration and embedded scripts. PS aims to fill a similar niche as [KDL](https://kdl.dev/), [KCL](https://github.com/kcl-lang/kcl), [Nickel](https://nickel-lang.org/), [HCL](https://github.com/hashicorp/hcl), and others with one distinct advantage: you already know it. No new syntax, no new semantics. It's JavaScript, but without the thorns. Or the flowers. Or the leaves. But the branches are still there, and by golly are they familiar. Some key features of PetitScript are:
 
 - Strict subset of JavaScript. If it runs in PS, it runs on Node. See the [Compatibility Guarantee](#compatibility-guarantee)
 - Purely immutable semantics

@@ -24,11 +24,12 @@ use std::{any, ffi::OsStr, path::PathBuf};
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 
-/// Parse source code into an Abstract Syntax Tree. Collect all imported sources
-/// along the way as well, inserting them into the source table. This assumes
-/// the given source table has exactly one source in it to begin with, which is
-/// the source of the root module. In addition to the parsed module, this a
-/// debug table of source spans for each AST node.
+/// Parse source code into an Abstract Syntax Tree
+///
+/// Collect all imported sources along the way as well, inserting them into the
+/// source table. This assumes the given source table has exactly one source in
+/// it to begin with, which is the source of the root module. In addition to the
+/// parsed module, this returns a debug table of source spans for each AST node.
 pub fn parse(
     sources: &mut SourceTable,
 ) -> Result<(Node<Module>, SpanTable), Error> {

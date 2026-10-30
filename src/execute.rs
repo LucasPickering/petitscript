@@ -26,7 +26,8 @@ use std::{
     sync::Arc,
 };
 
-/// TODO
+/// TODO rename this - a process implies it's running, which is not true. It
+/// only runs on demand.
 #[derive(Clone, Debug)]
 pub struct Process {
     /// The program we'll be executing
@@ -61,16 +62,20 @@ impl Process {
         }
     }
 
-    /// Get an iterator over all sources in the program. The first will be the
-    /// root source passed to the compiler, and subsequent items will be other
-    /// imported modules (excluding native modules).
+    /// Get an iterator over all sources in the program
+    ///
+    /// The first will be the root source passed to the compiler, and subsequent
+    /// items will be other imported modules. This will exclude native modules,
+    /// as they have no source code.
     pub fn sources(&self) -> impl Iterator<Item = &dyn Source> {
         self.program.sources().iter()
     }
 
-    /// Get a piece of app data attached to the process, downcasted to a static
-    /// type. Return an error if there is no app data of the requested type. See
-    /// [Self::set_app_data] to attach app data to this process.
+    /// Get user-defined app data attached to the process
+    ///
+    /// App data is requested by type, meaning **there can only be one piece of
+    /// app data per type**. Return an error if there is no app data of the
+    /// requested type. See [set_app_data](Self::set_app_data).
     pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
         self.app_data.get()
     }
@@ -101,6 +106,8 @@ impl Process {
     }
 
     /// Call a function that originated from this process
+    ///
+    /// TODO what happens if you pass it a function from another process?
     pub fn call(
         &self,
         function: &Function,
@@ -142,6 +149,11 @@ pub struct Exports {
 }
 
 impl Exports {
+    /// Create a new empty set of exports
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Export a some values as named exports. This allows the exports to be
     /// imported as a native module like so:
     ///
@@ -166,6 +178,8 @@ impl Exports {
     }
 
     /// Create a native function and export it with the given name
+    ///
+    /// TODO example
     pub fn export_fn<F, Args, Out>(
         &mut self,
         name: impl Into<String>,

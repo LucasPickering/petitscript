@@ -37,6 +37,14 @@ PetitScript is a turtle. You feed it once a week and then forget about it. It _w
 
 Seriously, PetitScript is not a general purpose programming language. Don't try to build your startup on it.
 
+### TODO benefits
+
+TODO Document why I wrote this. What specific features do other runtimes lack?
+
+- Simple API
+- Serializable functions
+- Source mapping - get source content/location from an AST node
+
 ## Compatibility Guarantee
 
 _Or your money back!!_

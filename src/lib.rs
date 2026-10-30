@@ -1,3 +1,15 @@
+//! TODO explain the lib
+//!
+//! ```
+//! use petitscript::Engine;
+//!
+//! let engine = Engine::new();
+//! // TODO rename process
+//! let process = engine.compile("export default 4;").unwrap();
+//! let exports = process.execute().unwrap();
+//! assert_eq!(exports.default, Some(4.into()));
+//! ```
+
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
@@ -37,6 +49,8 @@ use std::sync::Arc;
 /// to executed code. Engines are created using the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
 /// and are immutable after creation. This immutability allows an engine to be
 /// shared among many processes cheaply through the joys of reference counting.
+///
+/// See [the crate root](crate) for a usage example.
 #[derive(Debug)]
 pub struct Engine {
     /// Modules registered by the user that can be imported into any script.
@@ -54,13 +68,20 @@ pub struct Engine {
 static_assertions::assert_impl_all!(Engine: Send, Sync);
 
 impl Engine {
+    /// Initialize a new engine with default configuration
+    ///
+    /// This engine will include the standard library.
+    pub fn new() -> Self {
+        Self::builder().with_stdlib().build()
+    }
+
     /// Create a new [EngineBuilder]
     ///
     ///
     /// <div class="warning">
     ///
     /// By default, [EngineBuilder] does not include the PetitScript standard
-    /// library in the built engine. Use [Engine::default] to get an engine with
+    /// library in the built engine. Use [Engine::new] to get an engine with
     /// the standard library if you do not need customization. Otherwise, be
     /// sure to call [EngineBuilder::with_stdlib].
     ///
@@ -105,16 +126,22 @@ impl Engine {
 }
 
 impl Default for Engine {
-    /// Initialize a new engine with default configuration and the standard
-    /// library available
     fn default() -> Self {
-        Self::builder().with_stdlib().build()
+        Self::new()
     }
 }
 
-/// A modular builder for construction [Engine]s. This builder can be used to
-/// customize an engine, such as registering native modules with
-/// [with_module](Self::with_module).
+/// A modular builder for constructing [Engine]s
+///
+/// This builder can be used to customize an engine, such as registering native
+/// modules with [with_module](Self::with_module). Create a builder with
+/// [Engine::builder]:
+///
+/// ```
+/// # use petitscript::Engine;
+///
+/// let engine = Engine::builder().with_stdlib().build();
+/// ```
 #[derive(Debug)]
 pub struct EngineBuilder {
     // See Engine for field descriptions
@@ -135,16 +162,21 @@ impl EngineBuilder {
     /// a module with the given name is already registered, it will be replaced.
     ///
     /// ```
-    /// # use petitscript::EngineBuilder;
-    ///
-    /// fn add(_: &Process, (a, b): (Number, Number)) -> Number {
-    ///     a + b
-    /// }
+    /// # use petitscript::{
+    /// #     Engine,
+    /// #     Exports,
+    /// #     NativeModuleName,
+    /// #     Process,
+    /// #     value::Number
+    /// # };
     ///
     /// let name: NativeModuleName = "math".parse().unwrap();
-    /// let mut exports: Exports = Exports::default();
-    /// exports.native_fn("add", add);
-    /// EngineBuilder::new().with_module(name, exports).build();
+    /// let mut module = Exports::default();
+    /// module.export_fn(
+    ///     "add",
+    ///     |_process, (a, b): (Number, Number)| a + b
+    /// );
+    /// Engine::builder().with_module(name, exports).build();
     /// ```
     ///
     /// And now you can do this:

@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// A source code provider
+/// Source code provider
 ///
 /// Examples of a `Source` are a string literal containing code or a path to a
 /// source file.

@@ -259,7 +259,7 @@ struct CallFrame {
 pub enum CallSite {
     /// The current function was invoked from another PS function
     Node(NodeId),
-    /// The current functionw as invoked from native code
+    /// The current function was invoked from native code
     Native,
 }
 

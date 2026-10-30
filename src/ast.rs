@@ -4,6 +4,10 @@
 //! Because PetitScript is implemented as a tree-walking interpreter, these
 //! types also compose into executable PS programs.
 //!
+//! This AST is as simple as possible. Any unsupported JS/TS elements are
+//! eliminated by the parser, and many other components are simplified from the
+//! formal ECMAScript AST definitions.
+//!
 //! ## Collection Types
 //!
 //! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
@@ -31,6 +35,7 @@ use std::{
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
+// TODO can we reuse oxc's NodeId instead?
 pub(crate) struct NodeId(u32);
 
 impl NodeId {
@@ -46,11 +51,12 @@ impl Debug for NodeId {
     }
 }
 
-/// A wrapper type for an AST node. This wrapper holds a unique ID for each
-/// node, which uniquely identifies that node within the AST. These IDs are used
-/// to track metadata, such as source spans, for each node. The IDs are
-/// currently not exposed; the wrapper is intended to be as transparent as
-/// possible.
+/// A wrapper type for an AST node
+///
+/// This wrapper holds a unique ID for each node, which uniquely identifies that
+/// node within the AST. These IDs are used to track metadata, such as source
+/// spans, for each node. The IDs are currently not exposed; the wrapper is
+/// intended to be as transparent as possible.
 ///
 /// ## Why?
 ///
@@ -60,7 +66,7 @@ impl Debug for NodeId {
 /// - Store the metadata inline in the AST. Replace each ID with the actual
 ///   metadata. This eliminates the indirection of having a separate metadata
 ///   table, but restricts you to a single metadata type.
-/// - Generic ineline metadata. The same solution as above, but add a generic
+/// - Generic inline metadata. The same solution as above, but add a generic
 ///   param to each node type to define what metadata to store. This adds a lot
 ///   of clutter and requires mapping between metadata types for cases like
 ///   comparing parsed ASTs to generated ones in tests.
@@ -116,6 +122,17 @@ impl<T> Node<T> {
     }
 }
 
+/// Some parsed statements can be empty, producing optional nodes
+impl<T> Node<Option<T>> {
+    /// Flip `Node<Option<T>>` into `Option<Node<T>>`
+    pub fn transpose(self) -> Option<Node<T>> {
+        match self.node {
+            Some(node) => Some(Node { id: self.id, node }),
+            None => None,
+        }
+    }
+}
+
 impl<T: Debug> Debug for Node<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // The wrapper adds a lot of noise in test output without much value
@@ -165,6 +182,7 @@ pub enum Statement {
     Declaration(Node<Declaration>),
 
     If(Node<If>),
+    // For loops aren't supposed because they usually require mutability
     ForOfLoop(Node<ForOfLoop>),
     WhileLoop(Node<WhileLoop>),
     DoWhileLoop(Node<DoWhileLoop>),
@@ -332,10 +350,12 @@ pub struct ImportDeclaration {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportNamed {
-    /// `export1` or `export2`
-    pub identifier: Node<Identifier>,
-    /// `ex2`
-    pub rename: Option<Node<Identifier>>,
+    /// External name being imported
+    pub imported: Node<Identifier>,
+    /// Local name bound to the imported value
+    ///
+    /// If the import is not renamed, this will match `imported`.
+    pub local: Node<Identifier>,
 }
 
 /// Source for an imported module, i.e. the string after `from`
@@ -369,6 +389,7 @@ pub enum ExportDeclaration {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Expression {
+    /// Parenthetical grouping
     Parenthesized(Box<Node<Expression>>),
     /// Primitive and complex type literals
     Literal(Node<Literal>),
@@ -382,11 +403,22 @@ pub enum Expression {
     Property(Node<PropertyAccess>),
     /// Optional chaining operator: `?.`
     OptionalProperty(Node<OptionalPropertyAccess>),
-    /// Lambda syntax: `(...) => {...}` or `() => value`. This shares the same
-    /// AST node as the `function` syntax; they get combined during parsing
-    ArrowFunction(Node<FunctionDefinition>),
+    /// Function definition
+    ///
+    /// This is accessible via both function syntaxes:
+    /// - Arrow functions `(...) => {...}` or `() => value`
+    /// - `function`: `function f() {...}`
+    ///
+    /// The two different syntaxes are combined during parsing, for simplicity.
+    /// PS support the `this` keyword, so the two are equivalent at runtime.
+    Function(Node<FunctionDefinition>),
+    /// Operation with one operand
     Unary(Node<UnaryOperation>),
+    /// Operation with two operands
     Binary(Node<BinaryOperation>),
+    /// Operation with three operands
+    ///
+    /// This is just the `?:` operator
     Ternary(Node<TernaryConditional>),
 }
 
@@ -395,13 +427,25 @@ pub enum Expression {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Literal {
+    /// TODO
     Null,
+    /// TODO
+    ///
+    /// TODO explain why this is a literal instead of an identifier like it is
+    /// in ES
     Undefined,
+    /// TODO
     Boolean(bool),
+    /// TODO
     Float(f64),
+    /// TODO
     Int(i64),
+    /// TODO
     String(String),
+    // TODO remove the nodes on these? are they needed?
+    /// TODO
     Array(Node<ArrayLiteral>),
+    /// TODO
     Object(Node<ObjectLiteral>),
 }
 
@@ -446,17 +490,20 @@ pub struct ObjectLiteral {
     pub properties: Box<[Node<ObjectProperty>]>,
 }
 
-/// TODO
+/// One property in an object literal
+///
+/// Objects don't support methods, getters, or setters
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectProperty {
-    /// Normal key value: `{ key: value }` or `{ ["key"]: value }`
+    // TODO eliminate separate variant for the shorthand?
+    /// Normal key:value mapping
+    ///
+    /// `{ key: value }`, `{ key }`, or `{ ["key"]: value }`
     Property {
         property: Node<PropertyName>,
         expression: Node<Expression>,
     },
-    /// Identifier shorthand: `{ name }`
-    Identifier(Node<Identifier>),
     /// Spread: `{ ...other }`
     Spread(Node<Expression>),
 }
@@ -473,7 +520,9 @@ pub struct FunctionCall {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropertyAccess {
-    pub expression: Box<Node<Expression>>,
+    /// TODO
+    pub object: Box<Node<Expression>>,
+    /// TODO
     pub property: Node<PropertyName>,
 }
 
@@ -481,7 +530,9 @@ pub struct PropertyAccess {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OptionalPropertyAccess {
-    pub expression: Box<Node<Expression>>,
+    /// TODO
+    pub object: Box<Node<Expression>>,
+    /// TODO
     pub property: Node<PropertyName>,
 }
 
@@ -590,6 +641,7 @@ pub enum Binding {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectPatternElement {
+    // TODO merge this into Mapped? I don't see a reason to have two variants
     /// `const { x } = object` or `const { x = 3 } = object`
     Identifier {
         identifier: Node<Identifier>,

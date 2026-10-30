@@ -20,7 +20,7 @@ pub struct LabelFunctions;
 impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
     fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
-        if let Expression::ArrowFunction(definition) = expression {
+        if let Expression::Function(definition) = expression {
             // It shouldn't be possible for this function to have a name already
             debug_assert!(
                 definition.name.is_none(),
@@ -39,10 +39,9 @@ impl AstVisitor for LabelFunctions {
             binding,
             init: Some(init),
         } = variable
+            && let Binding::Identifier(identifier) = &**binding
         {
-            if let Binding::Identifier(identifier) = &**binding {
-                Self::set_name(identifier, init);
-            }
+            Self::set_name(identifier, init);
         }
     }
 
@@ -52,10 +51,9 @@ impl AstVisitor for LabelFunctions {
             property,
             expression,
         } = property
+            && let PropertyName::Literal(identifier) = &**property
         {
-            if let PropertyName::Literal(identifier) = &**property {
-                Self::set_name(identifier, expression);
-            }
+            Self::set_name(identifier, expression);
         }
     }
 }
@@ -152,8 +150,7 @@ impl AstVisitor for CaptureFunctions {
             self.declare(default.data().clone());
         }
         for named in &import.named {
-            let name = named.rename.as_ref().unwrap_or(&named.identifier);
-            self.declare(name.data().clone());
+            self.declare(named.local.data().clone());
         }
     }
 
@@ -314,15 +311,17 @@ mod tests {
                             FunctionBody::block(vec![Statement::Expression(
                                 FunctionCall::named(
                                     "log",
-                                    vec![FunctionCall::named(
-                                        "add",
-                                        vec![
-                                            Expression::reference("x"),
-                                            Expression::reference("y"),
-                                            Expression::reference("z"),
-                                        ],
-                                    )
-                                    .into_expr()]
+                                    vec![
+                                        FunctionCall::named(
+                                            "add",
+                                            vec![
+                                                Expression::reference("x"),
+                                                Expression::reference("y"),
+                                                Expression::reference("z"),
+                                            ],
+                                        )
+                                        .into_expr()
+                                    ]
                                 )
                                 .into_expr()
                                 .s()

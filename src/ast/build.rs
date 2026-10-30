@@ -49,9 +49,10 @@ impl ImportDeclaration {
             named: named
                 .into_iter()
                 .map(|name| {
+                    let identifier = name.into().s();
                     ImportNamed {
-                        identifier: name.into().s(),
-                        rename: None,
+                        imported: identifier.clone(),
+                        local: identifier,
                     }
                     .s()
                 })
@@ -216,7 +217,7 @@ impl Expression {
     pub fn property(self, name: &str) -> Self {
         Self::Property(
             PropertyAccess {
-                expression: self.s().into(),
+                object: self.s().into(),
                 property: PropertyName::new(name).s(),
             }
             .s(),
@@ -313,7 +314,7 @@ impl From<ObjectLiteral> for Expression {
 
 impl From<FunctionDefinition> for Expression {
     fn from(definition: FunctionDefinition) -> Self {
-        Self::ArrowFunction(definition.s())
+        Self::Function(definition.s())
     }
 }
 
@@ -450,11 +451,11 @@ impl From<Expression> for PropertyName {
     /// is a string literal containing a valid identifier, create a literal
     /// property name. Otherwise create an expression name.
     fn from(expression: Expression) -> Self {
-        if let Expression::Literal(literal) = &expression {
-            if let Literal::String(name) = literal.data() {
-                // TODO remove implicit clone
-                return Self::new(name);
-            }
+        if let Expression::Literal(literal) = &expression
+            && let Literal::String(name) = literal.data()
+        {
+            // TODO remove implicit clone
+            return Self::new(name);
         }
         Self::Expression(expression.s().into())
     }

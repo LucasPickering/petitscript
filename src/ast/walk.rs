@@ -85,7 +85,7 @@ impl Walk for Expression {
             Self::Call(call) => call.walk(visitor),
             Self::Property(property) => property.walk(visitor),
             Self::OptionalProperty(property) => property.walk(visitor),
-            Self::ArrowFunction(function) => function.walk(visitor),
+            Self::Function(function) => function.walk(visitor),
             Self::Unary(unary) => unary.walk(visitor),
             Self::Binary(binary) => binary.walk(visitor),
             Self::Ternary(ternary) => ternary.walk(visitor),
@@ -223,7 +223,7 @@ impl Walk for PropertyAccess {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_property_access(self);
         self.property.walk(visitor);
-        self.expression.walk(visitor);
+        self.object.walk(visitor);
         visitor.exit_property_access(self);
     }
 }
@@ -232,7 +232,7 @@ impl Walk for OptionalPropertyAccess {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_optional_property(self);
         self.property.walk(visitor);
-        self.expression.walk(visitor);
+        self.object.walk(visitor);
         visitor.exit_optional_property(self);
     }
 }
@@ -311,11 +311,12 @@ impl Walk for ObjectProperty {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_object_property(self);
         match self {
-            Self::Property { expression, .. } => expression.walk(visitor),
-            Self::Identifier(identifier) => {
-                // This a referential usage of the identifier
-                visitor.visit_reference(identifier.data_mut());
-                identifier.walk(visitor);
+            Self::Property {
+                property,
+                expression,
+            } => {
+                property.walk(visitor);
+                expression.walk(visitor);
             }
             Self::Spread(expression) => expression.walk(visitor),
         }
@@ -345,8 +346,8 @@ impl Walk for ImportDeclaration {
 impl Walk for ImportNamed {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import_named(self);
-        self.identifier.walk(visitor);
-        self.rename.walk(visitor);
+        self.imported.walk(visitor);
+        self.local.walk(visitor);
         visitor.exit_import_named(self);
     }
 }

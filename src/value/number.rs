@@ -1,7 +1,6 @@
 use crate::error::ValueError;
 use std::{
     cmp::Ordering,
-    f64,
     fmt::{self, Display},
     ops::{Add, Div, Mul, Neg, Rem, Sub},
 };

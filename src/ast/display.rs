@@ -225,11 +225,12 @@ impl DisplayIndent for ImportDeclaration {
 
 impl DisplayIndent for ImportNamed {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        (
-            &self.identifier,
-            self.rename.as_ref().map(|rename| ("as ", rename)),
-        )
-            .fmt(ind)
+        // If the local ident doesn't match the imported, include a rename
+        if self.local.as_str() == self.imported.as_str() {
+            self.imported.fmt(ind)
+        } else {
+            (&self.imported, " as ", &self.local).fmt(ind)
+        }
     }
 }
 
@@ -264,7 +265,7 @@ impl DisplayIndent for Expression {
             Self::Call(call) => call.fmt(ind),
             Self::Property(property) => property.fmt(ind),
             Self::OptionalProperty(property) => property.fmt(ind),
-            Self::ArrowFunction(function) => function.fmt(ind),
+            Self::Function(function) => function.fmt(ind),
             Self::Unary(operation) => operation.fmt(ind),
             Self::Binary(operation) => operation.fmt(ind),
             Self::Ternary(operation) => operation.fmt(ind),
@@ -349,7 +350,6 @@ impl DisplayIndent for ObjectProperty {
                 property,
                 expression,
             } => (property, ": ", expression).fmt(ind),
-            Self::Identifier(identifier) => identifier.fmt(ind),
             Self::Spread(expression) => ("...", expression).fmt(ind),
         }
     }
@@ -365,10 +365,10 @@ impl DisplayIndent for PropertyAccess {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match &*self.property {
             PropertyName::Literal(literal) => {
-                (&self.expression, ".", literal).fmt(ind)
+                (&self.object, ".", literal).fmt(ind)
             }
             PropertyName::Expression(expression) => {
-                (&self.expression, "[", expression, "]").fmt(ind)
+                (&self.object, "[", expression, "]").fmt(ind)
             }
         }
     }
@@ -376,7 +376,7 @@ impl DisplayIndent for PropertyAccess {
 
 impl DisplayIndent for OptionalPropertyAccess {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        (&self.expression, "?.", &self.property).fmt(ind)
+        (&self.object, "?.", &self.property).fmt(ind)
     }
 }
 

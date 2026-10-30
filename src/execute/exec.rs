@@ -1,15 +1,15 @@
 //! Statement execution
 
 use crate::{
+    Exports,
     ast::{
         Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
         FunctionBody, If, ImportDeclaration, ImportModule, Module, Node,
         Statement, WhileLoop,
     },
     error::{RuntimeError, TracedError},
-    execute::{eval::Evaluate, ThreadState},
+    execute::{ThreadState, eval::Evaluate},
     value::Value,
-    Exports,
 };
 
 // TODO normalize whether we use Node<T> or just T on all impls
@@ -136,19 +136,18 @@ impl Execute for Node<ImportDeclaration> {
             );
         }
         for named in &self.named {
-            let name = named.rename.as_ref().unwrap_or(&named.identifier);
             let value = exports
                 .named
-                .swap_remove(named.identifier.as_str())
+                .swap_remove(named.imported.as_str())
                 .ok_or_else(|| {
                     state.trace_error(
                         RuntimeError::UnknownImport {
-                            identifier: named.identifier.to_string(),
+                            identifier: named.imported.to_string(),
                         },
                         named.id(),
                     )
                 })?;
-            state.scope_mut().declare(name.as_str(), value);
+            state.scope_mut().declare(named.local.as_str(), value);
         }
 
         Ok(())

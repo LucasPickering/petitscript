@@ -1,12 +1,12 @@
 //! Sometimes bad things happen
 
 use crate::{
+    NativeModuleName,
     compile::SUPPORTED_EXTENSIONS,
     source::QualifiedSpan,
     value::{Number, ValueType},
-    NativeModuleName,
 };
-use rslint_parser::ParserError;
+use oxc_diagnostics::Diagnostics;
 use std::{
     error::Error as StdError,
     fmt::{self, Display},
@@ -140,7 +140,7 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 #[derive(Debug)]
 pub struct ParseError {
     pub source_name: Option<String>,
-    pub errors: Vec<ParserError>,
+    pub errors: Diagnostics,
 }
 
 impl Display for ParseError {
@@ -175,7 +175,9 @@ pub enum TransformError {
     /// Source code contains a syntax construct that isn't supported in our
     /// semantics
     Unsupported {
+        /// TODO
         name: &'static str,
+        /// TODO
         help: &'static str,
     },
 }
@@ -185,8 +187,13 @@ impl Display for TransformError {
         match self {
             Self::Import(error) => write!(f, "{error}"),
             // TODO improve error message - this is probably invalid syntax
-            Self::Missing { expected_type } => write!(f, "Expected AST node of type {expected_type}, but it was not present"),
-            Self::Unsupported { name, help } => write!(f,"Unsupported: {name}; {help}"),
+            Self::Missing { expected_type } => write!(
+                f,
+                "Expected AST node of type {expected_type}, but it was not present"
+            ),
+            Self::Unsupported { name, help } => {
+                write!(f, "Unsupported: {name}; {help}")
+            }
         }
     }
 }

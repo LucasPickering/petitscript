@@ -9,8 +9,8 @@ use crate::{
         UnaryOperator,
     },
     error::{TracedError, ValueError},
-    execute::{exec::Execute, state::CallSite, ThreadState},
-    value::{function::Function, Array, Number, Object, Value, ValueType},
+    execute::{ThreadState, exec::Execute, state::CallSite},
+    value::{Array, Number, Object, Value, ValueType, function::Function},
 };
 use std::{borrow::Cow, sync::Arc};
 
@@ -38,7 +38,7 @@ impl Evaluate for Expression {
                 .scope()
                 .get(identifier.as_str())
                 .map_err(|error| state.trace_error(error, identifier.id())),
-            Expression::ArrowFunction(function) => function.eval(state),
+            Expression::Function(function) => function.eval(state),
             Expression::Call(call) => call.eval(state),
             Expression::Property(access) => access.eval(state),
             Expression::OptionalProperty(access) => access.eval(state),
@@ -107,6 +107,7 @@ impl Evaluate for ObjectLiteral {
                 } => {
                     let name = match &property.data() {
                         // {field: "value"}
+                        // Shorthand syntax unpacks to {field: field} in parsing
                         PropertyName::Literal(identifier) => {
                             identifier.as_str().to_owned()
                         }
@@ -118,14 +119,6 @@ impl Evaluate for ObjectLiteral {
                         }
                     };
                     let value = expression.eval(state)?;
-                    object = object.insert(name, value);
-                }
-                ObjectProperty::Identifier(identifier) => {
-                    // Shorthand notation: { field }
-                    let name = identifier.as_str().to_owned();
-                    let value = state.scope().get(&name).map_err(|error| {
-                        state.trace_error(error, identifier.id())
-                    })?;
                     object = object.insert(name, value);
                 }
                 ObjectProperty::Spread(expression) => {
@@ -201,7 +194,7 @@ impl Evaluate for Node<FunctionCall> {
 
 impl Evaluate for Node<PropertyAccess> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        let value = self.expression.eval(state)?;
+        let value = self.object.eval(state)?;
         let key: Value = match &self.property.data() {
             PropertyName::Literal(identifier) => identifier.as_str().into(),
             PropertyName::Expression(expression) => expression.eval(state)?,
@@ -233,7 +226,7 @@ impl Evaluate for Node<PropertyAccess> {
 
 impl Evaluate for OptionalPropertyAccess {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        let target = self.expression.eval(state)?;
+        let target = self.object.eval(state)?;
         match target {
             Value::Undefined | Value::Null => Ok(Value::Undefined),
             Value::Boolean(_)

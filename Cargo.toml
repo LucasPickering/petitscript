@@ -1,7 +1,7 @@
 [package]
 authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
 description = "Minimal embeddable JavaScript subset"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 name = "petitscript"
 repository = "https://github.com/LucasPickering/petitscript"
@@ -9,7 +9,7 @@ version = "0.1.0"
 # Keep in sync w/ rust-toolchain.toml
 homepage = "https://petitscript.org"
 keywords = ["TODO"]
-rust-version = "1.82.0"
+rust-version = "1.99"
 
 # TODO separate CLI crate
 [[bin]]

@@ -469,6 +469,9 @@ pub enum TemplateChunk {
 }
 
 /// TODO
+///
+/// Array literals do *not* support element elision (`[1, , 3]`). All elements
+/// must be defined.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArrayLiteral {

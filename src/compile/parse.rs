@@ -18,7 +18,7 @@ use crate::{
         TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
         Variable, WhileLoop,
     },
-    error::{Error, ParseError, TransformError},
+    error::{Error, ParseError, TransformError, Unsupported},
     source::{self, SourceId, SourceTable, Span, SpanTable},
 };
 use oxc_allocator::Allocator;
@@ -293,19 +293,15 @@ impl Transform for ext::Statement<'_> {
             }
 
             // Unsupported
-            Self::ForStatement(_) => unsupported("TODO", "TODO"),
-            Self::ForInStatement(_) => {
-                unsupported("`for...in`", "Use `for...of` instead")
-            }
-            Self::LabeledStatement(_) => unsupported("TODO", "TODO"),
-            Self::SwitchStatement(_) => unsupported("TODO", "TODO"),
-            Self::ThrowStatement(_) => unsupported("TODO", "TODO"),
-            Self::TryStatement(_) => unsupported("TODO", "TODO"),
-            Self::DebuggerStatement(_) => unsupported("TODO", "TODO"),
-            Self::WithStatement(_) => unsupported("TODO", "TODO"),
-            Self::ClassDeclaration(_) => {
-                unsupported("`class`", "Classes are not supported")
-            }
+            Self::ForStatement(_) => unsupported(Unsupported::Todo),
+            Self::ForInStatement(_) => unsupported(Unsupported::ForIn),
+            Self::LabeledStatement(_) => unsupported(Unsupported::Todo),
+            Self::SwitchStatement(_) => unsupported(Unsupported::Todo),
+            Self::ThrowStatement(_) => unsupported(Unsupported::Todo),
+            Self::TryStatement(_) => unsupported(Unsupported::Todo),
+            Self::DebuggerStatement(_) => unsupported(Unsupported::Todo),
+            Self::WithStatement(_) => unsupported(Unsupported::Todo),
+            Self::ClassDeclaration(_) => unsupported(Unsupported::Class),
 
             // TODO we should just ignore TS instead of returning an error
             Self::TSEnumDeclaration(_)
@@ -416,7 +412,7 @@ impl Transform for ext::ImportSpecifier<'_> {
                 // ES supports arbitrary unicode as the import source, but I
                 // don't want to support that
                 let Some(imported) = self.imported.identifier_name() else {
-                    return unsupported("TODO", "TODO");
+                    return unsupported(Unsupported::Todo);
                 };
                 let imported_span = self.imported.span();
                 let imported =
@@ -544,19 +540,15 @@ impl Transform for ext::VariableDeclaration<'_> {
                 let variables = self.declarations.transform_all(context)?;
                 Ok(Declaration { variables })
             }
-            ext::VariableDeclarationKind::Var => {
-                unsupported("`var`", "Use `const` instead")
+            ext::VariableDeclarationKind::Var
+            | ext::VariableDeclarationKind::Let => {
+                unsupported(Unsupported::Mutation)
             }
-            // TODO add link to docs explaining immutability
-            ext::VariableDeclarationKind::Let => unsupported(
-                "`let`",
-                "Mutable bindings are not supported; use `const` instead",
-            ),
             ext::VariableDeclarationKind::Using => {
-                unsupported("`using`", "TODO")
+                unsupported(Unsupported::Using)
             }
             ext::VariableDeclarationKind::AwaitUsing => {
-                unsupported("`await using`", "TODO")
+                unsupported(Unsupported::Using)
             }
         }
     }
@@ -716,20 +708,16 @@ impl Transform for ext::Function<'_> {
     ) -> Result<Self::Output, TxError> {
         // Check illegal function types
         if self.r#async {
-            return unsupported("`async`", "Async-await is not supported");
+            return unsupported(Unsupported::Async);
         }
         if self.generator {
-            return unsupported("generator", "Generators are not supported");
+            return unsupported(Unsupported::Generator);
         }
 
         // A bare function is an expression rather than a statement. Allowing
         // it here would make this more complicated.
         let Some(identifier) = &self.id else {
-            return unsupported(
-                "anonymous `function`",
-                "Functions declared with `function` must have a name. \
-                Use `=>` for anonymous functions",
-            );
+            return unsupported(Unsupported::AnonymousFunction);
         };
         let identifier = identifier.transform_node(context)?;
 
@@ -873,11 +861,11 @@ impl Transform for ext::Expression<'_> {
             Self::NumericLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
-            Self::BigIntLiteral(_) => unsupported("TODO", "TODO"),
+            Self::BigIntLiteral(_) => unsupported(Unsupported::Todo),
             Self::StringLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
-            Self::RegExpLiteral(_) => unsupported("TODO", "TODO")?,
+            Self::RegExpLiteral(_) => unsupported(Unsupported::Todo)?,
             Self::TemplateLiteral(template) => {
                 template.transform_node(context).map(Expression::Template)
             }
@@ -944,43 +932,28 @@ impl Transform for ext::Expression<'_> {
             Self::FunctionExpression(_) => todo!("wtf is this?"),
 
             // Unsupported
-            Self::AssignmentExpression(_) => {
-                unsupported("TODO", "TODO immutability")
+            Self::AssignmentExpression(_) => unsupported(Unsupported::Mutation),
+            Self::UpdateExpression(_) => unsupported(Unsupported::Mutation),
+            Self::ThisExpression(_) => unsupported(Unsupported::This),
+            Self::NewExpression(_)
+            | Self::Super(_)
+            | Self::ClassExpression(_)
+            | Self::NewTarget(_) => unsupported(Unsupported::Class),
+            Self::PrivateFieldExpression(_) => unsupported(Unsupported::Todo),
+            Self::PrivateInExpression(_) => unsupported(Unsupported::Todo),
+            Self::ImportMeta(_) => unsupported(Unsupported::Todo),
+            Self::ImportExpression(_) => {
+                unsupported(Unsupported::ImportExpression)
             }
-            Self::UpdateExpression(_) => {
-                unsupported("TODO", "TODO immutability")
-            }
-            Self::ThisExpression(_) => {
-                unsupported("`this`", "`this` is not supported")
-            }
-            Self::NewExpression(_) => {
-                unsupported("`new`", "Classes are not supported")
-            }
-            Self::Super(_) => {
-                unsupported("`super`", "Classes are not supported")
-            }
-            Self::ClassExpression(_) => unsupported("TODO", "TODO"),
-            Self::NewTarget(_) => unsupported("TODO", "TODO"),
-            Self::PrivateFieldExpression(_) => unsupported("TODO", "TODO"),
-            Self::PrivateInExpression(_) => unsupported("TODO", "TODO"),
-            Self::ImportMeta(_) => unsupported("TODO", "TODO"),
-            Self::ImportExpression(_) => unsupported(
-                "`import()`",
-                "Use the ES6-style `import` keyword instead",
-            ),
-            Self::AwaitExpression(_) => {
-                unsupported("`await`", "Async-await is not supported")
-            }
-            Self::YieldExpression(_) => {
-                unsupported("`yield`", "Generators are not supported")
-            }
+            Self::AwaitExpression(_) => unsupported(Unsupported::Async),
+            Self::YieldExpression(_) => unsupported(Unsupported::Generator),
             Self::TaggedTemplateExpression(_) => {
-                unsupported("tagged template", "Use untagged templates")
+                unsupported(Unsupported::TaggedTemplate)
             }
             Self::JSXElement(_) | Self::JSXFragment(_) => {
-                unsupported("JSX", "TODO")
+                unsupported(Unsupported::Jsx)
             }
-            Self::V8IntrinsicExpression(_) => unsupported("TODO", "TODO"),
+            Self::V8IntrinsicExpression(_) => unsupported(Unsupported::Todo),
             Self::TSAsExpression(_)
             | Self::TSInstantiationExpression(_)
             | Self::TSNonNullExpression(_)
@@ -1032,10 +1005,7 @@ impl Transform for ext::StringLiteral<'_> {
         match self.value.as_str() {
             Some(s) => Ok(Literal::String(s.into())),
             // JS supports invalid UTF-8 but Rust strings don't
-            None => unsupported(
-                "non-UTF-8 string literal",
-                "String literals must be valid UTF-8",
-            ),
+            None => unsupported(Unsupported::NonUtf),
         }
     }
 }
@@ -1106,10 +1076,9 @@ impl Transform for ext::ArrayExpression<'_> {
                         spread_element.argument.transform_node(context)?;
                     Ok(expression.wrap(context, ArrayElement::Spread))
                 }
-                ext::ArrayExpressionElement::Elision(_) => unsupported(
-                    "array elision",
-                    "Array elements cannot be elided",
-                ),
+                ext::ArrayExpressionElement::Elision(_) => {
+                    unsupported(Unsupported::ArrayElision)
+                }
                 _ => {
                     // TODO dedupe this pattern
                     let expression = element
@@ -1162,12 +1131,12 @@ impl Transform for ext::ObjectProperty<'_> {
     ) -> Result<Self::Output, TxError> {
         match self.kind {
             // Getters, setters, and methods aren't allowed
-            ext::PropertyKind::Get => unsupported("`get`", "TODO"),
-            ext::PropertyKind::Set => unsupported("`set`", "TODO"),
-            ext::PropertyKind::Init if self.method => unsupported(
-                "object method",
-                "use a static field with an arrow function expression value",
-            ),
+            ext::PropertyKind::Get | ext::PropertyKind::Set => {
+                unsupported(Unsupported::ObjectMethod)
+            }
+            ext::PropertyKind::Init if self.method => {
+                unsupported(Unsupported::ObjectMethod)
+            }
             // Normal expression
             ext::PropertyKind::Init => {
                 // Spread elements can't appear here, they're handled above in
@@ -1195,11 +1164,7 @@ impl Transform for ext::PropertyKey<'_> {
                 let identifier = ident.transform_node(context)?;
                 Ok(PropertyName::Literal(identifier))
             }
-            // This is a class-specific feature which we don't support, so
-            // there's no reason to support this either
-            Self::PrivateIdentifier(_) => {
-                unsupported("private identifiers", "use public fields instead")
-            }
+            Self::PrivateIdentifier(_) => unsupported(Unsupported::Class),
             _ => {
                 let expression = self
                     .as_expression()
@@ -1300,7 +1265,7 @@ impl Transform for ext::ChainExpression<'_> {
                 non_null_expression.expression.transform(context)
             }
             ext::ChainElement::PrivateFieldExpression(_) => {
-                unsupported("TODO", "TODO")
+                unsupported(Unsupported::Todo)
             }
         }
     }
@@ -1318,21 +1283,14 @@ impl Transform for ext::UnaryExpression<'_> {
             ext::UnaryOperator::UnaryPlus => UnaryOperator::Plus,
             ext::UnaryOperator::UnaryNegation => UnaryOperator::Minus,
             ext::UnaryOperator::Typeof => UnaryOperator::Typeof,
-            // TODO move these
-            // ext::UnaryOperator::Increment => {
-            //     unsupported("`++`", "Variable mutation is not supported")?
-            // }
-            // ext::UnaryOperator::Decrement => {
-            //     unsupported("`--`", "Variable mutation is not supported")?
-            // }
             ext::UnaryOperator::Delete => {
-                unsupported("`delete`", "Object mutation is not supported")?
+                return unsupported(Unsupported::Mutation);
             }
             ext::UnaryOperator::Void => {
-                unsupported("`void`", "Void operator is not supported")?
+                return unsupported(Unsupported::Void);
             }
             ext::UnaryOperator::BitwiseNot => {
-                unsupported("`~`", "Bitwise operations are not supported")?
+                return unsupported(Unsupported::Bitwise);
             }
         };
         let expression = self.argument.transform_node(context)?;
@@ -1365,17 +1323,23 @@ impl Transform for ext::BinaryExpression<'_> {
             ext::BinaryOperator::Division => BinaryOperator::Div,
             ext::BinaryOperator::Remainder => BinaryOperator::Mod,
 
+            // TODO
             ext::BinaryOperator::Exponential => todo!(),
-            ext::BinaryOperator::ShiftLeft => todo!(),
-            ext::BinaryOperator::ShiftRight => todo!(),
-            ext::BinaryOperator::ShiftRightZeroFill => todo!(),
-            ext::BinaryOperator::Equality => todo!(),
-            ext::BinaryOperator::Inequality => todo!(),
-            ext::BinaryOperator::BitwiseAnd => todo!(),
-            ext::BinaryOperator::BitwiseOR => todo!(),
-            ext::BinaryOperator::BitwiseXOR => todo!(),
             ext::BinaryOperator::In => todo!(),
             ext::BinaryOperator::Instanceof => todo!(),
+
+            // Unsupported
+            ext::BinaryOperator::Equality | ext::BinaryOperator::Inequality => {
+                return unsupported(Unsupported::LooseEquality);
+            }
+            ext::BinaryOperator::BitwiseAnd
+            | ext::BinaryOperator::BitwiseOR
+            | ext::BinaryOperator::BitwiseXOR
+            | ext::BinaryOperator::ShiftLeft
+            | ext::BinaryOperator::ShiftRight
+            | ext::BinaryOperator::ShiftRightZeroFill => {
+                return unsupported(Unsupported::Bitwise);
+            }
         };
         let lhs = self.left.transform_node(context)?;
         let rhs = self.right.transform_node(context)?;
@@ -1434,13 +1398,9 @@ impl Transform for ext::CallExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
-        // TODO support optional calls
         // Like this: a.f?.()
         if self.optional {
-            return unsupported(
-                "`?.()`",
-                "Optional function calls are not supported",
-            );
+            todo!("support optional functional calls")
         }
 
         let arguments = self.arguments.transform_all(context)?;
@@ -1460,11 +1420,7 @@ impl Transform for ext::Argument<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         match self {
-            // TODO should spread be supported?
-            Self::SpreadElement(_) => unsupported(
-                "`...`",
-                "Spread operator not supported in function arguments",
-            ),
+            Self::SpreadElement(_) => todo!("support spread in function args"),
             // All other variants are inherited from Expression
             _ => self
                 .as_expression()
@@ -1519,23 +1475,17 @@ impl<T> OptionExt<T> for Option<&T> {
 /// Helper for generating an [Unsupported](TransformError::Unsupported) error
 ///
 /// The error is pre-wrapped in a `Result` for Added Convenience.
-fn unsupported<T>(
-    name: &'static str,
-    help: &'static str, // TODO make help optional
-) -> Result<T, TxError> {
+fn unsupported<T>(unsupported: Unsupported) -> Result<T, TxError> {
     Err(TxError {
+        // TODO track the node to give an error location
         node_id: None,
-        error: TransformError::Unsupported { name, help },
+        error: TransformError::Unsupported(unsupported),
     })
 }
 
 /// TODO get rid of this; just ignore TS features
 fn unsupported_ts<T>() -> Result<T, TxError> {
-    unsupported(
-        "TypeScript",
-        "Type annotations and other TypeScript constructs \
-            are not supported",
-    )
+    unsupported(Unsupported::TypeScript)
 }
 
 /// Transform an oxc identifier to a PS identifier

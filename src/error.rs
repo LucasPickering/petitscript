@@ -174,12 +174,7 @@ pub enum TransformError {
 
     /// Source code contains a syntax construct that isn't supported in our
     /// semantics
-    Unsupported {
-        /// TODO
-        name: &'static str,
-        /// TODO
-        help: &'static str,
-    },
+    Unsupported(Unsupported),
 }
 
 impl Display for TransformError {
@@ -191,8 +186,8 @@ impl Display for TransformError {
                 f,
                 "Expected AST node of type {expected_type}, but it was not present"
             ),
-            Self::Unsupported { name, help } => {
-                write!(f, "Unsupported: {name}; {help}")
+            Self::Unsupported(unsupported) => {
+                write!(f, "{unsupported}")
             }
         }
     }
@@ -205,6 +200,111 @@ impl StdError for TransformError {
             Self::Missing { .. } => None,
             Self::Unsupported { .. } => None,
         }
+    }
+}
+
+/// Description of an unsupported feature
+///
+/// The vast majority of JS/TS features are not supported in PetitScript. This
+/// enumeratures those various unsupported things so we can provide the best
+/// feedback to the user possible.
+#[derive(Debug)]
+pub enum Unsupported {
+    /// `function()` (without identifier)
+    AnonymousFunction,
+    /// `[,,,]`
+    ArrayElision,
+    /// `async`/`await`
+    Async,
+    /// `~`, `&`, `|`, etc.
+    Bitwise,
+    /// `class` and friends
+    Class,
+    /// `for ... in ...`
+    ForIn,
+    /// `function*`
+    Generator,
+    /// `import()`
+    ImportExpression,
+    /// `<Component></Component>`
+    Jsx,
+    /// `==` and `!=`
+    LooseEquality,
+    /// `let`, `var`, `delete`, and reassignment
+    Mutation,
+    /// Non-UTF-8 string literal
+    NonUtf,
+    /// `{ f() {}, get g() {}, set g() {}  }`
+    ObjectMethod,
+    /// ```
+    /// tag`template`
+    /// ```
+    TaggedTemplate,
+    /// `this`
+    This,
+    /// TODO remove this
+    TypeScript,
+    /// `using`
+    Using,
+    /// `void`
+    Void,
+    // TODO remove this!!
+    Todo,
+}
+
+impl Display for Unsupported {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO single message for each variant, instead of 2
+        let (name, help) = match self {
+            Self::AnonymousFunction => (
+                "anonymous `function`",
+                "Functions declared with `function` must have a name. \
+                Use `=>` for anonymous functions",
+            ),
+            Self::ArrayElision => {
+                ("array elision", "Array elements cannot be elided")
+            }
+            Self::Async => ("`async`", "Async-await is not supported"),
+            Self::Bitwise => {
+                ("bitwise", "Bitwise operations are not supported")
+            }
+            Self::Class => ("`class`", "Classes are not supported"),
+            Self::ForIn => ("`for...in`", "Use `for...of` instead"),
+            Self::Generator => ("generator", "Generators are not supported"),
+            Self::ImportExpression => {
+                ("`import()`", "Use the ES6-style `import` keyword instead")
+            }
+            Self::Jsx => ("JSX", "This isn't React..."),
+            Self::LooseEquality => {
+                ("loose equality", "use `===` or `!==` instead")
+            }
+            // TODO add link to docs explaining immutability
+            Self::Mutation => (
+                "`let`/`var`",
+                "Mutable bindings are not supported; use `const` instead",
+            ),
+            Self::NonUtf => (
+                "non-UTF-8 string literal",
+                "String literals must be valid UTF-8",
+            ),
+            Self::ObjectMethod => (
+                "object method",
+                "use a static field with an arrow function expression value",
+            ),
+            Self::TaggedTemplate => {
+                ("tagged template", "Use untagged templates")
+            }
+            Self::This => ("`this`", "`this` is not supported"),
+            Self::TypeScript => (
+                "TypeScript",
+                "Type annotations and other TypeScript constructs \
+                are not supported",
+            ),
+            Self::Using => ("`using`", "TODO"),
+            Self::Void => ("`void`", "Void operator is not supported"),
+            Self::Todo => ("TODO", "TODO"),
+        };
+        write!(f, "Unsupported: {name}; {help}")
     }
 }
 

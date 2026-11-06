@@ -240,6 +240,8 @@ pub enum Unsupported {
     NonUtf,
     /// `{ f() {}, get g() {}, set g() {}  }`
     ObjectMethod,
+    /// `a.#f`
+    Private,
     /// ```
     /// tag`template`
     /// ```
@@ -296,6 +298,7 @@ impl Display for Unsupported {
                 "object method",
                 "use a static field with an arrow function expression value",
             ),
+            Self::Private => ("TODO", "TODO"),
             Self::TaggedTemplate => {
                 ("tagged template", "Use untagged templates")
             }

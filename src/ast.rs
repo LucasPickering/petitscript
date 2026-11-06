@@ -295,12 +295,13 @@ pub struct If {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ForOfLoop {
-    pub binding: Binding,
+    pub binding: Node<Binding>,
     pub iterable: Node<Expression>,
     pub body: Box<Node<Statement>>,
 }
 
-/// A loop that runs until its condition is falsy.
+/// A loop that runs until its condition is falsy
+///
 /// ```notrust
 /// while (shouldRun()) {
 ///   console.log("running");
@@ -313,7 +314,8 @@ pub struct WhileLoop {
     pub body: Box<Node<Statement>>,
 }
 
-/// A loop that runs once, then continues to run until its condition is falsy.
+/// A loop that runs once, then continues to run until its condition is falsy
+///
 /// ```notrust
 /// do {
 ///   console.log("running");

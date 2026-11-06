@@ -536,21 +536,59 @@ impl Transform for oxc::IfStatement<'_> {
 impl Transform for oxc::DoWhileStatement<'_> {
     type Output = DoWhileLoop;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        todo!()
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        let condition = self.test.transform_node(context)?;
+        let body = self.body.transform_node(context)?;
+        Ok(DoWhileLoop {
+            condition,
+            body: Box::new(body),
+        })
     }
 }
 
 impl Transform for oxc::WhileStatement<'_> {
     type Output = WhileLoop;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        todo!()
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        let condition = self.test.transform_node(context)?;
+        let body = self.body.transform_node(context)?;
+        Ok(WhileLoop {
+            condition,
+            body: Box::new(body),
+        })
     }
 }
 
 impl Transform for oxc::ForOfStatement<'_> {
     type Output = ForOfLoop;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        if self.r#await {
+            unsupported!(context, self, Unsupported::Async);
+        }
+        let binding = self.left.transform_node(context)?;
+        let iterable = self.right.transform_node(context)?;
+        let body = self.body.transform_node(context)?;
+        Ok(ForOfLoop {
+            binding,
+            iterable,
+            body: Box::new(body),
+        })
+    }
+}
+
+/// Left side (binding) of a `for of` loop
+impl Transform for oxc::ForStatementLeft<'_> {
+    type Output = Binding;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
         todo!()
@@ -978,11 +1016,8 @@ impl Transform for oxc::Expression<'_> {
             | Self::NewTarget(_) => {
                 unsupported!(context, self, Unsupported::Class);
             }
-            Self::PrivateFieldExpression(_) => {
-                unsupported!(context, self, Unsupported::Todo);
-            }
-            Self::PrivateInExpression(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+            Self::PrivateFieldExpression(_) | Self::PrivateInExpression(_) => {
+                unsupported!(context, self, Unsupported::Private);
             }
             Self::ImportMeta(_) => {
                 unsupported!(context, self, Unsupported::Todo);
@@ -1225,7 +1260,7 @@ impl Transform for oxc::PropertyKey<'_> {
                 Ok(PropertyName::Literal(identifier))
             }
             Self::PrivateIdentifier(_) => {
-                unsupported!(context, self, Unsupported::Class);
+                unsupported!(context, self, Unsupported::Private);
             }
             _ => {
                 let expression = self
@@ -1327,7 +1362,7 @@ impl Transform for oxc::ChainExpression<'_> {
                 non_null_expression.expression.transform(context)
             }
             oxc::ChainElement::PrivateFieldExpression(expression) => {
-                unsupported!(context, expression.deref(), Unsupported::Todo)
+                unsupported!(context, expression.deref(), Unsupported::Private)
             }
         }
     }

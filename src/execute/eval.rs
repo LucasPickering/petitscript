@@ -29,22 +29,20 @@ impl Evaluate for Expression {
     /// Evaluate an expression
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         match self {
-            Expression::Parenthesized(expression) => expression.eval(state),
-            Expression::Literal(literal) => literal.eval(state),
-            Expression::Template(template_literal) => {
-                template_literal.eval(state)
-            }
-            Expression::Identifier(identifier) => state
+            Self::Parenthesized(expression) => expression.eval(state),
+            Self::Literal(literal) => literal.eval(state),
+            Self::Template(template_literal) => template_literal.eval(state),
+            Self::Identifier(identifier) => state
                 .scope()
                 .get(identifier.as_str())
                 .map_err(|error| state.trace_error(error, identifier.id())),
-            Expression::Function(function) => function.eval(state),
-            Expression::Call(call) => call.eval(state),
-            Expression::Property(access) => access.eval(state),
-            Expression::OptionalProperty(access) => access.eval(state),
-            Expression::Unary(unary) => unary.eval(state),
-            Expression::Binary(binary) => binary.eval(state),
-            Expression::Ternary(conditional) => {
+            Self::Function(function) => function.eval(state),
+            Self::Call(call) => call.eval(state),
+            Self::Property(access) => access.eval(state),
+            Self::OptionalProperty(access) => access.eval(state),
+            Self::Unary(unary) => unary.eval(state),
+            Self::Binary(binary) => binary.eval(state),
+            Self::Ternary(conditional) => {
                 if conditional.condition.eval(state)?.to_bool() {
                     conditional.true_expression.eval(state)
                 } else {
@@ -77,7 +75,7 @@ impl Evaluate for ArrayLiteral {
             match &element.data() {
                 // These are optimized to avoid allocations where
                 // possible
-                ArrayElement::Expression(expression) => {
+                ArrayElement::Self(expression) => {
                     let value = expression.eval(state)?;
                     array = array.push(value);
                 }

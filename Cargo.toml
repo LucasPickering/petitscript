@@ -26,7 +26,6 @@ oxc_ast = "0.156.0"
 oxc_diagnostics = "0.156.0"
 oxc_parser = "0.156.0"
 oxc_span = "0.156.0"
-oxc_syntax = "0.156.0"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
 serde_json = {version = "1.0.140", optional = true}
 winnow = "0.7.4"

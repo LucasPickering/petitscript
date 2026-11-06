@@ -22,10 +22,10 @@ use crate::{
     source::{self, SourceId, SourceTable, Span, SpanTable},
 };
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{self as ext};
+use oxc_ast::ast::{self as oxc};
 use oxc_parser::{Parser, ParserReturn};
 use oxc_span::{GetSpan, SourceType};
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, ops::Deref, path::PathBuf};
 
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
@@ -93,18 +93,9 @@ fn parse_module(mut context: ParseContext) -> Result<Node<Module>, Error> {
 
     // Transform to a PS AST
     let module = program.transform_node(&mut context).map_err(|error| {
-        // We have the ID of the AST node that we were trying to build when the
-        // error occurred. Grab the span for that node, then map the span to
-        // actual source code for the user
-        let span = error
-            .node_id
-            .and_then(|node_id| context.spans.get(node_id))
-            // Shouldn't be possible because we insert spans while generating
-            // the node ID
-            .expect("Node missing span");
         Error::Transform {
             error: error.error,
-            span: context.sources.qualify(span),
+            span: context.sources.qualify(error.span),
         }
     })?;
     Ok(module)
@@ -141,13 +132,17 @@ impl<'a> ParseContext<'a> {
     /// This ID will be unique within the entire AST, including sub-modules.
     /// This will also insert the node's source span into the span table.
     fn node_id(&mut self, span: oxc_span::Span) -> NodeId {
-        let span = Span {
+        self.node_id_inner(self.transform_span(span))
+    }
+
+    /// Map an [oxc_span::Span] to a PetitScript [Span]
+    fn transform_span(&self, span: oxc_span::Span) -> Span {
+        Span {
             source_id: self.current_source_id,
             // Assuming this will never run on a <32-bit platform
             start_offset: span.start as usize,
             end_offset: span.end as usize,
-        };
-        self.node_id_inner(span)
+        }
     }
 
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
@@ -159,15 +154,31 @@ impl<'a> ParseContext<'a> {
     }
 }
 
-/// An error that occurs during transformation. The name is pretty arbitrary
+/// An error that occurs during transformation
+///
+/// The name is pretty arbitrary, I wanted something short since it's used a lot
+/// and only internally.
 struct TxError {
-    /// The nearest parent node to where the error occured
-    ///
-    /// This is optional because it's set to `None` at first, and populated by
-    /// the innermost [Transform::transform_node] call that sees the error.
-    /// It must be populated by the time it bubbles to the top.
-    node_id: Option<NodeId>,
+    /// Source location of the node that failed to transform
+    span: Span,
     error: TransformError,
+}
+
+impl TxError {
+    /// Attach a node ID and span to an error
+    fn new<T>(
+        context: &ParseContext,
+        node: &T,
+        error: impl Into<TransformError>,
+    ) -> Self
+    where
+        T: GetSpan,
+    {
+        Self {
+            span: context.transform_span(node.span()),
+            error: error.into(),
+        }
+    }
 }
 
 /// Transform an [oxc_ast] node to a local [ast](crate::ast) node
@@ -179,39 +190,23 @@ trait Transform {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError>;
 
-    /// Transform the content of an AST node and wrap it in a [Node]. This will
-    /// generate the needed node ID and attach it to either the generated node
-    /// or the error that may occur.
+    /// Transform the content of an AST node and wrap it in a [Node]
+    ///
+    /// This will generate the needed node ID and attach it to the generated
+    /// node.
     fn transform_node(
         &self,
         context: &mut ParseContext,
     ) -> Result<Node<Self::Output>, TxError>
     where
-        Self: Sized + GetSpan,
+        Self: GetSpan,
     {
-        // Pre-generate the ID, because we'll need it rain or shine
-        let node_id = context.node_id(self.span());
-        match self.transform(context) {
-            Ok(node) => Ok(Node::new(node_id, node)),
-            // If the error is missing context, that means it occurred within
-            // this node. Attach our ID to it!
-            Err(TxError {
-                node_id: None,
-                error,
-            }) => Err(TxError {
-                node_id: Some(node_id),
-                error,
-            }),
-            Err(
-                error @ TxError {
-                    node_id: Some(_), ..
-                },
-            ) => Err(error),
-        }
+        self.transform(context)
+            .map(|node| Node::new(context.node_id(self.span()), node))
     }
 }
 
-impl Transform for ext::Program<'_> {
+impl Transform for oxc::Program<'_> {
     type Output = Module;
 
     fn transform(
@@ -223,7 +218,7 @@ impl Transform for ext::Program<'_> {
     }
 }
 
-impl Transform for ext::Statement<'_> {
+impl Transform for oxc::Statement<'_> {
     // TODO return option and eliminate Statement::Empty
     type Output = Statement;
 
@@ -293,15 +288,33 @@ impl Transform for ext::Statement<'_> {
             }
 
             // Unsupported
-            Self::ForStatement(_) => unsupported(Unsupported::Todo),
-            Self::ForInStatement(_) => unsupported(Unsupported::ForIn),
-            Self::LabeledStatement(_) => unsupported(Unsupported::Todo),
-            Self::SwitchStatement(_) => unsupported(Unsupported::Todo),
-            Self::ThrowStatement(_) => unsupported(Unsupported::Todo),
-            Self::TryStatement(_) => unsupported(Unsupported::Todo),
-            Self::DebuggerStatement(_) => unsupported(Unsupported::Todo),
-            Self::WithStatement(_) => unsupported(Unsupported::Todo),
-            Self::ClassDeclaration(_) => unsupported(Unsupported::Class),
+            Self::ForStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::ForInStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::ForIn))
+            }
+            Self::LabeledStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::SwitchStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::ThrowStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::TryStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::DebuggerStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::WithStatement(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::ClassDeclaration(_) => {
+                Err(TxError::new(context, self, Unsupported::Class))
+            }
 
             // TODO we should just ignore TS instead of returning an error
             Self::TSEnumDeclaration(_)
@@ -312,13 +325,15 @@ impl Transform for ext::Statement<'_> {
             | Self::TSInterfaceDeclaration(_)
             | Self::TSNamespaceDeclaration(_)
             | Self::TSNamespaceExportDeclaration(_)
-            | Self::TSTypeAliasDeclaration(_) => unsupported_ts(),
+            | Self::TSTypeAliasDeclaration(_) => {
+                Err(TxError::new(context, self, Unsupported::TypeScript))
+            }
         }
     }
 }
 
 /// TODO
-impl Transform for ext::ImportDeclaration<'_> {
+impl Transform for oxc::ImportDeclaration<'_> {
     type Output = ImportDeclaration;
 
     fn transform(
@@ -338,19 +353,19 @@ impl Transform for ext::ImportDeclaration<'_> {
             match specifier {
                 // import * as local from 'source'
                 //        ^^^^^^^^^^
-                ext::ImportDeclarationSpecifier::ImportNamespaceSpecifier(
+                oxc::ImportDeclarationSpecifier::ImportNamespaceSpecifier(
                     _,
                 ) => {
                     todo!("unsupported")
                 }
                 // import { a } from 'source'
                 //          ^
-                ext::ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                oxc::ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
                     named.push(specifier.transform_node(context)?);
                 }
                 // import local from 'source'
                 //        ^^^^^
-                ext::ImportDeclarationSpecifier::ImportDefaultSpecifier(
+                oxc::ImportDeclarationSpecifier::ImportDefaultSpecifier(
                     specifier,
                 ) => {
                     let identifier = specifier.local.transform_node(context)?;
@@ -379,9 +394,12 @@ impl Transform for ext::ImportDeclaration<'_> {
                                 spans: context.spans,
                             })
                         })
-                        .map_err(|error| TxError {
-                            node_id: None,
-                            error: TransformError::Import(error.into()),
+                        .map_err(|error| {
+                            TxError::new(
+                                context,
+                                self,
+                                TransformError::Import(error.into()),
+                            )
                         })?;
                 ImportModule::Local(module)
             }
@@ -400,7 +418,7 @@ impl Transform for ext::ImportDeclaration<'_> {
 }
 
 /// TODO
-impl Transform for ext::ImportSpecifier<'_> {
+impl Transform for oxc::ImportSpecifier<'_> {
     type Output = ImportNamed;
 
     fn transform(
@@ -408,11 +426,11 @@ impl Transform for ext::ImportSpecifier<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         match self.import_kind {
-            ext::ImportOrExportKind::Value => {
+            oxc::ImportOrExportKind::Value => {
                 // ES supports arbitrary unicode as the import source, but I
                 // don't want to support that
                 let Some(imported) = self.imported.identifier_name() else {
-                    return unsupported(Unsupported::Todo);
+                    return Err(TxError::new(context, self, Unsupported::Todo));
                 };
                 let imported_span = self.imported.span();
                 let imported =
@@ -421,7 +439,9 @@ impl Transform for ext::ImportSpecifier<'_> {
 
                 Ok(ImportNamed { imported, local })
             }
-            ext::ImportOrExportKind::Type => unsupported_ts(),
+            oxc::ImportOrExportKind::Type => {
+                Err(TxError::new(context, self, Unsupported::TypeScript))
+            }
         }
     }
 }
@@ -456,7 +476,7 @@ fn resolve_module(
     Ok(path)
 }
 
-impl Transform for ext::ExportDeclaration<'_> {
+impl Transform for oxc::ExportDeclaration<'_> {
     type Output = ExportDeclaration;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -464,7 +484,7 @@ impl Transform for ext::ExportDeclaration<'_> {
     }
 }
 
-impl Transform for ext::ExportDefaultDeclaration<'_> {
+impl Transform for oxc::ExportDefaultDeclaration<'_> {
     type Output = ExportDeclaration;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -472,7 +492,7 @@ impl Transform for ext::ExportDefaultDeclaration<'_> {
     }
 }
 
-impl Transform for ext::BlockStatement<'_> {
+impl Transform for oxc::BlockStatement<'_> {
     type Output = Block;
 
     fn transform(
@@ -484,7 +504,7 @@ impl Transform for ext::BlockStatement<'_> {
     }
 }
 
-impl Transform for ext::IfStatement<'_> {
+impl Transform for oxc::IfStatement<'_> {
     type Output = If;
 
     fn transform(
@@ -504,7 +524,7 @@ impl Transform for ext::IfStatement<'_> {
     }
 }
 
-impl Transform for ext::DoWhileStatement<'_> {
+impl Transform for oxc::DoWhileStatement<'_> {
     type Output = DoWhileLoop;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -512,7 +532,7 @@ impl Transform for ext::DoWhileStatement<'_> {
     }
 }
 
-impl Transform for ext::WhileStatement<'_> {
+impl Transform for oxc::WhileStatement<'_> {
     type Output = WhileLoop;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -520,7 +540,7 @@ impl Transform for ext::WhileStatement<'_> {
     }
 }
 
-impl Transform for ext::ForOfStatement<'_> {
+impl Transform for oxc::ForOfStatement<'_> {
     type Output = ForOfLoop;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -528,7 +548,7 @@ impl Transform for ext::ForOfStatement<'_> {
     }
 }
 
-impl Transform for ext::VariableDeclaration<'_> {
+impl Transform for oxc::VariableDeclaration<'_> {
     type Output = Declaration;
 
     fn transform(
@@ -536,25 +556,23 @@ impl Transform for ext::VariableDeclaration<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         match self.kind {
-            ext::VariableDeclarationKind::Const => {
+            oxc::VariableDeclarationKind::Const => {
                 let variables = self.declarations.transform_all(context)?;
                 Ok(Declaration { variables })
             }
-            ext::VariableDeclarationKind::Var
-            | ext::VariableDeclarationKind::Let => {
-                unsupported(Unsupported::Mutation)
+            oxc::VariableDeclarationKind::Var
+            | oxc::VariableDeclarationKind::Let => {
+                Err(TxError::new(context, self, Unsupported::Mutation))
             }
-            ext::VariableDeclarationKind::Using => {
-                unsupported(Unsupported::Using)
-            }
-            ext::VariableDeclarationKind::AwaitUsing => {
-                unsupported(Unsupported::Using)
+            oxc::VariableDeclarationKind::Using
+            | oxc::VariableDeclarationKind::AwaitUsing => {
+                Err(TxError::new(context, self, Unsupported::Using))
             }
         }
     }
 }
 
-impl Transform for ext::VariableDeclarator<'_> {
+impl Transform for oxc::VariableDeclarator<'_> {
     type Output = Variable;
 
     fn transform(
@@ -579,8 +597,8 @@ impl Transform for ext::VariableDeclarator<'_> {
 /// This is used where variables are declared, like `const` or function params.
 /// It's also recursive because of array/object unpack patterns.
 ///
-/// The docs for [ext::BindingPattern] are really helpful.
-impl Transform for ext::BindingPattern<'_> {
+/// The docs for [oxc::BindingPattern] are really helpful.
+impl Transform for oxc::BindingPattern<'_> {
     /// TODO explain temp type
     type Output = BindingPattern;
 
@@ -632,7 +650,7 @@ impl Transform for ext::BindingPattern<'_> {
 }
 
 /// TODO explain difference from IdentifierName/IdentifierReference
-impl Transform for ext::BindingIdentifier<'_> {
+impl Transform for oxc::BindingIdentifier<'_> {
     type Output = Identifier;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -642,7 +660,7 @@ impl Transform for ext::BindingIdentifier<'_> {
 
 /// PS doesn't differentiate between identifier declarations and references, so
 /// this just maps to [Identifier]
-impl Transform for ext::IdentifierName<'_> {
+impl Transform for oxc::IdentifierName<'_> {
     type Output = Identifier;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -652,7 +670,7 @@ impl Transform for ext::IdentifierName<'_> {
 
 /// PS doesn't differentiate between identifier declarations and references, so
 /// this just maps to [Identifier]
-impl Transform for ext::IdentifierReference<'_> {
+impl Transform for oxc::IdentifierReference<'_> {
     type Output = Identifier;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -672,7 +690,7 @@ impl Transform for ext::IdentifierReference<'_> {
 ///
 /// This does *not* include `...rest` bindings; those are handled one layer
 /// above, in the object pattern.
-impl Transform for ext::BindingProperty<'_> {
+impl Transform for oxc::BindingProperty<'_> {
     type Output = ObjectPatternElement;
 
     fn transform(
@@ -699,7 +717,7 @@ impl Transform for ext::BindingProperty<'_> {
 /// declare function foo(a: number): number;
 /// function bar(a: number): number;
 /// ```
-impl Transform for ext::Function<'_> {
+impl Transform for oxc::Function<'_> {
     type Output = Option<Declaration>;
 
     fn transform(
@@ -708,16 +726,20 @@ impl Transform for ext::Function<'_> {
     ) -> Result<Self::Output, TxError> {
         // Check illegal function types
         if self.r#async {
-            return unsupported(Unsupported::Async);
+            return Err(TxError::new(context, self, Unsupported::Async));
         }
         if self.generator {
-            return unsupported(Unsupported::Generator);
+            return Err(TxError::new(context, self, Unsupported::Generator));
         }
 
         // A bare function is an expression rather than a statement. Allowing
         // it here would make this more complicated.
         let Some(identifier) = &self.id else {
-            return unsupported(Unsupported::AnonymousFunction);
+            return Err(TxError::new(
+                context,
+                self,
+                Unsupported::AnonymousFunction,
+            ));
         };
         let identifier = identifier.transform_node(context)?;
 
@@ -752,7 +774,7 @@ impl Transform for ext::Function<'_> {
 /// Arrow function body: `(...) => {...}` or `(...) => <expr>`
 ///
 /// This does *not* include the declaration; just the expression.
-impl Transform for ext::ArrowFunctionExpression<'_> {
+impl Transform for oxc::ArrowFunctionExpression<'_> {
     type Output = FunctionDefinition;
 
     fn transform(
@@ -762,7 +784,7 @@ impl Transform for ext::ArrowFunctionExpression<'_> {
         let parameters = self.params.transform(context)?;
         let body = match &self.body {
             // block w/ braces
-            ext::ArrowFunctionBody::FunctionBody(body) => {
+            oxc::ArrowFunctionBody::FunctionBody(body) => {
                 body.transform(context)?
             }
             // bare expression
@@ -787,7 +809,7 @@ impl Transform for ext::ArrowFunctionExpression<'_> {
 /// Body block of a `function` or a `=>` function
 ///
 /// This always produces a [FunctionBody::Block]
-impl Transform for ext::FunctionBody<'_> {
+impl Transform for oxc::FunctionBody<'_> {
     type Output = FunctionBody;
 
     fn transform(
@@ -802,7 +824,7 @@ impl Transform for ext::FunctionBody<'_> {
     }
 }
 
-impl Transform for ext::FormalParameters<'_> {
+impl Transform for oxc::FormalParameters<'_> {
     type Output = Box<[Node<FunctionParameter>]>;
 
     fn transform(
@@ -817,7 +839,7 @@ impl Transform for ext::FormalParameters<'_> {
     }
 }
 
-impl Transform for ext::FormalParameter<'_> {
+impl Transform for oxc::FormalParameter<'_> {
     type Output = FunctionParameter;
 
     fn transform(
@@ -844,7 +866,7 @@ impl Transform for ext::FormalParameter<'_> {
     }
 }
 
-impl Transform for ext::Expression<'_> {
+impl Transform for oxc::Expression<'_> {
     type Output = Expression;
 
     fn transform(
@@ -861,11 +883,15 @@ impl Transform for ext::Expression<'_> {
             Self::NumericLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
-            Self::BigIntLiteral(_) => unsupported(Unsupported::Todo),
+            Self::BigIntLiteral(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
             Self::StringLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
-            Self::RegExpLiteral(_) => unsupported(Unsupported::Todo)?,
+            Self::RegExpLiteral(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))?
+            }
             Self::TemplateLiteral(template) => {
                 template.transform_node(context).map(Expression::Template)
             }
@@ -932,38 +958,60 @@ impl Transform for ext::Expression<'_> {
             Self::FunctionExpression(_) => todo!("wtf is this?"),
 
             // Unsupported
-            Self::AssignmentExpression(_) => unsupported(Unsupported::Mutation),
-            Self::UpdateExpression(_) => unsupported(Unsupported::Mutation),
-            Self::ThisExpression(_) => unsupported(Unsupported::This),
+            Self::AssignmentExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Mutation))
+            }
+            Self::UpdateExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Mutation))
+            }
+            Self::ThisExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::This))
+            }
             Self::NewExpression(_)
             | Self::Super(_)
             | Self::ClassExpression(_)
-            | Self::NewTarget(_) => unsupported(Unsupported::Class),
-            Self::PrivateFieldExpression(_) => unsupported(Unsupported::Todo),
-            Self::PrivateInExpression(_) => unsupported(Unsupported::Todo),
-            Self::ImportMeta(_) => unsupported(Unsupported::Todo),
-            Self::ImportExpression(_) => {
-                unsupported(Unsupported::ImportExpression)
+            | Self::NewTarget(_) => {
+                Err(TxError::new(context, self, Unsupported::Class))
             }
-            Self::AwaitExpression(_) => unsupported(Unsupported::Async),
-            Self::YieldExpression(_) => unsupported(Unsupported::Generator),
+            Self::PrivateFieldExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::PrivateInExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::ImportMeta(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
+            Self::ImportExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::ImportExpression))
+            }
+            Self::AwaitExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Async))
+            }
+            Self::YieldExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Generator))
+            }
             Self::TaggedTemplateExpression(_) => {
-                unsupported(Unsupported::TaggedTemplate)
+                Err(TxError::new(context, self, Unsupported::TaggedTemplate))
             }
             Self::JSXElement(_) | Self::JSXFragment(_) => {
-                unsupported(Unsupported::Jsx)
+                Err(TxError::new(context, self, Unsupported::Jsx))
             }
-            Self::V8IntrinsicExpression(_) => unsupported(Unsupported::Todo),
+            Self::V8IntrinsicExpression(_) => {
+                Err(TxError::new(context, self, Unsupported::Todo))
+            }
             Self::TSAsExpression(_)
             | Self::TSInstantiationExpression(_)
             | Self::TSNonNullExpression(_)
             | Self::TSSatisfiesExpression(_)
-            | Self::TSTypeAssertion(_) => unsupported_ts(),
+            | Self::TSTypeAssertion(_) => {
+                Err(TxError::new(context, self, Unsupported::TypeScript))
+            }
         }
     }
 }
 
-impl Transform for ext::BooleanLiteral {
+impl Transform for oxc::BooleanLiteral {
     type Output = Literal;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -971,7 +1019,7 @@ impl Transform for ext::BooleanLiteral {
     }
 }
 
-impl Transform for ext::NullLiteral {
+impl Transform for oxc::NullLiteral {
     type Output = Literal;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -979,7 +1027,7 @@ impl Transform for ext::NullLiteral {
     }
 }
 
-impl Transform for ext::NumericLiteral<'_> {
+impl Transform for oxc::NumericLiteral<'_> {
     type Output = Literal;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
@@ -998,19 +1046,22 @@ impl Transform for ext::NumericLiteral<'_> {
     }
 }
 
-impl Transform for ext::StringLiteral<'_> {
+impl Transform for oxc::StringLiteral<'_> {
     type Output = Literal;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
         match self.value.as_str() {
             Some(s) => Ok(Literal::String(s.into())),
             // JS supports invalid UTF-8 but Rust strings don't
-            None => unsupported(Unsupported::NonUtf),
+            None => Err(TxError::new(context, self, Unsupported::NonUtf)),
         }
     }
 }
 
-impl Transform for ext::TemplateLiteral<'_> {
+impl Transform for oxc::TemplateLiteral<'_> {
     type Output = TemplateLiteral;
 
     fn transform(
@@ -1060,7 +1111,7 @@ impl Transform for ext::TemplateLiteral<'_> {
     }
 }
 
-impl Transform for ext::ArrayExpression<'_> {
+impl Transform for oxc::ArrayExpression<'_> {
     type Output = ArrayLiteral;
 
     fn transform(
@@ -1071,13 +1122,17 @@ impl Transform for ext::ArrayExpression<'_> {
             .elements
             .iter()
             .map(|element| match element {
-                ext::ArrayExpressionElement::SpreadElement(spread_element) => {
+                oxc::ArrayExpressionElement::SpreadElement(spread_element) => {
                     let expression =
                         spread_element.argument.transform_node(context)?;
                     Ok(expression.wrap(context, ArrayElement::Spread))
                 }
-                ext::ArrayExpressionElement::Elision(_) => {
-                    unsupported(Unsupported::ArrayElision)
+                oxc::ArrayExpressionElement::Elision(elision) => {
+                    Err(TxError::new(
+                        context,
+                        elision.deref(),
+                        Unsupported::ArrayElision,
+                    ))
                 }
                 _ => {
                     // TODO dedupe this pattern
@@ -1093,7 +1148,7 @@ impl Transform for ext::ArrayExpression<'_> {
     }
 }
 
-impl Transform for ext::ObjectExpression<'_> {
+impl Transform for oxc::ObjectExpression<'_> {
     type Output = ObjectLiteral;
 
     fn transform(
@@ -1105,7 +1160,7 @@ impl Transform for ext::ObjectExpression<'_> {
     }
 }
 
-impl Transform for ext::ObjectPropertyKind<'_> {
+impl Transform for oxc::ObjectPropertyKind<'_> {
     type Output = ObjectProperty;
 
     fn transform(
@@ -1122,7 +1177,7 @@ impl Transform for ext::ObjectPropertyKind<'_> {
     }
 }
 
-impl Transform for ext::ObjectProperty<'_> {
+impl Transform for oxc::ObjectProperty<'_> {
     type Output = ObjectProperty;
 
     fn transform(
@@ -1131,16 +1186,16 @@ impl Transform for ext::ObjectProperty<'_> {
     ) -> Result<Self::Output, TxError> {
         match self.kind {
             // Getters, setters, and methods aren't allowed
-            ext::PropertyKind::Get | ext::PropertyKind::Set => {
-                unsupported(Unsupported::ObjectMethod)
+            oxc::PropertyKind::Get | oxc::PropertyKind::Set => {
+                Err(TxError::new(context, self, Unsupported::ObjectMethod))
             }
-            ext::PropertyKind::Init if self.method => {
-                unsupported(Unsupported::ObjectMethod)
+            oxc::PropertyKind::Init if self.method => {
+                Err(TxError::new(context, self, Unsupported::ObjectMethod))
             }
             // Normal expression
-            ext::PropertyKind::Init => {
+            oxc::PropertyKind::Init => {
                 // Spread elements can't appear here, they're handled above in
-                // ext::ObjectPropertyKind
+                // oxc::ObjectPropertyKind
                 let property = self.key.transform_node(context)?;
                 let expression = self.value.transform_node(context)?;
                 Ok(ObjectProperty::Property {
@@ -1152,7 +1207,7 @@ impl Transform for ext::ObjectProperty<'_> {
     }
 }
 
-impl Transform for ext::PropertyKey<'_> {
+impl Transform for oxc::PropertyKey<'_> {
     type Output = PropertyName;
 
     fn transform(
@@ -1164,7 +1219,9 @@ impl Transform for ext::PropertyKey<'_> {
                 let identifier = ident.transform_node(context)?;
                 Ok(PropertyName::Literal(identifier))
             }
-            Self::PrivateIdentifier(_) => unsupported(Unsupported::Class),
+            Self::PrivateIdentifier(_) => {
+                Err(TxError::new(context, self, Unsupported::Class))
+            }
             _ => {
                 let expression = self
                     .as_expression()
@@ -1176,7 +1233,7 @@ impl Transform for ext::PropertyKey<'_> {
     }
 }
 
-impl Transform for ext::ComputedMemberExpression<'_> {
+impl Transform for oxc::ComputedMemberExpression<'_> {
     type Output = PropertyAccess;
 
     fn transform(
@@ -1193,7 +1250,7 @@ impl Transform for ext::ComputedMemberExpression<'_> {
     }
 }
 
-impl Transform for ext::StaticMemberExpression<'_> {
+impl Transform for oxc::StaticMemberExpression<'_> {
     type Output = PropertyAccess;
 
     fn transform(
@@ -1216,7 +1273,7 @@ impl Transform for ext::StaticMemberExpression<'_> {
 /// - `a?.["B"]`
 /// - `a.f?.()`
 /// - `a?.b!`
-impl Transform for ext::ChainExpression<'_> {
+impl Transform for oxc::ChainExpression<'_> {
     /// The `?.` operator covers a few different use cases that can map to
     /// multiple different expression types
     type Output = Expression;
@@ -1237,14 +1294,14 @@ impl Transform for ext::ChainExpression<'_> {
             };
 
         match &self.expression {
-            ext::ChainElement::CallExpression(call_expression) => {
+            oxc::ChainElement::CallExpression(call_expression) => {
                 // CallExpression transformer handles the conditional case
                 // itself, so we can just forward that
                 call_expression
                     .transform_node(context)
                     .map(Expression::Call)
             }
-            ext::ChainElement::ComputedMemberExpression(
+            oxc::ChainElement::ComputedMemberExpression(
                 computed_member_expression,
             ) => {
                 // Re-use the other transformer
@@ -1252,7 +1309,7 @@ impl Transform for ext::ChainExpression<'_> {
                     computed_member_expression.transform(context)?;
                 Ok(from_property_access(context, property_access))
             }
-            ext::ChainElement::StaticMemberExpression(
+            oxc::ChainElement::StaticMemberExpression(
                 static_member_expression,
             ) => {
                 // Re-use the other transformer
@@ -1260,18 +1317,18 @@ impl Transform for ext::ChainExpression<'_> {
                     static_member_expression.transform(context)?;
                 Ok(from_property_access(context, property_access))
             }
-            ext::ChainElement::TSNonNullExpression(non_null_expression) => {
+            oxc::ChainElement::TSNonNullExpression(non_null_expression) => {
                 // Ignore TS assertions, just unpack the inner expression
                 non_null_expression.expression.transform(context)
             }
-            ext::ChainElement::PrivateFieldExpression(_) => {
-                unsupported(Unsupported::Todo)
-            }
+            oxc::ChainElement::PrivateFieldExpression(expression) => Err(
+                TxError::new(context, expression.deref(), Unsupported::Todo),
+            ),
         }
     }
 }
 
-impl Transform for ext::UnaryExpression<'_> {
+impl Transform for oxc::UnaryExpression<'_> {
     type Output = UnaryOperation;
 
     fn transform(
@@ -1279,18 +1336,18 @@ impl Transform for ext::UnaryExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         let operator = match self.operator {
-            ext::UnaryOperator::LogicalNot => UnaryOperator::BooleanNot,
-            ext::UnaryOperator::UnaryPlus => UnaryOperator::Plus,
-            ext::UnaryOperator::UnaryNegation => UnaryOperator::Minus,
-            ext::UnaryOperator::Typeof => UnaryOperator::Typeof,
-            ext::UnaryOperator::Delete => {
-                return unsupported(Unsupported::Mutation);
+            oxc::UnaryOperator::LogicalNot => UnaryOperator::BooleanNot,
+            oxc::UnaryOperator::UnaryPlus => UnaryOperator::Plus,
+            oxc::UnaryOperator::UnaryNegation => UnaryOperator::Minus,
+            oxc::UnaryOperator::Typeof => UnaryOperator::Typeof,
+            oxc::UnaryOperator::Delete => {
+                return Err(TxError::new(context, self, Unsupported::Mutation));
             }
-            ext::UnaryOperator::Void => {
-                return unsupported(Unsupported::Void);
+            oxc::UnaryOperator::Void => {
+                return Err(TxError::new(context, self, Unsupported::Void));
             }
-            ext::UnaryOperator::BitwiseNot => {
-                return unsupported(Unsupported::Bitwise);
+            oxc::UnaryOperator::BitwiseNot => {
+                return Err(TxError::new(context, self, Unsupported::Bitwise));
             }
         };
         let expression = self.argument.transform_node(context)?;
@@ -1301,7 +1358,7 @@ impl Transform for ext::UnaryExpression<'_> {
     }
 }
 
-impl Transform for ext::BinaryExpression<'_> {
+impl Transform for oxc::BinaryExpression<'_> {
     type Output = BinaryOperation;
 
     fn transform(
@@ -1309,36 +1366,42 @@ impl Transform for ext::BinaryExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         let operator = match self.operator {
-            ext::BinaryOperator::LessThan => BinaryOperator::LessThan,
-            ext::BinaryOperator::LessEqualThan => BinaryOperator::LessThanEqual,
-            ext::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
-            ext::BinaryOperator::GreaterEqualThan => {
+            oxc::BinaryOperator::LessThan => BinaryOperator::LessThan,
+            oxc::BinaryOperator::LessEqualThan => BinaryOperator::LessThanEqual,
+            oxc::BinaryOperator::GreaterThan => BinaryOperator::GreaterThan,
+            oxc::BinaryOperator::GreaterEqualThan => {
                 BinaryOperator::GreaterThanEqual
             }
-            ext::BinaryOperator::StrictEquality => BinaryOperator::Equal,
-            ext::BinaryOperator::StrictInequality => BinaryOperator::NotEqual,
-            ext::BinaryOperator::Addition => BinaryOperator::Add,
-            ext::BinaryOperator::Subtraction => BinaryOperator::Sub,
-            ext::BinaryOperator::Multiplication => BinaryOperator::Mul,
-            ext::BinaryOperator::Division => BinaryOperator::Div,
-            ext::BinaryOperator::Remainder => BinaryOperator::Mod,
+            oxc::BinaryOperator::StrictEquality => BinaryOperator::Equal,
+            oxc::BinaryOperator::StrictInequality => BinaryOperator::NotEqual,
+            oxc::BinaryOperator::Addition => BinaryOperator::Add,
+            oxc::BinaryOperator::Subtraction => BinaryOperator::Sub,
+            oxc::BinaryOperator::Multiplication => BinaryOperator::Mul,
+            oxc::BinaryOperator::Division => BinaryOperator::Div,
+            oxc::BinaryOperator::Remainder => BinaryOperator::Mod,
 
             // TODO
-            ext::BinaryOperator::Exponential => todo!(),
-            ext::BinaryOperator::In => todo!(),
-            ext::BinaryOperator::Instanceof => todo!(),
+            oxc::BinaryOperator::In => todo!(),
+            oxc::BinaryOperator::Instanceof => todo!(),
 
             // Unsupported
-            ext::BinaryOperator::Equality | ext::BinaryOperator::Inequality => {
-                return unsupported(Unsupported::LooseEquality);
+            oxc::BinaryOperator::Exponential => {
+                return Err(TxError::new(context, self, Unsupported::Exponent));
             }
-            ext::BinaryOperator::BitwiseAnd
-            | ext::BinaryOperator::BitwiseOR
-            | ext::BinaryOperator::BitwiseXOR
-            | ext::BinaryOperator::ShiftLeft
-            | ext::BinaryOperator::ShiftRight
-            | ext::BinaryOperator::ShiftRightZeroFill => {
-                return unsupported(Unsupported::Bitwise);
+            oxc::BinaryOperator::Equality | oxc::BinaryOperator::Inequality => {
+                return Err(TxError::new(
+                    context,
+                    self,
+                    Unsupported::LooseEquality,
+                ));
+            }
+            oxc::BinaryOperator::BitwiseAnd
+            | oxc::BinaryOperator::BitwiseOR
+            | oxc::BinaryOperator::BitwiseXOR
+            | oxc::BinaryOperator::ShiftLeft
+            | oxc::BinaryOperator::ShiftRight
+            | oxc::BinaryOperator::ShiftRightZeroFill => {
+                return Err(TxError::new(context, self, Unsupported::Bitwise));
             }
         };
         let lhs = self.left.transform_node(context)?;
@@ -1351,7 +1414,7 @@ impl Transform for ext::BinaryExpression<'_> {
     }
 }
 
-impl Transform for ext::LogicalExpression<'_> {
+impl Transform for oxc::LogicalExpression<'_> {
     type Output = BinaryOperation;
 
     fn transform(
@@ -1359,9 +1422,9 @@ impl Transform for ext::LogicalExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
         let operator = match self.operator {
-            ext::LogicalOperator::Or => BinaryOperator::BooleanOr,
-            ext::LogicalOperator::And => BinaryOperator::BooleanAnd,
-            ext::LogicalOperator::Coalesce => BinaryOperator::NullishCoalesce,
+            oxc::LogicalOperator::Or => BinaryOperator::BooleanOr,
+            oxc::LogicalOperator::And => BinaryOperator::BooleanAnd,
+            oxc::LogicalOperator::Coalesce => BinaryOperator::NullishCoalesce,
         };
         let lhs = self.left.transform_node(context)?;
         let rhs = self.right.transform_node(context)?;
@@ -1373,7 +1436,7 @@ impl Transform for ext::LogicalExpression<'_> {
     }
 }
 
-impl Transform for ext::ConditionalExpression<'_> {
+impl Transform for oxc::ConditionalExpression<'_> {
     type Output = TernaryConditional;
 
     fn transform(
@@ -1391,7 +1454,7 @@ impl Transform for ext::ConditionalExpression<'_> {
     }
 }
 
-impl Transform for ext::CallExpression<'_> {
+impl Transform for oxc::CallExpression<'_> {
     type Output = FunctionCall;
 
     fn transform(
@@ -1412,7 +1475,7 @@ impl Transform for ext::CallExpression<'_> {
     }
 }
 
-impl Transform for ext::Argument<'_> {
+impl Transform for oxc::Argument<'_> {
     type Output = Expression;
 
     fn transform(
@@ -1472,27 +1535,11 @@ impl<T> OptionExt<T> for Option<&T> {
     }
 }
 
-/// Helper for generating an [Unsupported](TransformError::Unsupported) error
-///
-/// The error is pre-wrapped in a `Result` for Added Convenience.
-fn unsupported<T>(unsupported: Unsupported) -> Result<T, TxError> {
-    Err(TxError {
-        // TODO track the node to give an error location
-        node_id: None,
-        error: TransformError::Unsupported(unsupported),
-    })
-}
-
-/// TODO get rid of this; just ignore TS features
-fn unsupported_ts<T>() -> Result<T, TxError> {
-    unsupported(Unsupported::TypeScript)
-}
-
 /// Transform an oxc identifier to a PS identifier
 ///
 /// Panics if the identifier fails to re-parse, which *should* be
 /// impossible because we use the same identifier rules.
-fn transform_ident(ident: ext::Ident<'_>) -> Identifier {
+fn transform_ident(ident: oxc::Ident<'_>) -> Identifier {
     // Error here *should* be impossible because we use the same identifier
     // rules as ES
     ident
@@ -1557,7 +1604,7 @@ impl<T> IntoNode for T {
     }
 }
 
-/// Temporary type to help with mapping an [ext::BindingPattern] to a [Binding]
+/// Temporary type to help with mapping an [oxc::BindingPattern] to a [Binding]
 ///
 /// Some use cases support assignment expressions, which carry an expression on
 /// the right side. This type makes it easy to assert those expressions are
@@ -1566,7 +1613,7 @@ struct BindingPattern {
     binding: Node<Binding>,
     /// Right-hand side of an assignment expression
     ///
-    /// This is illegal in some cases. See [ext::BindingPattern] for where.
+    /// This is illegal in some cases. See [oxc::BindingPattern] for where.
     expression: Option<Node<Expression>>,
 }
 

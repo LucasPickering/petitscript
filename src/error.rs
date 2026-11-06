@@ -203,6 +203,12 @@ impl StdError for TransformError {
     }
 }
 
+impl From<Unsupported> for TransformError {
+    fn from(value: Unsupported) -> Self {
+        Self::Unsupported(value)
+    }
+}
+
 /// Description of an unsupported feature
 ///
 /// The vast majority of JS/TS features are not supported in PetitScript. This
@@ -220,6 +226,10 @@ pub enum Unsupported {
     Bitwise,
     /// `class` and friends
     Class,
+    /// `**`
+    ///
+    /// Could support this one, I'm just being lazy.
+    Exponent,
     /// `for ... in ...`
     ForIn,
     /// `function*`
@@ -269,6 +279,7 @@ impl Display for Unsupported {
                 ("bitwise", "Bitwise operations are not supported")
             }
             Self::Class => ("`class`", "Classes are not supported"),
+            Self::Exponent => ("`**`", "Exponent operator is not supported"),
             Self::ForIn => ("`for...in`", "Use `for...of` instead"),
             Self::Generator => ("generator", "Generators are not supported"),
             Self::ImportExpression => {

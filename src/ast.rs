@@ -291,6 +291,11 @@ pub struct If {
 /// for (const c of "hello!") {
 ///   console.log(c);
 /// }
+///
+/// // Objects are iterable!
+/// for (const [key, value] of { a: 1, b: 2 }) {
+///   console.log(key, value);
+/// }
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -258,6 +258,7 @@ impl Execute for ForOfLoop {
         &self,
         _state: &mut ThreadState,
     ) -> Result<Option<Terminate>, TracedError> {
+        // TODO objects should be iterable! (not compatible w/ ES)
         todo!()
     }
 }

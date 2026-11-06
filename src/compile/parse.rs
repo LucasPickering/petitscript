@@ -590,8 +590,44 @@ impl Transform for oxc::ForOfStatement<'_> {
 impl Transform for oxc::ForStatementLeft<'_> {
     type Output = Binding;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        todo!()
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        match self {
+            Self::VariableDeclaration(variable_declaration) => {
+                // We expect a single variable with no init expression. It's
+                // possible to pass 0 or 2 variables though, and define an init
+                // expression, so we need to catch those cases here.
+                let declaration = variable_declaration.transform(context)?;
+                let Ok([variable]) =
+                    <Box<[_; 1]>>::try_from(declaration.variables).map(|b| *b)
+                else {
+                    todo!("expected exactly 1 variable")
+                };
+                match variable.into_data() {
+                    Variable {
+                        binding,
+                        init: None,
+                    } => Ok(binding.into_data()),
+                    _ => todo!("expected no init expression"),
+                }
+            }
+            // for (x of arr) {} (reassigns to x)
+            Self::AssignmentTargetIdentifier(_) => {
+                unsupported!(context, self, Unsupported::Mutation)
+            }
+            // No idea if/how these are accessible
+            Self::TSAsExpression(_) => todo!(),
+            Self::TSSatisfiesExpression(_) => todo!(),
+            Self::TSNonNullExpression(_) => todo!(),
+            Self::TSTypeAssertion(_) => todo!(),
+            Self::ComputedMemberExpression(_) => todo!(),
+            Self::StaticMemberExpression(_) => todo!(),
+            Self::PrivateFieldExpression(_) => todo!(),
+            Self::ArrayAssignmentTarget(_) => todo!(),
+            Self::ObjectAssignmentTarget(_) => todo!(),
+        }
     }
 }
 

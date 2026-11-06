@@ -174,6 +174,8 @@ pub enum TransformError {
 
     /// Source code contains a syntax construct that isn't supported in our
     /// semantics
+    ///
+    /// See [Unsupported].
     Unsupported(Unsupported),
 }
 
@@ -208,6 +210,10 @@ impl StdError for TransformError {
 /// The vast majority of JS/TS features are not supported in PetitScript. This
 /// enumeratures those various unsupported things so we can provide the best
 /// feedback to the user possible.
+///
+/// This is *only* for syntax that is supported in most JS runtimes but not
+/// ours. For syntax that's possible to construct but semantically invalid in
+/// ECMAScript, do *not* use this type.
 #[derive(Debug)]
 pub enum Unsupported {
     /// `function()` (without identifier)

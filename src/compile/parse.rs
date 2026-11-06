@@ -523,7 +523,11 @@ impl Transform for oxc::IfStatement<'_> {
         // This body is NOT optional
         let body = self.consequent.transform_node(context)?;
         // This body IS optional
-        let else_body = self.alternate.as_ref().transform_node_opt(context)?;
+        let else_body = if let Some(alternate) = &self.alternate {
+            Some(alternate.transform_node(context)?)
+        } else {
+            None
+        };
         Ok(If {
             condition,
             body: body.into(),
@@ -667,7 +671,11 @@ impl Transform for oxc::ReturnStatement<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, TxError> {
-        let expression = self.argument.as_ref().transform_node_opt(context)?;
+        let expression = if let Some(argument) = &self.argument {
+            Some(argument.transform_node(context)?)
+        } else {
+            None
+        };
         Ok(Statement::Return(expression))
     }
 }
@@ -707,11 +715,11 @@ impl Transform for oxc::VariableDeclarator<'_> {
         // = is stored in self.init
         let binding = self.id.transform(context)?.try_into_binding()?;
 
-        let init = self
-            .init
-            .as_ref()
-            .transform_node_opt(context)?
-            .map(Box::new);
+        let init = if let Some(init) = &self.init {
+            Some(Box::new(init.transform_node(context)?))
+        } else {
+            None
+        };
         Ok(Variable { binding, init })
     }
 }
@@ -1623,28 +1631,6 @@ impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
         self.into_iter()
             .map(|value| value.transform_node(context))
             .collect::<Result<_, _>>()
-    }
-}
-
-trait OptionExt<T> {
-    /// Call [Transform::transform_node] on an optional AST node
-    fn transform_node_opt(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Option<Node<T::Output>>, TxError>
-    where
-        T: Transform + GetSpan;
-}
-
-impl<T> OptionExt<T> for Option<&T> {
-    fn transform_node_opt(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Option<Node<T::Output>>, TxError>
-    where
-        T: Transform + GetSpan,
-    {
-        self.map(|value| value.transform_node(context)).transpose()
     }
 }
 

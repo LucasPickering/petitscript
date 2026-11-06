@@ -238,6 +238,8 @@ pub enum Unsupported {
     ImportExpression,
     /// `<Component></Component>`
     Jsx,
+    /// `'label`, `break label`, `continue label`
+    Label,
     /// `==` and `!=`
     LooseEquality,
     /// `let`, `var`, `delete`, and reassignment
@@ -288,6 +290,7 @@ impl Display for Unsupported {
                 ("`import()`", "Use the ES6-style `import` keyword instead")
             }
             Self::Jsx => ("JSX", "This isn't React..."),
+            Self::Label => ("TODO", "TODO"),
             Self::LooseEquality => {
                 ("loose equality", "use `===` or `!==` instead")
             }

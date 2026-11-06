@@ -285,15 +285,14 @@ impl Transform for oxc::Statement<'_> {
             Self::ForOfStatement(for_of_stmt) => for_of_stmt
                 .transform_node(context)
                 .map(Statement::ForOfLoop),
-            // TODO error if labels are present
-            Self::ContinueStatement(_) => Ok(Statement::Continue),
-            Self::BreakStatement(_) => Ok(Statement::Break),
-            Self::ReturnStatement(return_stmt) => {
-                let expression = return_stmt
-                    .argument
-                    .as_ref()
-                    .transform_node_opt(context)?;
-                Ok(Statement::Return(expression))
+            Self::BreakStatement(break_statement) => {
+                break_statement.transform(context)
+            }
+            Self::ContinueStatement(continue_statement) => {
+                continue_statement.transform(context)
+            }
+            Self::ReturnStatement(return_statement) => {
+                return_statement.transform(context)
             }
 
             // Unsupported
@@ -304,7 +303,7 @@ impl Transform for oxc::Statement<'_> {
                 unsupported!(context, self, Unsupported::ForIn);
             }
             Self::LabeledStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::Label);
             }
             Self::SwitchStatement(_) => {
                 unsupported!(context, self, Unsupported::Todo);
@@ -628,6 +627,48 @@ impl Transform for oxc::ForStatementLeft<'_> {
             Self::ArrayAssignmentTarget(_) => todo!(),
             Self::ObjectAssignmentTarget(_) => todo!(),
         }
+    }
+}
+
+impl Transform for oxc::BreakStatement<'_> {
+    type Output = Statement;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        if self.label.is_none() {
+            Ok(Statement::Break)
+        } else {
+            unsupported!(context, self, Unsupported::Label);
+        }
+    }
+}
+
+impl Transform for oxc::ContinueStatement<'_> {
+    type Output = Statement;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        if self.label.is_none() {
+            Ok(Statement::Continue)
+        } else {
+            unsupported!(context, self, Unsupported::Label);
+        }
+    }
+}
+
+impl Transform for oxc::ReturnStatement<'_> {
+    type Output = Statement;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        let expression = self.argument.as_ref().transform_node_opt(context)?;
+        Ok(Statement::Return(expression))
     }
 }
 

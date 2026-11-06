@@ -647,18 +647,16 @@ pub enum Binding {
     Array(Box<[Node<ArrayPatternElement>]>),
 }
 
-/// TODO
+/// One property in a [Binding::Object]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectPatternElement {
-    // TODO merge this into Mapped? I don't see a reason to have two variants
-    /// `const { x } = object` or `const { x = 3 } = object`
+    /// A specific bound field
+    ///
+    /// - `const { x } = object`
+    /// - `const { x: x2 } = object`
+    /// - `const { x: x2 = 3 } = object`
     Identifier {
-        identifier: Node<Identifier>,
-        init: Option<Node<Expression>>,
-    },
-    /// `const { x: x2 } = object` or `const { x: x2 = 3 } = object`
-    Mapped {
         key: Node<PropertyName>,
         value: Node<Binding>,
         init: Option<Node<Expression>>,

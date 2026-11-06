@@ -73,9 +73,8 @@ impl Evaluate for ArrayLiteral {
         let mut array = Array::default();
         for element in &self.elements {
             match &element.data() {
-                // These are optimized to avoid allocations where
-                // possible
-                ArrayElement::Self(expression) => {
+                // These are optimized to avoid allocations where possible
+                ArrayElement::Expression(expression) => {
                     let value = expression.eval(state)?;
                     array = array.push(value);
                 }

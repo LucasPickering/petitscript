@@ -731,7 +731,8 @@ impl Transform for oxc::VariableDeclarator<'_> {
 ///
 /// The docs for [oxc::BindingPattern] are really helpful.
 impl Transform for oxc::BindingPattern<'_> {
-    /// TODO explain temp type
+    /// This uses an internal type to carry the binding as well as the
+    /// associated expression that *may* be present.
     type Output = BindingPattern;
 
     fn transform(
@@ -836,7 +837,7 @@ impl Transform for oxc::BindingProperty<'_> {
             expression: init,
         } = self.value.transform(context)?;
 
-        Ok(ObjectPatternElement::Mapped { key, value, init })
+        Ok(ObjectPatternElement::Identifier { key, value, init })
     }
 }
 

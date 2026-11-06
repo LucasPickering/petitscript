@@ -463,12 +463,16 @@ impl DisplayIndent for Binding {
 impl DisplayIndent for ObjectPatternElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Identifier { identifier, init } => {
-                (identifier, init.as_ref().map(|init| (" = ", init))).fmt(ind)
-            }
-            Self::Mapped { key, value, init } => {
-                (key, ": ", value, init.as_ref().map(|init| (" = ", init)))
-                    .fmt(ind)
+            Self::Identifier { key, value, init } => {
+                let init = init.as_ref().map(|init| (" = ", init));
+                match (key.data(), value.data()) {
+                    // Use shorthand where available
+                    (
+                        PropertyName::Literal(key),
+                        Binding::Identifier(value),
+                    ) if key == value => (key, init).fmt(ind),
+                    _ => (key, ": ", value, init).fmt(ind),
+                }
             }
             Self::Rest { binding, init } => {
                 ("...", binding, init.as_ref().map(|init| (" = ", init)))

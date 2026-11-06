@@ -126,11 +126,7 @@ impl Walk for ObjectPatternElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_object_pattern_element(self);
         match self {
-            Self::Identifier { identifier, init } => {
-                identifier.walk(visitor);
-                init.walk(visitor);
-            }
-            Self::Mapped { key, value, init } => {
+            Self::Identifier { key, value, init } => {
                 key.walk(visitor);
                 value.walk(visitor);
                 init.walk(visitor);

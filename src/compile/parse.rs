@@ -166,19 +166,28 @@ struct TxError {
 
 impl TxError {
     /// Attach a node ID and span to an error
-    fn new<T>(
-        context: &ParseContext,
-        node: &T,
-        error: impl Into<TransformError>,
-    ) -> Self
+    fn new<T>(context: &ParseContext, node: &T, error: TransformError) -> Self
     where
         T: GetSpan,
     {
         Self {
             span: context.transform_span(node.span()),
-            error: error.into(),
+            error,
         }
     }
+}
+
+/// Helper for returning an unsupported error
+///
+/// Context and node are needed to attach the source span.
+macro_rules! unsupported {
+    ($context:expr, $node:expr, $reason:expr) => {
+        return Err(TxError::new(
+            $context,
+            $node,
+            TransformError::Unsupported($reason),
+        ))
+    };
 }
 
 /// Transform an [oxc_ast] node to a local [ast](crate::ast) node
@@ -289,31 +298,31 @@ impl Transform for oxc::Statement<'_> {
 
             // Unsupported
             Self::ForStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::ForInStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::ForIn))
+                unsupported!(context, self, Unsupported::ForIn);
             }
             Self::LabeledStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::SwitchStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::ThrowStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::TryStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::DebuggerStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::WithStatement(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::ClassDeclaration(_) => {
-                Err(TxError::new(context, self, Unsupported::Class))
+                unsupported!(context, self, Unsupported::Class);
             }
 
             // TODO we should just ignore TS instead of returning an error
@@ -326,7 +335,7 @@ impl Transform for oxc::Statement<'_> {
             | Self::TSNamespaceDeclaration(_)
             | Self::TSNamespaceExportDeclaration(_)
             | Self::TSTypeAliasDeclaration(_) => {
-                Err(TxError::new(context, self, Unsupported::TypeScript))
+                unsupported!(context, self, Unsupported::TypeScript);
             }
         }
     }
@@ -430,7 +439,7 @@ impl Transform for oxc::ImportSpecifier<'_> {
                 // ES supports arbitrary unicode as the import source, but I
                 // don't want to support that
                 let Some(imported) = self.imported.identifier_name() else {
-                    return Err(TxError::new(context, self, Unsupported::Todo));
+                    unsupported!(context, self, Unsupported::Todo);
                 };
                 let imported_span = self.imported.span();
                 let imported =
@@ -440,7 +449,7 @@ impl Transform for oxc::ImportSpecifier<'_> {
                 Ok(ImportNamed { imported, local })
             }
             oxc::ImportOrExportKind::Type => {
-                Err(TxError::new(context, self, Unsupported::TypeScript))
+                unsupported!(context, self, Unsupported::TypeScript);
             }
         }
     }
@@ -562,11 +571,11 @@ impl Transform for oxc::VariableDeclaration<'_> {
             }
             oxc::VariableDeclarationKind::Var
             | oxc::VariableDeclarationKind::Let => {
-                Err(TxError::new(context, self, Unsupported::Mutation))
+                unsupported!(context, self, Unsupported::Mutation);
             }
             oxc::VariableDeclarationKind::Using
             | oxc::VariableDeclarationKind::AwaitUsing => {
-                Err(TxError::new(context, self, Unsupported::Using))
+                unsupported!(context, self, Unsupported::Using);
             }
         }
     }
@@ -726,20 +735,16 @@ impl Transform for oxc::Function<'_> {
     ) -> Result<Self::Output, TxError> {
         // Check illegal function types
         if self.r#async {
-            return Err(TxError::new(context, self, Unsupported::Async));
+            unsupported!(context, self, Unsupported::Async);
         }
         if self.generator {
-            return Err(TxError::new(context, self, Unsupported::Generator));
+            unsupported!(context, self, Unsupported::Generator);
         }
 
         // A bare function is an expression rather than a statement. Allowing
         // it here would make this more complicated.
         let Some(identifier) = &self.id else {
-            return Err(TxError::new(
-                context,
-                self,
-                Unsupported::AnonymousFunction,
-            ));
+            unsupported!(context, self, Unsupported::AnonymousFunction);
         };
         let identifier = identifier.transform_node(context)?;
 
@@ -884,13 +889,13 @@ impl Transform for oxc::Expression<'_> {
                 literal.transform_node(context).map(Expression::Literal)
             }
             Self::BigIntLiteral(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::StringLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
             Self::RegExpLiteral(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))?
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::TemplateLiteral(template) => {
                 template.transform_node(context).map(Expression::Template)
@@ -959,53 +964,53 @@ impl Transform for oxc::Expression<'_> {
 
             // Unsupported
             Self::AssignmentExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Mutation))
+                unsupported!(context, self, Unsupported::Mutation);
             }
             Self::UpdateExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Mutation))
+                unsupported!(context, self, Unsupported::Mutation);
             }
             Self::ThisExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::This))
+                unsupported!(context, self, Unsupported::This);
             }
             Self::NewExpression(_)
             | Self::Super(_)
             | Self::ClassExpression(_)
             | Self::NewTarget(_) => {
-                Err(TxError::new(context, self, Unsupported::Class))
+                unsupported!(context, self, Unsupported::Class);
             }
             Self::PrivateFieldExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::PrivateInExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::ImportMeta(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::ImportExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::ImportExpression))
+                unsupported!(context, self, Unsupported::ImportExpression);
             }
             Self::AwaitExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Async))
+                unsupported!(context, self, Unsupported::Async);
             }
             Self::YieldExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Generator))
+                unsupported!(context, self, Unsupported::Generator);
             }
             Self::TaggedTemplateExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::TaggedTemplate))
+                unsupported!(context, self, Unsupported::TaggedTemplate);
             }
             Self::JSXElement(_) | Self::JSXFragment(_) => {
-                Err(TxError::new(context, self, Unsupported::Jsx))
+                unsupported!(context, self, Unsupported::Jsx);
             }
             Self::V8IntrinsicExpression(_) => {
-                Err(TxError::new(context, self, Unsupported::Todo))
+                unsupported!(context, self, Unsupported::Todo);
             }
             Self::TSAsExpression(_)
             | Self::TSInstantiationExpression(_)
             | Self::TSNonNullExpression(_)
             | Self::TSSatisfiesExpression(_)
             | Self::TSTypeAssertion(_) => {
-                Err(TxError::new(context, self, Unsupported::TypeScript))
+                unsupported!(context, self, Unsupported::TypeScript);
             }
         }
     }
@@ -1056,7 +1061,7 @@ impl Transform for oxc::StringLiteral<'_> {
         match self.value.as_str() {
             Some(s) => Ok(Literal::String(s.into())),
             // JS supports invalid UTF-8 but Rust strings don't
-            None => Err(TxError::new(context, self, Unsupported::NonUtf)),
+            None => unsupported!(context, self, Unsupported::NonUtf),
         }
     }
 }
@@ -1128,11 +1133,11 @@ impl Transform for oxc::ArrayExpression<'_> {
                     Ok(expression.wrap(context, ArrayElement::Spread))
                 }
                 oxc::ArrayExpressionElement::Elision(elision) => {
-                    Err(TxError::new(
+                    unsupported!(
                         context,
                         elision.deref(),
-                        Unsupported::ArrayElision,
-                    ))
+                        Unsupported::ArrayElision
+                    );
                 }
                 _ => {
                     // TODO dedupe this pattern
@@ -1187,10 +1192,10 @@ impl Transform for oxc::ObjectProperty<'_> {
         match self.kind {
             // Getters, setters, and methods aren't allowed
             oxc::PropertyKind::Get | oxc::PropertyKind::Set => {
-                Err(TxError::new(context, self, Unsupported::ObjectMethod))
+                unsupported!(context, self, Unsupported::ObjectMethod);
             }
             oxc::PropertyKind::Init if self.method => {
-                Err(TxError::new(context, self, Unsupported::ObjectMethod))
+                unsupported!(context, self, Unsupported::ObjectMethod);
             }
             // Normal expression
             oxc::PropertyKind::Init => {
@@ -1220,7 +1225,7 @@ impl Transform for oxc::PropertyKey<'_> {
                 Ok(PropertyName::Literal(identifier))
             }
             Self::PrivateIdentifier(_) => {
-                Err(TxError::new(context, self, Unsupported::Class))
+                unsupported!(context, self, Unsupported::Class);
             }
             _ => {
                 let expression = self
@@ -1321,9 +1326,9 @@ impl Transform for oxc::ChainExpression<'_> {
                 // Ignore TS assertions, just unpack the inner expression
                 non_null_expression.expression.transform(context)
             }
-            oxc::ChainElement::PrivateFieldExpression(expression) => Err(
-                TxError::new(context, expression.deref(), Unsupported::Todo),
-            ),
+            oxc::ChainElement::PrivateFieldExpression(expression) => {
+                unsupported!(context, expression.deref(), Unsupported::Todo)
+            }
         }
     }
 }
@@ -1341,13 +1346,13 @@ impl Transform for oxc::UnaryExpression<'_> {
             oxc::UnaryOperator::UnaryNegation => UnaryOperator::Minus,
             oxc::UnaryOperator::Typeof => UnaryOperator::Typeof,
             oxc::UnaryOperator::Delete => {
-                return Err(TxError::new(context, self, Unsupported::Mutation));
+                unsupported!(context, self, Unsupported::Mutation);
             }
             oxc::UnaryOperator::Void => {
-                return Err(TxError::new(context, self, Unsupported::Void));
+                unsupported!(context, self, Unsupported::Void);
             }
             oxc::UnaryOperator::BitwiseNot => {
-                return Err(TxError::new(context, self, Unsupported::Bitwise));
+                unsupported!(context, self, Unsupported::Bitwise);
             }
         };
         let expression = self.argument.transform_node(context)?;
@@ -1386,14 +1391,10 @@ impl Transform for oxc::BinaryExpression<'_> {
 
             // Unsupported
             oxc::BinaryOperator::Exponential => {
-                return Err(TxError::new(context, self, Unsupported::Exponent));
+                unsupported!(context, self, Unsupported::Exponent);
             }
             oxc::BinaryOperator::Equality | oxc::BinaryOperator::Inequality => {
-                return Err(TxError::new(
-                    context,
-                    self,
-                    Unsupported::LooseEquality,
-                ));
+                unsupported!(context, self, Unsupported::LooseEquality);
             }
             oxc::BinaryOperator::BitwiseAnd
             | oxc::BinaryOperator::BitwiseOR
@@ -1401,7 +1402,7 @@ impl Transform for oxc::BinaryExpression<'_> {
             | oxc::BinaryOperator::ShiftLeft
             | oxc::BinaryOperator::ShiftRight
             | oxc::BinaryOperator::ShiftRightZeroFill => {
-                return Err(TxError::new(context, self, Unsupported::Bitwise));
+                unsupported!(context, self, Unsupported::Bitwise);
             }
         };
         let lhs = self.left.transform_node(context)?;

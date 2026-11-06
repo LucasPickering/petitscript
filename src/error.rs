@@ -203,12 +203,6 @@ impl StdError for TransformError {
     }
 }
 
-impl From<Unsupported> for TransformError {
-    fn from(value: Unsupported) -> Self {
-        Self::Unsupported(value)
-    }
-}
-
 /// Description of an unsupported feature
 ///
 /// The vast majority of JS/TS features are not supported in PetitScript. This

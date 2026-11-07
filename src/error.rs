@@ -166,10 +166,14 @@ pub enum TransformError {
     /// A nested error that occurred while parsing an imported local module
     Import(Box<Error>),
 
-    /// AST is missing a node that should be present
-    Missing {
-        /// Name of the type of node that was expected
-        expected_type: &'static str,
+    /// AST node type wasn't handled
+    ///
+    /// This occurs when a node is downcast (using oxc's AST inheritance
+    /// framework) but the downcast fails. It indicates a possible branch wasn't
+    /// handled. **This is an internal error**.
+    Unhandled {
+        /// Debug representation of the unhandled node
+        node: String,
     },
 
     /// Source code contains a syntax construct that isn't supported in our
@@ -183,11 +187,9 @@ impl Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Import(error) => write!(f, "{error}"),
-            // TODO improve error message - this is probably invalid syntax
-            Self::Missing { expected_type } => write!(
-                f,
-                "Expected AST node of type {expected_type}, but it was not present"
-            ),
+            Self::Unhandled { node } => {
+                write!(f, "[INTERNAL ERROR] Unhandled AST node type: {node}")
+            }
             Self::Unsupported(unsupported) => {
                 write!(f, "{unsupported}")
             }
@@ -199,7 +201,7 @@ impl StdError for TransformError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Import(error) => Some(error),
-            Self::Missing { .. } => None,
+            Self::Unhandled { .. } => None,
             Self::Unsupported { .. } => None,
         }
     }

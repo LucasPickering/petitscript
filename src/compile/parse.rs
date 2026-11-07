@@ -190,6 +190,33 @@ macro_rules! unsupported {
     };
 }
 
+/// Downcast an AST node type to an expression by calling its `as_expression`
+/// method
+///
+/// Return an error if the cast fails. The `as_expression` method is not part
+/// of a trait, so this has to be implemented as a macro instead of a generic
+/// function.
+///
+/// [oxc_ast] uses a macro-based inheritance system where macro enums inherit
+/// variants from other enums. In those cases, the inheriting enum can be
+/// casted back to the base enum if the value is one of the inherited variants.
+macro_rules! as_expression {
+    ($context:expr, $node:expr) => {
+        match $node.as_expression() {
+            Some(expression) => expression,
+            None => {
+                return Err(TxError::new(
+                    $context,
+                    $node,
+                    TransformError::Unhandled {
+                        node: format!("{:?}", $node),
+                    },
+                ));
+            }
+        }
+    };
+}
+
 /// Transform an [oxc_ast] node to a local [ast](crate::ast) node
 trait Transform {
     type Output;
@@ -538,10 +565,7 @@ impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
                 unsupported!(context, self, Unsupported::TypeScript);
             }
             // Everything else is an expression
-            _ => self
-                .as_expression()
-                .expect("Unhandled non-expression branch")
-                .transform_node(context)?,
+            _ => as_expression!(context, self).transform_node(context)?,
         };
         Ok(ExportDeclaration::DefaultExpression(expression))
     }
@@ -1003,10 +1027,7 @@ impl Transform for oxc::ArrowFunctionExpression<'_> {
             }
             // bare expression
             _ => {
-                let expression = self
-                    .body
-                    .as_expression()
-                    .expect("Unhandled non-expression branch")
+                let expression = as_expression!(context, &self.body)
                     .transform_node(context)?;
                 FunctionBody::Expression(Box::new(expression))
             }
@@ -1350,10 +1371,7 @@ impl Transform for oxc::ArrayExpression<'_> {
                     );
                 }
                 _ => {
-                    // TODO dedupe this pattern
-                    let expression = element
-                        .as_expression()
-                        .expect("Unhandled non-expression branch")
+                    let expression = as_expression!(context, element)
                         .transform_node(context)?;
                     Ok(expression.wrap(context, ArrayElement::Expression))
                 }
@@ -1438,10 +1456,8 @@ impl Transform for oxc::PropertyKey<'_> {
                 unsupported!(context, self, Unsupported::Private);
             }
             _ => {
-                let expression = self
-                    .as_expression()
-                    .expect("Unhandled non-expression branch")
-                    .transform_node(context)?;
+                let expression =
+                    as_expression!(context, self).transform_node(context)?;
                 Ok(PropertyName::Expression(Box::new(expression)))
             }
         }
@@ -1696,10 +1712,7 @@ impl Transform for oxc::Argument<'_> {
         match self {
             Self::SpreadElement(_) => todo!("support spread in function args"),
             // All other variants are inherited from Expression
-            _ => self
-                .as_expression()
-                .expect("Unhandled non-expression branch")
-                .transform(context),
+            _ => as_expression!(context, self).transform(context),
         }
     }
 }

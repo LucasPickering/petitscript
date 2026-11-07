@@ -232,6 +232,12 @@ pub enum Unsupported {
     Exponent,
     /// `for ... in ...`
     ForIn,
+    /// `const x = function() {}`
+    ///
+    /// This is different from [Self::AnonymousFunction] because function
+    /// expressions may have an identifier, but are still illegal in an
+    /// expression position.
+    FunctionExpression,
     /// `function*`
     Generator,
     /// `import()`
@@ -285,6 +291,11 @@ impl Display for Unsupported {
             Self::Class => ("`class`", "Classes are not supported"),
             Self::Exponent => ("`**`", "Exponent operator is not supported"),
             Self::ForIn => ("`for...in`", "Use `for...of` instead"),
+            Self::FunctionExpression => (
+                "TODO",
+                "`function` keyword not allowed in an expression position; \
+                Use `=>` for function expressions",
+            ),
             Self::Generator => ("generator", "Generators are not supported"),
             Self::ImportExpression => {
                 ("`import()`", "Use the ES6-style `import` keyword instead")

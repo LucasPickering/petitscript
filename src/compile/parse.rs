@@ -1080,15 +1080,19 @@ impl Transform for oxc::Expression<'_> {
                     .transform_node(context)
                     .map(Expression::Ternary)
             }
-            Self::SequenceExpression(_) => todo!(),
             Self::ArrowFunctionExpression(arrow_expr) => {
                 arrow_expr.transform_node(context).map(Expression::Function)
             }
-            Self::FunctionExpression(_) => todo!("wtf is this?"),
 
             // Unsupported
             Self::AssignmentExpression(_) => {
                 unsupported!(context, self, Unsupported::Mutation);
+            }
+            Self::FunctionExpression(_) => {
+                unsupported!(context, self, Unsupported::FunctionExpression)
+            }
+            Self::SequenceExpression(_) => {
+                unsupported!(context, self, Unsupported::Todo)
             }
             Self::UpdateExpression(_) => {
                 unsupported!(context, self, Unsupported::Mutation);

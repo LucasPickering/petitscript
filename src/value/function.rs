@@ -1,8 +1,8 @@
 use crate::{
+    Process,
     ast::FunctionDefinition,
     error::RuntimeError,
     value::{FromPetit, IntoPetit, Value},
-    Process,
 };
 use indexmap::IndexMap;
 use std::{
@@ -138,8 +138,8 @@ impl Display for Function {
         };
         write!(
             f,
-            "[Function: {} ({kind})]",
-            self.name().unwrap_or("(anonymous)")
+            "[Function `{}` ({kind})]",
+            self.name().unwrap_or("<anon>")
         )
     }
 }

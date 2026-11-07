@@ -237,29 +237,35 @@ impl Transform for oxc::Statement<'_> {
     ) -> Result<Self::Output, TxError> {
         match self {
             // Imports/exports
-            Self::ImportDeclaration(import_decl) => {
-                import_decl.transform_node(context).map(Statement::Import)
+            Self::ImportDeclaration(import_declaration) => import_declaration
+                .transform_node(context)
+                .map(Statement::Import),
+            // export const a = 5;
+            Self::ExportDeclaration(export_declaration) => export_declaration
+                .transform_node(context)
+                .map(Statement::Export),
+            // export default c;
+            Self::ExportDefaultDeclaration(export_default_declaration) => {
+                export_default_declaration
+                    .declaration
+                    .transform_node(context)
+                    .map(Statement::Export)
             }
-            Self::ExportDeclaration(export_decl) => {
-                export_decl.transform_node(context).map(Statement::Export)
+            // export { c } from 'source';
+            Self::ExportFromDeclaration(export_from_declaration) => {
+                export_from_declaration
+                    .transform_node(context)
+                    .map(Statement::Export)
             }
-            Self::ExportAllDeclaration(_) => todo!(),
-            Self::ExportDefaultDeclaration(export_decl) => {
-                export_decl.transform_node(context).map(Statement::Export)
-            }
-            Self::ExportNamedDeclaration(_) => todo!(),
-            Self::ExportFromDeclaration(_) => todo!(),
 
             // Declarations
-            Self::VariableDeclaration(decl) => {
-                decl.transform_node(context).map(Statement::Declaration)
+            Self::VariableDeclaration(variable_declaration) => {
+                variable_declaration
+                    .transform_node(context)
+                    .map(Statement::Declaration)
             }
-            Self::FunctionDeclaration(function_decl) => {
-                let declaration = function_decl.transform_node(context)?;
-                Ok(match declaration.transpose() {
-                    Some(declaration) => Statement::Declaration(declaration),
-                    None => Statement::Empty,
-                })
+            Self::FunctionDeclaration(function) => {
+                function.transform_node(context).map(Statement::Declaration)
             }
 
             // Generic
@@ -324,6 +330,16 @@ impl Transform for oxc::Statement<'_> {
                 unsupported!(context, self, Unsupported::Class);
             }
 
+            // export * as c from 'source';
+            Self::ExportAllDeclaration(_) => {
+                unsupported!(context, self, Unsupported::Todo);
+            }
+            // const c = 4; export { c };
+            // There may be value in allowing this, but I'm not for now
+            Self::ExportNamedDeclaration(_) => {
+                unsupported!(context, self, Unsupported::Todo);
+            }
+
             // TODO we should just ignore TS instead of returning an error
             Self::TSEnumDeclaration(_)
             | Self::TSExportAssignment(_)
@@ -350,12 +366,15 @@ impl Transform for oxc::ImportDeclaration<'_> {
     ) -> Result<Self::Output, TxError> {
         // TODO only allow imports at top level
 
-        // TODO explain
+        // There can only be zero or one default per import statement, plus any
+        // number of named imports
         let mut default: Option<Node<Identifier>> = None;
         let mut named: Vec<Node<ImportNamed>> = vec![];
         let Some(specifiers) = &self.specifiers else {
-            todo!("bare imports not allowed")
+            // None for `import 'source'`
+            unsupported!(context, self, Unsupported::BareImport);
         };
+
         // Each specifier is one element between `import` and `from`
         for specifier in specifiers {
             match specifier {
@@ -364,7 +383,7 @@ impl Transform for oxc::ImportDeclaration<'_> {
                 oxc::ImportDeclarationSpecifier::ImportNamespaceSpecifier(
                     _,
                 ) => {
-                    todo!("unsupported")
+                    unsupported!(context, self, Unsupported::NamespaceImport);
                 }
                 // import { a } from 'source'
                 //          ^
@@ -415,7 +434,9 @@ impl Transform for oxc::ImportDeclaration<'_> {
         .into_node(context, self.source.span());
 
         match (default, named.as_slice()) {
-            (None, &[]) => todo!("error no imports specified"),
+            // This branch should be impossible because an import without
+            // specifiers leads to an AST node that would be rejected above
+            (None, &[]) => unreachable!("no imports specified"),
             (default, _) => Ok(ImportDeclaration {
                 default,
                 named: named.into(),
@@ -484,19 +505,82 @@ fn resolve_module(
     Ok(path)
 }
 
+/// `export const a = 5;`
 impl Transform for oxc::ExportDeclaration<'_> {
     type Output = ExportDeclaration;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        todo!()
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        let declaration = self.declaration.transform_node(context)?;
+        Ok(ExportDeclaration::Declaration(declaration))
     }
 }
 
-impl Transform for oxc::ExportDefaultDeclaration<'_> {
+/// `export default c;`
+impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
+    type Output = ExportDeclaration;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        let expression = match self {
+            // export function() { ... } (ILLEGAL)
+            Self::FunctionDeclaration(_) => {
+                unsupported!(context, self, Unsupported::AnonymousFunction);
+            }
+            Self::ClassDeclaration(_) => {
+                unsupported!(context, self, Unsupported::Class);
+            }
+            Self::TSInterfaceDeclaration(_) => {
+                unsupported!(context, self, Unsupported::TypeScript);
+            }
+            // Everything else is an expression
+            _ => self
+                .as_expression()
+                .expect("Unhandled non-expression branch")
+                .transform_node(context)?,
+        };
+        Ok(ExportDeclaration::DefaultExpression(expression))
+    }
+}
+
+/// `export { c } from 'source';`
+impl Transform for oxc::ExportFromDeclaration<'_> {
     type Output = ExportDeclaration;
 
     fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, TxError> {
-        todo!()
+        Ok(ExportDeclaration::Reexport {})
+    }
+}
+
+impl Transform for oxc::Declaration<'_> {
+    type Output = Declaration;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, TxError> {
+        match self {
+            Self::VariableDeclaration(variable_declaration) => {
+                variable_declaration.transform(context)
+            }
+            Self::FunctionDeclaration(function) => function.transform(context),
+            Self::ClassDeclaration(_) => {
+                unsupported!(context, self, Unsupported::Class)
+            }
+            Self::TSTypeAliasDeclaration(_)
+            | Self::TSInterfaceDeclaration(_)
+            | Self::TSEnumDeclaration(_)
+            | Self::TSExternalModuleDeclaration(_)
+            | Self::TSNamespaceDeclaration(_)
+            | Self::TSGlobalDeclaration(_)
+            | Self::TSImportEqualsDeclaration(_) => {
+                unsupported!(context, self, Unsupported::TypeScript)
+            }
+        }
     }
 }
 
@@ -844,14 +928,14 @@ impl Transform for oxc::BindingProperty<'_> {
 /// `function` declaration
 ///
 /// This maps to the same AST node as an arrow function bound via `const`.
-/// Return `None` for function declarations and overloads:
+/// TODO how to handle TS nodes?
 ///
 /// ```norust
 /// declare function foo(a: number): number;
 /// function bar(a: number): number;
 /// ```
 impl Transform for oxc::Function<'_> {
-    type Output = Option<Declaration>;
+    type Output = Declaration;
 
     fn transform(
         &self,
@@ -874,7 +958,8 @@ impl Transform for oxc::Function<'_> {
 
         // Functions without a body are just type declarations, so ignore them
         let Some(body) = &self.body else {
-            return Ok(None);
+            // TODO filter these out instead somehow
+            unsupported!(context, self, Unsupported::TypeScript);
         };
         let body = body.transform(context)?;
         let parameters = self.params.transform(context)?;
@@ -894,9 +979,9 @@ impl Transform for oxc::Function<'_> {
         }
         .into_node(context, self.span());
 
-        Ok(Some(Declaration {
+        Ok(Declaration {
             variables: Box::new([variable]),
-        }))
+        })
     }
 }
 

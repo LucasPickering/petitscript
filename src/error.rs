@@ -222,6 +222,8 @@ pub enum Unsupported {
     ArrayElision,
     /// `async`/`await`
     Async,
+    /// `import 'source'`
+    BareImport,
     /// `~`, `&`, `|`, etc.
     Bitwise,
     /// `class` and friends
@@ -250,6 +252,8 @@ pub enum Unsupported {
     LooseEquality,
     /// `let`, `var`, `delete`, and reassignment
     Mutation,
+    /// `import * as local from 'source'`
+    NamespaceImport,
     /// Non-UTF-8 string literal
     NonUtf,
     /// `{ f() {}, get g() {}, set g() {}  }`
@@ -285,6 +289,11 @@ impl Display for Unsupported {
                 ("array elision", "Array elements cannot be elided")
             }
             Self::Async => ("`async`", "Async-await is not supported"),
+            Self::BareImport => (
+                "TODO",
+                "Modules have no side-effects, \
+                so there's no use for bare imports",
+            ),
             Self::Bitwise => {
                 ("bitwise", "Bitwise operations are not supported")
             }
@@ -309,6 +318,10 @@ impl Display for Unsupported {
             Self::Mutation => (
                 "`let`/`var`",
                 "Mutable bindings are not supported; use `const` instead",
+            ),
+            Self::NamespaceImport => (
+                "TODO",
+                "List specific imports with `import { ... } from 'source'`",
             ),
             Self::NonUtf => (
                 "non-UTF-8 string literal",

@@ -165,23 +165,27 @@ impl SourceTable {
     }
 }
 
-/// A range of source code, defined as byte offsets. This is the raw mapping
-/// that we pass around within the compiler/interpreter. To get a user-friendly
-/// version of this TODO
+/// A range of source code, defined as byte offsets
+///
+/// This is the raw mapping that we pass around within the compiler/interpreter.
+/// To get a user-friendly version of this, use [SourceTable::qualify].
 ///
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct Span {
-    /// The ID of the [Source] (typically a file) containing the code. This
-    /// is just an ID because we create thousands of spans, so we need this
-    /// to be cheap. Use [SourceTable] to look up the actual source.
+    /// ID of the [Source] (typically a file) containing the code
+    ///
+    /// This is just an ID because we create thousands of spans, so we need
+    /// this to be cheap. Use [SourceTable] to look up the actual source.
     pub source_id: SourceId,
-    /// Byte offset for the beginning of this span (inclusive). Always <=
-    /// end_span.
+    /// Byte offset for the beginning of this span (inclusive)
+    ///
+    /// Always <= end_span.
     pub start_offset: usize,
-    /// Byte offset for the end of this span (inclusive). Always >=
-    /// start_span.
+    /// Byte offset for the end of this span (inclusive)
+    ///
+    /// Always >= start_span.
     pub end_offset: usize,
 }
 

@@ -6,6 +6,7 @@ use crate::{
     source::QualifiedSpan,
     value::{Number, ValueType},
 };
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use oxc_diagnostics::Diagnostics;
 use std::{
     error::Error as StdError,
@@ -17,12 +18,14 @@ use std::{
 use winnow::error::ContextError;
 
 /// Any error that can occur within PetitScript
-#[derive(Debug)]
+#[derive(Debug, Diagnostic)]
 pub enum Error {
     /// Error getting the current directory
     CurrentDir(io::Error),
 
     /// Attempted to register two values of the same type as app data
+    ///
+    /// See [Process::app_data](crate::Process::app_data).
     DuplicateAppData { type_name: &'static str },
 
     /// Attempted to import a module with an unrecognized file extension
@@ -34,22 +37,30 @@ pub enum Error {
     /// Error occurred while loading source code from a file
     Io { error: io::Error, path: PathBuf },
 
-    /// Error occurred while parsing source code. This indicates the source is
-    /// not valid ECMAScript code
+    /// Error occurred while parsing source code
+    ///
+    /// This indicates the source is not valid ECMAScript code
     Parse(ParseError),
 
-    /// An error that occurs while transforming a parsed program from
-    /// ECMAScript to the PetitScript abstract syntax tree. This indicates the
-    /// source is valid JavaScript syntax, but is illegal in PetitScript.
+    /// Error transforming a parsed program from ECMAScript to PetitScript
+    ///
+    /// This indicates the source is valid JavaScript/TypeScript syntax, but is
+    /// illegal in PetitScript. TODO that isn't exactly true - import errors
     Transform {
+        #[diagnostic_source]
         error: TransformError,
         /// The source location of the code that failed to transform
-        span: QualifiedSpan,
+        #[label("here")]
+        span: SourceSpan,
+        /// Source code of the node that failed to transform
+        #[source_code]
+        source_code: NamedSource<String>,
     },
 
-    /// An error that occurs while executing a PetitScript program. All runtime
-    /// errors have an attached source span, indicating the point in the
-    /// program where the error occurred.
+    /// Error while executing a PetitScript program
+    ///
+    /// All runtime errors have an attached source span, indicating the point in
+    /// the program where the error occurred.
     Runtime {
         error: RuntimeError,
         /// A trace showing every function call leading up to the error
@@ -57,6 +68,8 @@ pub enum Error {
     },
 
     /// Requested app data of a type that has not been set
+    ///
+    /// See [Process::app_data](crate::Process::app_data).
     UnknownAppData { type_name: &'static str },
 }
 
@@ -77,16 +90,14 @@ impl Display for Error {
                 Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
                 path = path.display()
             ),
-            Self::Io { error, path } => {
-                write!(
-                    f,
-                    "Error loading {path}: {error}",
-                    path = path.display()
-                )
+            Self::Io { path, .. } => {
+                write!(f, "Error loading {path}", path = path.display())
             }
+            // TODO "transform" isn't very user friendly - combine
+            // parse+transform errors
             Self::Parse(error) => write!(f, "{error}"),
-            Self::Transform { error, span } => {
-                write!(f, "Error transforming AST at {span}: {error}")
+            Self::Transform { .. } => {
+                write!(f, "Error transforming AST!!!")
             }
             Self::Runtime { error, trace } => {
                 write!(f, "{trace}{error}")
@@ -106,12 +117,10 @@ impl StdError for Error {
             Self::Io { error, .. } => Some(error),
             Self::InvalidExtension { .. } => None,
             Self::UnknownAppData { .. } => None,
-            // For internal error types, there's no reason to add an additional
-            // layer of source, so defer to the child
-            Self::InvalidModuleName(error) => error.source(),
-            Self::Parse(error) => error.source(),
-            Self::Transform { error, .. } => error.source(),
-            Self::Runtime { error, .. } => error.source(),
+            Self::InvalidModuleName(error) => Some(error),
+            Self::Parse(error) => Some(error),
+            Self::Transform { error, .. } => Some(error),
+            Self::Runtime { error, .. } => Some(error),
         }
     }
 }
@@ -166,10 +175,16 @@ impl StdError for ParseError {}
 ///
 /// This indicates the source is valid ECMAScript syntax, but is illegal in
 /// PetitScript.
-#[derive(Debug)]
+#[derive(Debug, Diagnostic)]
 pub enum TransformError {
     /// A nested error that occurred while parsing an imported local module
-    Import(Box<Error>),
+    Import {
+        /// Name/path of the module being imported
+        module: String,
+        /// Upstream error
+        #[diagnostic_source]
+        source: Box<dyn Diagnostic + Send + Sync>,
+    },
 
     /// AST node type wasn't handled
     ///
@@ -191,7 +206,11 @@ pub enum TransformError {
 impl Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Import(error) => write!(f, "{error}"),
+            // Don't log the cause here; printing the chain would then double
+            // print it
+            Self::Import { module, .. } => {
+                write!(f, "Importing '{module}'")
+            }
             Self::Unhandled { node } => {
                 write!(f, "[INTERNAL ERROR] Unhandled AST node type: {node}")
             }
@@ -205,7 +224,7 @@ impl Display for TransformError {
 impl StdError for TransformError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            Self::Import(error) => Some(error),
+            Self::Import { source, .. } => Some(source),
             Self::Unhandled { .. } => None,
             Self::Unsupported { .. } => None,
         }

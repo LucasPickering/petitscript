@@ -8,6 +8,7 @@ mod state;
 pub use scope::{GlobalEnvironment, Prototype};
 
 use crate::{
+    Error, Source,
     compile::Program,
     error::RuntimeError,
     execute::{
@@ -15,13 +16,12 @@ use crate::{
         state::{CallSite, ThreadState},
     },
     name::NativeModuleName,
-    value::{function::Function, FromPetitArgs, IntoPetitResult, Value},
-    Error, Source,
+    value::{FromPetitArgs, IntoPetitResult, Value, function::Function},
 };
 use indexmap::IndexMap;
 use std::{
     any::{self, Any, TypeId},
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt::{self, Display},
     sync::Arc,
 };
@@ -73,9 +73,9 @@ impl Process {
 
     /// Get user-defined app data attached to the process
     ///
-    /// App data is requested by type, meaning **there can only be one piece of
-    /// app data per type**. Return an error if there is no app data of the
-    /// requested type. See [set_app_data](Self::set_app_data).
+    /// App data is stored and fetched by type, meaning **there can only be one
+    /// piece of app data per type**. Return [Error::UnknownAppData] if there is
+    /// no app data of type `T`. See [set_app_data](Self::set_app_data).
     pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
         self.app_data.get()
     }
@@ -89,7 +89,8 @@ impl Process {
     ///
     /// ## Errors
     ///
-    /// Return an error if there is already app data of this type registered.
+    /// Return [Error::DuplicateAppData] if there is already app data of type
+    /// `T` registered.
     pub fn set_app_data<T: Any + Send + Sync>(
         &mut self,
         data: T,

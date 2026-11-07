@@ -6,7 +6,7 @@
 //! up front.
 
 use crate::{
-    Source,
+    NativeModuleName, Source,
     ast::{
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
         Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
@@ -21,11 +21,17 @@ use crate::{
     error::{Error, ParseError, TransformError, Unsupported},
     source::{self, SourceId, SourceTable, Span, SpanTable},
 };
+use miette::NamedSource;
+use normalize_path::NormalizePath;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{self as oxc};
 use oxc_parser::{Parser, ParserReturn};
 use oxc_span::{GetSpan, SourceType};
-use std::{ffi::OsStr, ops::Deref, path::PathBuf};
+use std::{
+    ffi::OsStr,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
@@ -93,9 +99,24 @@ fn parse_module(mut context: ParseContext) -> Result<Node<Module>, Error> {
 
     // Transform to a PS AST
     let module = program.transform_node(&mut context).map_err(|error| {
+        // Get the full code for the offending source
+        let source = context.sources.get(error.span.source_id);
+        let source_code = NamedSource::new(
+            source
+                .path()
+                .map(|path| path.normalize().display().to_string())
+                .unwrap_or("???".to_string()),
+            source.text().expect("TODO").into_owned(),
+        );
+        // Map from our Span to miette's SourceSpan
+        let span = miette::SourceSpan::new(
+            error.span.start_offset.into(),
+            error.span.end_offset - error.span.start_offset,
+        );
         Error::Transform {
             error: error.error,
-            span: context.sources.qualify(error.span),
+            span,
+            source_code,
         }
     })?;
     Ok(module)
@@ -159,9 +180,9 @@ impl ParseContext<'_> {
 /// The name is pretty arbitrary, I wanted something short since it's used a lot
 /// and only internally.
 struct TxError {
+    error: TransformError,
     /// Source location of the node that failed to transform
     span: Span,
-    error: TransformError,
 }
 
 impl TxError {
@@ -170,9 +191,11 @@ impl TxError {
     where
         T: GetSpan,
     {
+        // TODO create the miette error parts here
+        let span = node.span();
         Self {
-            span: context.transform_span(node.span()),
             error,
+            span: context.transform_span(span),
         }
     }
 }
@@ -431,15 +454,18 @@ impl Transform for oxc::ImportDeclaration<'_> {
 
         let source_text = self.source.value.as_str().expect("TODO").to_string();
 
-        // If it's a valid native module name, treat it as such. Otherwise treat
-        // it as a path. A path is always going to have a character like . or /
-        // that will make it an invalid module name
-        let module = match source_text.try_into() {
+        let module = match NativeModuleName::try_from(source_text) {
+            // If it's a valid native module name, treat it as such. Otherwise
+            // treat it as a path. A path is always going to have a character
+            // like . or / that will make it an invalid module name
             Ok(name) => ImportModule::Native(name),
             Err(error) => {
+                // We're importing a file path
+                let module_name = error.name;
                 let module =
-                    resolve_module(error.name, context.current_source())
+                    resolve_module(&module_name, context.current_source())
                         .and_then(|path| {
+                            // Load the module
                             let source_id = context.sources.insert(path);
                             parse_module(ParseContext {
                                 sources: context.sources,
@@ -451,8 +477,13 @@ impl Transform for oxc::ImportDeclaration<'_> {
                         .map_err(|error| {
                             TxError::new(
                                 context,
-                                self,
-                                TransformError::Import(error.into()),
+                                // Attribute the error to just the source, not
+                                // the full import statement
+                                &self.source,
+                                TransformError::Import {
+                                    module: module_name,
+                                    source: error.into(),
+                                },
                             )
                         })?;
                 ImportModule::Local(module)
@@ -510,10 +541,10 @@ impl Transform for oxc::ImportSpecifier<'_> {
 ///
 /// Error if the file
 fn resolve_module(
-    specifier: String,
+    specifier: &str,
     parent_source: &dyn Source,
 ) -> Result<PathBuf, Error> {
-    let path: PathBuf = specifier.into();
+    let path = Path::new(specifier);
 
     if path.is_absolute() {
         todo!("error");

@@ -13,6 +13,7 @@ version = {workspace = true}
 [dependencies]
 bytes = {version = "1.0.0", default-features = false, optional = true}
 indexmap = {version = "2.7.0"}
+miette = "7.6.0"
 normalize-path = "0.2.1"
 oxc_allocator = "0.156.0"
 oxc_ast = "0.156.0"

@@ -12,16 +12,30 @@ use std::{
 
 /// Source code provider
 ///
-/// Examples of a `Source` are a string literal containing code or a path to a
-/// source file.
-pub trait Source: 'static + Debug + Send + Sync {
+/// TODO
+#[derive(Clone, Debug)]
+pub enum Source {
+    /// Load source code from a string literal
+    Static(&'static str),
+    /// Load source code from an owned string
+    String(String),
+    /// Load source code from a file
+    File(PathBuf),
+}
+
+impl Source {
     /// Descriptive name for this source
     ///
     /// The name is used in user-facing output (such as errors), so it should
     /// be readable rather than specific.
-    fn name(&self) -> Cow<'_, str>;
+    pub fn name(&self) -> Cow<'_, str> {
+        match self {
+            Self::Static(_) | Self::String(_) => "<source>".into(),
+            Self::File(path) => path.normalize().display().to_string().into(),
+        }
+    }
 
-    /// For file-based sources, the path to the source
+    /// Get the path to to the source
     ///
     /// Return `None` if the source isn't a file.
     ///
@@ -31,72 +45,63 @@ pub trait Source: 'static + Debug + Send + Sync {
     /// will be performed relative to this path. Sources that don't have a
     /// path cannot import local modules. Doing so will result in a
     /// [ParseError::ImportNotAllowed](crate::error::ParseError::ImportNotAllowed).
-    fn path(&self) -> Option<&Path>;
+    pub fn path(&self) -> Option<&Path> {
+        match self {
+            Self::Static(_) | Self::String(_) => None,
+            Self::File(path) => Some(path),
+        }
+    }
 
     /// Load source code from this source
-    fn text(&self) -> Result<Cow<'_, str>, SourceError>;
-}
-
-/// Load source code from a string literal
-impl Source for &'static str {
-    fn name(&self) -> Cow<'_, str> {
-        "<source>".into()
-    }
-
-    fn path(&self) -> Option<&Path> {
-        None
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
-        Ok(Cow::Borrowed(self))
+    pub fn text(&self) -> Result<Cow<'_, str>, SourceError> {
+        match self {
+            Self::Static(s) => Ok((*s).into()),
+            Self::String(s) => Ok(s.as_str().into()),
+            Self::File(path) => Ok(fs::read_to_string(path)
+                .map_err(|error| SourceError {
+                    path: path.clone(),
+                    error,
+                })?
+                .into()),
+        }
     }
 }
 
-/// Load source code directly from a string
-impl Source for String {
-    fn name(&self) -> Cow<'_, str> {
-        "<source>".into()
-    }
-
-    fn path(&self) -> Option<&Path> {
-        None
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
-        Ok(self.as_str().into())
+/// Convert a string literal to [Source::Static]
+impl From<&'static str> for Source {
+    fn from(value: &'static str) -> Self {
+        Self::Static(value)
     }
 }
 
-/// Load source code from a file
-impl Source for PathBuf {
-    fn name(&self) -> Cow<'_, str> {
-        self.normalize().display().to_string().into()
+/// Convert a [String] to [Source::String]
+impl From<String> for Source {
+    fn from(value: String) -> Self {
+        Self::String(value)
     }
+}
 
-    fn path(&self) -> Option<&Path> {
-        Some(self)
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
-        Ok(fs::read_to_string(self)
-            .map_err(|error| SourceError {
-                path: self.clone(),
-                error,
-            })?
-            .into())
+/// Convert a [PathBuf] to [Source::File]
+impl From<PathBuf> for Source {
+    fn from(value: PathBuf) -> Self {
+        Self::File(value)
     }
 }
 
 /// TODO
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct SourceId(u32);
 
 /// TODO
 #[derive(Debug, Default)]
-pub(crate) struct SourceTable(Vec<Box<dyn Source>>);
+pub(crate) struct SourceTable(HashMap<SourceId, Source>);
 
 impl SourceTable {
-    /// Get the ID of the first source in the table. Panic if the table is empty
+    /// Get the ID of the first source in the table
+    ///
+    /// ## Panics
+    ///
+    /// Panic if the table is empty.
     pub fn root_id(&self) -> SourceId {
         assert!(
             !self.0.is_empty(),
@@ -106,22 +111,27 @@ impl SourceTable {
     }
 
     /// Get a source by its unique ID
-    pub fn get(&self, id: SourceId) -> &dyn Source {
-        &**self.0.get(id.0 as usize).expect("TODO")
+    ///
+    /// ## Panics
+    ///
+    /// Panic if the ID isn't in the table. Any ID returned by
+    /// [SourceTable::insert] will be valid for that table.
+    pub fn get(&self, id: SourceId) -> &Source {
+        self.0.get(&id).expect("TODO")
     }
 
     /// Add a new source to the table, returning its new unique ID
-    pub fn insert(&mut self, source: impl Source) -> SourceId {
+    pub fn insert(&mut self, source: impl Into<Source>) -> SourceId {
         // The ID is the index that the pushed element will get
         let index = self.0.len();
         let id = SourceId(index as u32);
-        self.0.push(Box::new(source));
+        self.0.insert(id, source.into());
         id
     }
 
     /// Get an iterator over the sources
-    pub fn iter(&self) -> impl Iterator<Item = &dyn Source> {
-        self.0.iter().map(|s| &**s)
+    pub fn iter(&self) -> impl Iterator<Item = &Source> {
+        self.0.values()
     }
 
     /// Map a span from cheap IDs and byte offsets to user-friendly source names

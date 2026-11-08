@@ -67,7 +67,7 @@ impl Process {
     /// The first will be the root source passed to the compiler, and subsequent
     /// items will be other imported modules. This will exclude native modules,
     /// as they have no source code.
-    pub fn sources(&self) -> impl Iterator<Item = &dyn Source> {
+    pub fn sources(&self) -> impl Iterator<Item = &Source> {
         self.program.sources().iter()
     }
 

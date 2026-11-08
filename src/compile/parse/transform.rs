@@ -36,7 +36,6 @@ use std::{
 pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
-    // TODO return ParseError directly
 ) -> Result<Node<Module>, ParseError> {
     program.transform_node(context).map_err(|error| {
         // Get the full code for the offending source
@@ -404,7 +403,7 @@ impl Transform for oxc::ImportSpecifier<'_> {
 /// source) or the imported path is not an allowed extension.
 fn resolve_module(
     specifier: &str,
-    parent_source: &dyn Source,
+    parent_source: &Source,
 ) -> Result<PathBuf, ParseErrorKind> {
     let path = Path::new(specifier);
 

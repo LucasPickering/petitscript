@@ -13,12 +13,12 @@ use crate::{
 };
 
 /// Parse some source code into an AST
-pub fn parse(source: impl Source) -> Result<Node<Module>, Error> {
+pub fn parse(source: impl Into<Source>) -> Result<Node<Module>, Error> {
     Ok(Compiler::new(source).parse()?.program.module)
 }
 
 /// Parse and compile source code into an executable [Program]
-pub fn compile(source: impl Source) -> Result<Program, Error> {
+pub fn compile(source: impl Into<Source>) -> Result<Program, Error> {
     let program = Compiler::new(source).parse()?.label().capture().end();
     Ok(program)
 }
@@ -95,7 +95,7 @@ struct CapturedAst {
 }
 
 impl Compiler<()> {
-    fn new(source: impl Source) -> Self {
+    fn new(source: impl Into<Source>) -> Self {
         let mut sources = SourceTable::default();
         sources.insert(source);
         Self {

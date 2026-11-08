@@ -101,12 +101,15 @@ impl Engine {
     /// Parse some source code and return the parsed AST. The returned AST is
     /// not fully compiled and therefore can't be executed. Call
     /// [Engine::compile_ast] to complete compilation.
-    pub fn parse(&self, source: impl Source) -> Result<Node<Module>, Error> {
+    pub fn parse(
+        &self,
+        source: impl Into<Source>,
+    ) -> Result<Node<Module>, Error> {
         compile::parse(source)
     }
 
     /// Parse and compile some source code into an executable [Process]
-    pub fn compile(&self, source: impl Source) -> Result<Process, Error> {
+    pub fn compile(&self, source: impl Into<Source>) -> Result<Process, Error> {
         let program = compile::compile(source)?;
         Ok(self.spawn(program))
     }

@@ -108,7 +108,7 @@ struct ParseContext<'a> {
 
 impl ParseContext<'_> {
     /// Current source being parsed
-    fn current_source(&self) -> &dyn Source {
+    fn current_source(&self) -> &Source {
         self.sources.get(self.current_source_id)
     }
 

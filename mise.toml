@@ -1,0 +1,9 @@
+[settings]
+idiomatic_version_file_enable_tools = ["rust"] # use rust-toolchain.toml
+
+[tasks.cli]
+description = "Run a PetitScript file"
+run = "cargo run -p petitscript_cli -- $usage_file"
+usage = '''
+arg "<file>" help="File to execute"
+'''

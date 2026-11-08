@@ -1,0 +1,25 @@
+[package]
+authors = {workspace = true}
+description = "TODO"
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
+name = "petitscript_cli"
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
+
+[[bin]]
+name = "petitscript"
+path = "src/main.rs"
+
+[dependencies]
+petitscript = {path = "..", features = ["serde"]}
+serde_json = {workspace = true}
+
+[lints]
+workspace = true
+
+[package.metadata.release]
+tag = false

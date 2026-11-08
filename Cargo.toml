@@ -1,21 +1,14 @@
 [package]
-authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
+authors = {workspace = true}
 description = "Minimal embeddable JavaScript subset"
-edition = "2024"
-license = "MIT"
+edition = {workspace = true}
+homepage = {workspace = true}
+keywords = {workspace = true}
+license = {workspace = true}
 name = "petitscript"
-repository = "https://github.com/LucasPickering/petitscript"
-version = "0.1.0"
-# Keep in sync w/ rust-toolchain.toml
-homepage = "https://petitscript.org"
-keywords = ["TODO"]
-rust-version = "1.99"
-
-# TODO separate CLI crate
-[[bin]]
-name = "petitscript"
-path = "src/main.rs"
-required-features = ["cli"]
+repository = {workspace = true}
+rust-version = {workspace = true}
+version = {workspace = true}
 
 [dependencies]
 bytes = {version = "1.0.0", default-features = false, optional = true}
@@ -27,18 +20,67 @@ oxc_diagnostics = "0.156.0"
 oxc_parser = "0.156.0"
 oxc_span = "0.156.0"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
-serde_json = {version = "1.0.140", optional = true}
 winnow = "0.7.4"
 
 [dev-dependencies]
+serde_json = {workspace = true}
 static_assertions = "1.1.0"
 test-case = "3.3.1"
 
 [features]
 buffer = ["dep:bytes"]
-cli = ["dep:serde_json", "serde"]
 default = []
 serde = ["dep:serde", "indexmap/serde"]
+
+[lints]
+workspace = true
+
+[workspace]
+members = [".", "./cli/"]
+
+[workspace.package]
+authors = ["Lucas Pickering <lucas@lucaspickering.me>"]
+edition = "2024"
+homepage = "https://petitscript.org"
+keywords = ["TODO"]
+license = "MIT"
+repository = "https://github.com/LucasPickering/petitscript"
+rust-version = "1.99" # Keep in sync w/ rust-toolchain.toml
+version = "0.1.0"
+
+[workspace.dependencies]
+serde_json = {version = "1.0.140"}
+
+[workspace.lints.rust]
+async_fn_in_trait = "allow"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = {level = "deny", priority = -1}
+pedantic = {level = "warn", priority = -1}
+
+allow_attributes = "deny"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+dbg_macro = "warn"
+default_trait_access = "allow"
+doc_markdown = "allow"
+explicit_deref_methods = "allow"
+large_enum_variant = "allow"
+map_unwrap_or = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_inception = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+similar_names = "allow"
+single_match = "allow"
+too_many_lines = "allow"
+unused_self = "allow"
+used_underscore_binding = "allow"
 
 [workspace.metadata.release]
 pre-release-replacements = [

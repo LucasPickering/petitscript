@@ -1,11 +1,10 @@
 //! Utilities for interacting with source code
 
-use crate::{Error, ast::NodeId};
+use crate::{ast::NodeId, error::SourceError};
 use normalize_path::NormalizePath;
 use std::{
     borrow::Cow,
     collections::HashMap,
-    env,
     fmt::{self, Debug, Display},
     fs,
     path::{Path, PathBuf},
@@ -16,64 +15,71 @@ use std::{
 /// Examples of a `Source` are a string literal containing code or a path to a
 /// source file.
 pub trait Source: 'static + Debug + Send + Sync {
-    /// For file-based sources, the path to the source. Return `None` if the
-    /// source isn't a file
+    /// Descriptive name for this source
+    ///
+    /// The name is used in user-facing output (such as errors), so it should
+    /// be readable rather than specific.
+    fn name(&self) -> Cow<'_, str>;
+
+    /// For file-based sources, the path to the source
+    ///
+    /// Return `None` if the source isn't a file.
+    ///
+    /// ## Relative (Local) Imports
+    ///
+    /// Imported local modules (`import ... from './other.js'`) from this source
+    /// will be performed relative to this path. Sources that don't have a
+    /// path cannot import local modules. Doing so will result in a
+    /// [ParseError::ImportNotAllowed](crate::error::ParseError::ImportNotAllowed).
     fn path(&self) -> Option<&Path>;
 
-    /// Root path for local module imports. Import paths will be relative to
-    /// this path. For file-less source strings, return `None` and the current
-    /// working directory will be used.
-    fn import_root(&self) -> Result<PathBuf, Error>;
-
     /// Load source code from this source
-    fn text(&self) -> Result<Cow<'_, str>, Error>;
+    fn text(&self) -> Result<Cow<'_, str>, SourceError>;
 }
 
 /// Load source code from a string literal
 impl Source for &'static str {
+    fn name(&self) -> Cow<'_, str> {
+        "<source>".into()
+    }
+
     fn path(&self) -> Option<&Path> {
         None
     }
 
-    fn import_root(&self) -> Result<PathBuf, Error> {
-        // We don't have a path here, so use the current dir
-        env::current_dir().map_err(Error::CurrentDir)
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, Error> {
+    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
         Ok(Cow::Borrowed(self))
     }
 }
 
 /// Load source code directly from a string
 impl Source for String {
+    fn name(&self) -> Cow<'_, str> {
+        "<source>".into()
+    }
+
     fn path(&self) -> Option<&Path> {
         None
     }
 
-    fn import_root(&self) -> Result<PathBuf, Error> {
-        // We don't have a path here, so use the current dir
-        env::current_dir().map_err(Error::CurrentDir)
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, Error> {
+    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
         Ok(self.as_str().into())
     }
 }
 
 /// Load source code from a file
 impl Source for PathBuf {
+    fn name(&self) -> Cow<'_, str> {
+        self.normalize().display().to_string().into()
+    }
+
     fn path(&self) -> Option<&Path> {
         Some(self)
     }
 
-    fn import_root(&self) -> Result<PathBuf, Error> {
-        self.parent().map(PathBuf::from).ok_or_else(|| todo!())
-    }
-
-    fn text(&self) -> Result<Cow<'_, str>, Error> {
+    fn text(&self) -> Result<Cow<'_, str>, SourceError> {
         Ok(fs::read_to_string(self)
-            .map_err(|error| Error::Io {
+            .map_err(|error| SourceError {
                 path: self.clone(),
                 error,
             })?
@@ -153,10 +159,7 @@ impl SourceTable {
         }
 
         QualifiedSpan::Source {
-            source_name: source
-                .path()
-                .and_then(display_source_path)
-                .unwrap_or_else(|| "???".into()),
+            source_name: source.name().into_owned(),
             start_line,
             start_column,
             end_line,
@@ -246,24 +249,4 @@ impl SpanTable {
             "AST node {id:?} already has an entry in the span table"
         );
     }
-}
-
-/// Format a source path for display. This gives consistent behavior regardless
-/// of the current directory.
-///
-/// This will absolute-ify the path and normalize it, but will _not_
-/// canonicalize. Resolving links may lead to surprising behavior for the user.
-/// We use absolute paths because PS doesn't use any singular project root.
-///
-/// If an error occurs loading the current directory, the input path will be
-/// displayed as-is. If the path fails to encode to UTF-8, return `None`
-pub fn display_source_path(path: &Path) -> Option<String> {
-    env::current_dir()
-        .map(|cwd| cwd.join(path).normalize())
-        // If we can't get the cwd, just use the relative path
-        .unwrap_or_else(|_| path.to_owned())
-        .into_os_string()
-        .into_string()
-        // If encoding to UTF-8 fails, return None
-        .ok()
 }

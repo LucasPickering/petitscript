@@ -21,6 +21,7 @@ oxc_diagnostics = "0.156.0"
 oxc_parser = "0.156.0"
 oxc_span = "0.156.0"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
+thiserror = "2.0.21"
 winnow = "0.7.4"
 
 [dev-dependencies]

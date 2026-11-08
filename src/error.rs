@@ -18,50 +18,37 @@ use std::{
 use winnow::error::ContextError;
 
 /// Any error that can occur within PetitScript
-#[derive(Debug, Diagnostic)]
+///
+/// TODO explain sub-errors: ParseError and RuntimeError are returned when we
+/// can be more specific.
+/// - [ParseError] TODO
+/// - [RuntimeError] TODO
+#[derive(Debug, Diagnostic, thiserror::Error)]
 pub enum Error {
-    /// Error getting the current directory
-    CurrentDir(io::Error),
-
     /// Attempted to register two values of the same type as app data
     ///
     /// See [Process::app_data](crate::Process::app_data).
+    #[error("Multiple app data values of type `{type_name}` were registered")]
     DuplicateAppData { type_name: &'static str },
 
-    /// Attempted to import a module with an unrecognized file extension
-    InvalidExtension { path: PathBuf },
-
-    /// Attempted to register a native module with an invalid name
-    InvalidModuleName(ModuleNameError),
-
-    /// Error occurred while loading source code from a file
-    Io { error: io::Error, path: PathBuf },
-
-    /// Error occurred while parsing source code
+    /// Error while parsing source code
     ///
-    /// This indicates the source is not valid ECMAScript code
-    Parse(ParseError),
-
-    /// Error transforming a parsed program from ECMAScript to PetitScript
-    ///
-    /// This indicates the source is valid JavaScript/TypeScript syntax, but is
-    /// illegal in PetitScript. TODO that isn't exactly true - import errors
-    Transform {
+    /// See [ParseError].
+    #[error(transparent)]
+    Parse(
         #[diagnostic_source]
-        error: TransformError,
-        /// The source location of the code that failed to transform
-        #[label("here")]
-        span: SourceSpan,
-        /// Source code of the node that failed to transform
-        #[source_code]
-        source_code: NamedSource<String>,
-    },
+        #[from]
+        ParseError,
+    ),
 
     /// Error while executing a PetitScript program
     ///
     /// All runtime errors have an attached source span, indicating the point in
     /// the program where the error occurred.
+    #[error("{trace}{error}")]
     Runtime {
+        /// TODO
+        #[source]
         error: RuntimeError,
         /// A trace showing every function call leading up to the error
         trace: StackTrace,
@@ -70,71 +57,8 @@ pub enum Error {
     /// Requested app data of a type that has not been set
     ///
     /// See [Process::app_data](crate::Process::app_data).
+    #[error("No app data of type `{type_name}` is registered")]
     UnknownAppData { type_name: &'static str },
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::CurrentDir(_) => {
-                write!(f, "Error getting current directory")
-            }
-            Self::DuplicateAppData { type_name } => write!(
-                f,
-                "Multiple app data values of type `{type_name}` were registered"
-            ),
-            Self::InvalidModuleName(error) => write!(f, "{error}"),
-            Self::InvalidExtension { path } => write!(
-                f,
-                "Unsupported extension for imported module at path {path}. \
-                Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
-                path = path.display()
-            ),
-            Self::Io { path, .. } => {
-                write!(f, "Error loading {path}", path = path.display())
-            }
-            // TODO "transform" isn't very user friendly - combine
-            // parse+transform errors
-            Self::Parse(error) => write!(f, "{error}"),
-            Self::Transform { .. } => {
-                write!(f, "Error transforming AST!!!")
-            }
-            Self::Runtime { error, trace } => {
-                write!(f, "{trace}{error}")
-            }
-            Self::UnknownAppData { type_name } => {
-                write!(f, "No app data of type `{type_name}` is registered")
-            }
-        }
-    }
-}
-
-impl StdError for Error {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::CurrentDir(error) => Some(error),
-            Self::DuplicateAppData { .. } => None,
-            Self::Io { error, .. } => Some(error),
-            Self::InvalidExtension { .. } => None,
-            Self::UnknownAppData { .. } => None,
-            Self::InvalidModuleName(error) => Some(error),
-            Self::Parse(error) => Some(error),
-            Self::Transform { error, .. } => Some(error),
-            Self::Runtime { error, .. } => Some(error),
-        }
-    }
-}
-
-impl From<ModuleNameError> for Error {
-    fn from(error: ModuleNameError) -> Self {
-        Self::InvalidModuleName(error)
-    }
-}
-
-impl From<ParseError> for Error {
-    fn from(error: ParseError) -> Self {
-        Self::Parse(error)
-    }
 }
 
 impl From<TracedError> for Error {
@@ -149,48 +73,95 @@ impl From<TracedError> for Error {
 #[cfg(test)]
 static_assertions::assert_impl_all!(Error: Send, Sync);
 
-/// Error occurred while parsing source code. This indicates the source is not
-/// valid ECMAScript code
-#[derive(Debug)]
-pub struct ParseError {
-    pub source_name: Option<String>,
-    pub errors: Diagnostics,
-}
-
-impl Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = self.source_name.as_deref().unwrap_or("source code");
-        writeln!(f, "Error parsing {name}:")?;
-        for error in &self.errors {
-            writeln!(f, "  {error:?}")?;
-        }
-        Ok(())
-    }
-}
-
-impl StdError for ParseError {}
-
-/// An error that occurs while transforming a parsed program from ECMAScript to
-/// PetitScript
+/// Error occurred while parsing source code or transforming it to PetitScript
 ///
-/// This indicates the source is valid ECMAScript syntax, but is illegal in
-/// PetitScript.
-#[derive(Debug, Diagnostic)]
-pub enum TransformError {
-    /// A nested error that occurred while parsing an imported local module
+/// PetitScript uses a two-part parser:
+/// - First, source code is parsed to an ECMAScript (JavaScript) abstract syntax
+///   tree via [oxc_parser]
+/// - Then, the ES AST is transformed to a PetitScript AST
+///
+/// The first step will fail if the source code is not valid syntax. The second
+/// will fail if the code is not valid PetitScript. As PS is a small subset of
+/// JS, there are many syntactic constructs in JS that are not valid PS.
+#[derive(Debug, Diagnostic, thiserror::Error)]
+#[error("{error}")]
+pub struct ParseError {
+    /// What bad thing happen
+    #[diagnostic_source]
+    #[source]
+    pub error: ParseErrorKind,
+    /// Source code of the node that failed to transform
+    #[source_code]
+    pub source_code: NamedSource<String>,
+    /// The source location of the code that failed to transform
+    #[label("here")]
+    pub span: SourceSpan,
+}
+
+/// The categories of errors that can occuring during parsing
+///
+/// This is contained by [ParseError], which carries the error info as well as
+/// source context.
+#[derive(Debug, Diagnostic, thiserror::Error)]
+pub enum ParseErrorKind {
+    /// A nested error while parsing an imported local module
+    #[error("Importing '{module}'")]
     Import {
         /// Name/path of the module being imported
         module: String,
         /// Upstream error
+        ///
+        /// TODO use a static error here, instead of boxing
         #[diagnostic_source]
-        source: Box<dyn Diagnostic + Send + Sync>,
+        #[source]
+        error: Box<dyn Diagnostic + Send + Sync>,
     },
+
+    /// Attempted to import a module with an unrecognized file extension
+    #[error(
+        "Unsupported extension for imported module at path {path}. \
+        Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
+        path = path.display()
+    )]
+    InvalidExtension { path: PathBuf },
+
+    /// Attempted a local module import from a non-file source
+    ///
+    /// Non-file sources (i.e. sources defined in-memory) cannot import other
+    /// files, as they do not exist on disk. A local import (e.g. `import ...
+    /// from './other.js'`) will result in this error.
+    #[error("Cannot import local module '{module}' from non-file source")]
+    InvalidLocalImport {
+        /// Name of the module being imported
+        module: String,
+    },
+
+    /// Attempted to register a native module with an invalid name
+    #[error(transparent)]
+    InvalidModuleName(#[from] ModuleNameError),
+
+    /// [oxc_parser] failed to parse the source
+    ///
+    /// This means the syntax isn't valid JavaScript, and therefore can't be
+    /// valid PetitScript.
+    #[error("TODO")]
+    Parse {
+        source_name: Option<String>,
+        errors: Diagnostics,
+    },
+
+    /// I/O error while loading source code from a file
+    ///
+    /// See [SourceError].
+    #[error(transparent)]
+    Source(#[from] SourceError),
 
     /// AST node type wasn't handled
     ///
     /// This occurs when a node is downcast (using oxc's AST inheritance
     /// framework) but the downcast fails. It indicates a possible branch wasn't
     /// handled. **This is an internal error**.
+    #[error("[INTERNAL ERROR] Unhandled AST node type: {node}")]
     Unhandled {
         /// Debug representation of the unhandled node
         node: String,
@@ -200,35 +171,19 @@ pub enum TransformError {
     /// semantics
     ///
     /// See [Unsupported].
+    #[error("{0}")]
     Unsupported(Unsupported),
 }
 
-impl Display for TransformError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            // Don't log the cause here; printing the chain would then double
-            // print it
-            Self::Import { module, .. } => {
-                write!(f, "Importing '{module}'")
-            }
-            Self::Unhandled { node } => {
-                write!(f, "[INTERNAL ERROR] Unhandled AST node type: {node}")
-            }
-            Self::Unsupported(unsupported) => {
-                write!(f, "{unsupported}")
-            }
-        }
-    }
-}
-
-impl StdError for TransformError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::Import { source, .. } => Some(source),
-            Self::Unhandled { .. } => None,
-            Self::Unsupported { .. } => None,
-        }
-    }
+/// Error while loading source code from a file
+#[derive(Debug, thiserror::Error)]
+#[error("Error reading source code from {}", self.path.display())]
+pub struct SourceError {
+    /// Path to the file being loaded
+    pub path: PathBuf,
+    /// Error that occurred
+    #[source]
+    pub error: io::Error,
 }
 
 /// Description of an unsupported feature

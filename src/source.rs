@@ -1,6 +1,6 @@
 //! Utilities for interacting with source code
 
-use crate::{ast::NodeId, Error};
+use crate::{Error, ast::NodeId};
 use normalize_path::NormalizePath;
 use std::{
     borrow::Cow,
@@ -213,7 +213,7 @@ impl Display for QualifiedSpan {
                 start_column,
                 ..
             } => {
-                write!(f, "{}:{}:{}", source_name, start_line, start_column)
+                write!(f, "{source_name}:{start_line}:{start_column}")
             }
             QualifiedSpan::Native => write!(f, "<native code>"),
         }
@@ -231,13 +231,16 @@ impl SpanTable {
         self.0.get(&id).copied()
     }
 
-    /// Insert a span into the table. Panic if the AST node already has an
-    /// entry, because that indicates an ID has been repeated by the parser
-    /// which is a bug
+    /// Insert a span into the table
+    ///
+    /// Panic if the AST node already has an entry. That indicates an ID has
+    /// been repeated by the parser which is a bug.
     pub fn insert(&mut self, id: NodeId, span: Span) {
-        if self.0.insert(id, span).is_some() {
-            panic!("AST node {id:?} already has an entry in the span table");
-        }
+        let inserted = self.0.insert(id, span);
+        assert!(
+            inserted.is_none(),
+            "AST node {id:?} already has an entry in the span table"
+        );
     }
 }
 

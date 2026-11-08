@@ -2,12 +2,12 @@
 //! module, not exposed to users.
 
 use crate::{
+    Process, RuntimeError,
     ast::{Binding, Identifier},
     value::{
-        function::{BoundFunction, Captures},
         FromPetitArgs, Function, IntoPetitResult, Value, ValueType,
+        function::{BoundFunction, Captures},
     },
-    Process, RuntimeError,
 };
 use indexmap::IndexMap;
 use std::{iter, sync::Arc};
@@ -54,9 +54,8 @@ impl Scope {
     /// scope. This should never be called on the global scope; that indicates
     /// we're popping more than we're pushing
     pub fn pop_subscope(&mut self) {
-        if self.stack.pop().is_none() {
-            panic!("Cannot pop the global scope");
-        }
+        let popped = self.stack.pop();
+        assert!(popped.is_some(), "Cannot pop the global scope");
     }
 
     /// Declare a single name in scope, and bind it to a variable
@@ -197,16 +196,19 @@ impl GlobalEnvironment {
         );
     }
 
-    /// Set the entire prototype for a single type. If the type already has a
-    /// prototype defined, panic as that's a bug
+    /// Set the entire prototype for a single type
+    ///
+    /// If the type already has a prototype defined, panic as that's a bug.
     pub fn declare_prototype(
         &mut self,
         value_type: ValueType,
         prototype: Prototype,
     ) {
-        if self.prototypes.insert(value_type, prototype).is_some() {
-            panic!("Prototype already defined for type {value_type}");
-        }
+        let inserted = self.prototypes.insert(value_type, prototype);
+        assert!(
+            inserted.is_none(),
+            "Prototype already defined for type {value_type}"
+        );
     }
 
     /// Create a new lexical scope with this global environment as the parent

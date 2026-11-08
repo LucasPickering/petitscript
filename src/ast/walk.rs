@@ -288,7 +288,7 @@ impl Walk for ArrayElement {
         visitor.enter_array_element(self);
         match self {
             Self::Expression(expression) | Self::Spread(expression) => {
-                expression.walk(visitor)
+                expression.walk(visitor);
             }
         }
         visitor.exit_array_element(self);
@@ -422,7 +422,9 @@ impl<T: Walk> Walk for Box<[T]> {
 
 impl<T: Walk> Walk for Option<T> {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        self.iter_mut().for_each(|element| element.walk(visitor));
+        if let Some(element) = self {
+            element.walk(visitor);
+        }
     }
 }
 

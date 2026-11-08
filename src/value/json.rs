@@ -3,6 +3,7 @@
 use crate::value::{Array, Number, Object, Value};
 use std::{fmt::Write, str};
 use winnow::{
+    Parser,
     ascii::{dec_int, float},
     combinator::{
         alt, delimited, dispatch, empty, fail, not, peek, preceded, repeat,
@@ -10,7 +11,6 @@ use winnow::{
     },
     error::{AddContext, ContextError, ParserError, StrContext},
     token::{any, none_of, one_of, take, take_while},
-    Parser,
 };
 
 /// Recursively write a JSON value into a string buffer
@@ -125,7 +125,7 @@ fn number<'i, E: ParserError<Stream<'i>>>(
 ) -> Result<Number, E> {
     alt((
         // If the int is trailed by `.` or `e`, it's actually a float
-        (dec_int, peek(not(one_of(['.', 'e'])))).map(|(i, _)| Number::Int(i)),
+        (dec_int, peek(not(one_of(['.', 'e'])))).map(|(i, ())| Number::Int(i)),
         float.map(Number::Float),
     ))
     .parse_next(input)
@@ -189,7 +189,7 @@ fn unicode_escape<'i, E: ParserError<Stream<'i>>>(
         // Not a surrogate
         u16_hex
             .verify(|cp| !(0xD800..0xE000).contains(cp))
-            .map(|cp| cp as u32),
+            .map(u32::from),
         // See https://en.wikipedia.org/wiki/UTF-16#Code_points_from_U+010000_to_U+10FFFF for details
         separated_pair(u16_hex, "\\u", u16_hex)
             .verify(|(high, low)| {
@@ -197,8 +197,8 @@ fn unicode_escape<'i, E: ParserError<Stream<'i>>>(
                     && (0xDC00..0xE000).contains(low)
             })
             .map(|(high, low)| {
-                let high_ten = (high as u32) - 0xD800;
-                let low_ten = (low as u32) - 0xDC00;
+                let high_ten = u32::from(high) - 0xD800;
+                let low_ten = u32::from(low) - 0xDC00;
                 (high_ten << 10) + low_ten + 0x10000
             }),
     ))

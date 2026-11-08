@@ -1,16 +1,16 @@
 //! Program state management
 
 use crate::{
+    Process, RuntimeError,
     ast::NodeId,
     compile::Program,
     error::{StackTraceFrame, TracedError},
     execute::{
-        scope::{GlobalEnvironment, Scope},
         Exports,
+        scope::{GlobalEnvironment, Scope},
     },
     source::QualifiedSpan,
     value::Value,
-    Process, RuntimeError,
 };
 use indexmap::map::Entry;
 use std::sync::Arc;
@@ -203,17 +203,17 @@ impl CallStack {
         function_name: Option<String>,
     ) {
         self.0.push(CallFrame {
-            call_site,
-            function_name,
             scope,
+            function_name,
+            call_site,
         });
     }
 
     fn pop(&mut self) {
-        if self.0.len() == 1 {
-            // Bug!!
-            panic!("Cannot pop final frame of the call stack")
-        }
+        assert!(
+            self.0.len() != 1,
+            "Cannot pop final frame of the call stack"
+        );
         self.0.pop();
     }
 

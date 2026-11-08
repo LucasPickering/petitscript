@@ -1,6 +1,6 @@
 use crate::{
-    value::{FromPetitArgs, Function, IntoPetitResult, Value},
     Process,
+    value::{FromPetitArgs, Function, IntoPetitResult, Value},
 };
 use indexmap::IndexMap;
 use std::{
@@ -41,6 +41,7 @@ impl Object {
     }
 
     /// TODO
+    #[must_use]
     pub fn insert(
         self,
         name: impl Into<String>,
@@ -52,6 +53,7 @@ impl Object {
     }
 
     /// Insert a native function into this object
+    #[must_use]
     pub fn insert_fn<F, Args, Out>(
         self,
         name: impl Into<String>,
@@ -87,6 +89,7 @@ impl Object {
 
     /// TODO
     /// TODO better name?
+    #[must_use]
     pub fn insert_all(self, other: Self) -> Self {
         // If we're the sole owner of the other object, we can move the items
         // out. Otherwise we have to clone them over
@@ -103,7 +106,7 @@ impl Object {
             // Other object is shared (uncommon case) - we need to clone all its
             // contents
             Err(other) => self.with_inner(|map| {
-                map.extend(other.iter().map(|(k, v)| (k.clone(), v.clone())))
+                map.extend(other.iter().map(|(k, v)| (k.clone(), v.clone())));
             }),
         }
     }

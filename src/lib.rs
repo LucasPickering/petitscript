@@ -115,7 +115,7 @@ impl Engine {
     /// and other environments where an AST is built programatically rather
     /// than by parsing source code.
     pub fn compile_ast(&self, module: Node<Module>) -> Result<Process, Error> {
-        let program = compile::compile_ast(module)?;
+        let program = compile::compile_ast(module);
         Ok(self.spawn(program))
     }
 
@@ -151,6 +151,7 @@ pub struct EngineBuilder {
 
 impl EngineBuilder {
     /// Add the PetitScript standard library to the engine's global scope.
+    #[must_use]
     pub fn with_stdlib(mut self) -> Self {
         // Register the standard library
         self.globals = stdlib();
@@ -185,6 +186,7 @@ impl EngineBuilder {
     /// import { add } from "math";
     /// add(1, 2);
     /// ```
+    #[must_use]
     pub fn with_module(
         mut self,
         name: NativeModuleName,

@@ -73,11 +73,16 @@ impl Display for Error {
             Self::InvalidModuleName(error) => write!(f, "{error}"),
             Self::InvalidExtension { path } => write!(
                 f,
-                "Unsupported extension for imported module at path {path:?}. \
-                Supported extensions are: {SUPPORTED_EXTENSIONS:?}"
+                "Unsupported extension for imported module at path {path}. \
+                Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
+                path = path.display()
             ),
             Self::Io { error, path } => {
-                write!(f, "Error loading {path:?}: {error}")
+                write!(
+                    f,
+                    "Error loading {path}: {error}",
+                    path = path.display()
+                )
             }
             Self::Parse(error) => write!(f, "{error}"),
             Self::Transform { error, span } => {
@@ -364,6 +369,7 @@ pub enum RuntimeError {
     IllegalReturn,
 
     /// Oopsies!
+    ///
     /// TODO include bug report link here
     Internal(String),
 
@@ -405,6 +411,7 @@ impl RuntimeError {
     }
 
     /// Wrap this error to attach an additional context message to it
+    #[must_use]
     pub fn context(self, context: impl Into<String>) -> Self {
         Self::WithContext {
             message: context.into(),

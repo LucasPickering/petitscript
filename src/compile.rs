@@ -6,10 +6,10 @@ mod parse;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
+    Error, Source,
     ast::{Module, Node, Walk},
     compile::function::{CaptureFunctions, LabelFunctions},
     source::{SourceTable, SpanTable},
-    Error, Source,
 };
 
 /// Parse some source code into an AST
@@ -23,11 +23,12 @@ pub fn compile(source: impl Source) -> Result<Program, Error> {
     Ok(program)
 }
 
-/// Compile a prebuilt AST into an executable [Program]. Helpful for tests and
-/// other environments where an AST is built programatically rather than by
-/// parsing source code.
-pub fn compile_ast(module: Node<Module>) -> Result<Program, Error> {
-    let program = Compiler {
+/// Compile a prebuilt AST into an executable [Program]
+///
+/// Helpful for tests and other environments where an AST is built
+/// programatically rather than by parsing source code.
+pub fn compile_ast(module: Node<Module>) -> Program {
+    Compiler {
         program: ParsedAst {
             module,
             spans: SpanTable::default(),
@@ -36,8 +37,7 @@ pub fn compile_ast(module: Node<Module>) -> Result<Program, Error> {
     }
     .label()
     .capture()
-    .end();
-    Ok(program)
+    .end()
 }
 
 /// An executable program. This is produced by [compile]

@@ -111,6 +111,7 @@ impl FunctionDefinition {
     /// Attach a name to this function definition. This does not affect code
     /// generation at all and is only helpful if the AST is being compiled or
     /// used for test assertions.
+    #[must_use]
     pub fn with_name(mut self, name: impl Into<Identifier>) -> Self {
         self.name = Some(name.into().s());
         self
@@ -119,6 +120,7 @@ impl FunctionDefinition {
     /// Define what identifiers should be captured by this function. This does
     /// not affect code generation at all and is only helpful if the AST is
     /// being compiled or used for test assertions.
+    #[must_use]
     pub fn with_captures(
         mut self,
         captures: impl IntoIterator<Item = &'static str>,
@@ -214,6 +216,7 @@ impl Expression {
     }
 
     /// Get a property of this expression: `self.y`
+    #[must_use]
     pub fn property(self, name: &str) -> Self {
         Self::Property(
             PropertyAccess {
@@ -231,6 +234,7 @@ impl Expression {
 
     /// Create an expression that will call a method from this expression
     /// resolved value's prototype. `x` -> `x.f(...)`
+    #[must_use]
     pub fn call(
         self,
         name: &str,

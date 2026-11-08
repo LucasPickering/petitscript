@@ -12,7 +12,7 @@ mod ser;
 pub use de::Deserializer;
 pub use ser::Serializer;
 
-use crate::{error::ValueError, value::Function, Value};
+use crate::{Value, error::ValueError, value::Function};
 use serde::{Deserialize, Serialize};
 use std::{cell::RefCell, collections::BTreeMap};
 
@@ -128,8 +128,8 @@ mod tests {
             Expression, FunctionBody, FunctionDefinition, FunctionParameter,
         },
         value::{
-            function::{BoundFunction, Function},
             Array, Object,
+            function::{BoundFunction, Function},
         },
     };
     use indexmap::indexmap;
@@ -205,7 +205,7 @@ mod tests {
         {
             struct BytesVisitor;
 
-            impl<'de> Visitor<'de> for BytesVisitor {
+            impl Visitor<'_> for BytesVisitor {
                 type Value = Bytes;
 
                 fn expecting(

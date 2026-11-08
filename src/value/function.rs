@@ -150,7 +150,7 @@ pub type Captures = IndexMap<String, Value>;
 /// TODO
 #[derive(Clone)]
 pub struct NativeFunction(
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     Arc<
         dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
             + Send
@@ -192,7 +192,7 @@ impl Debug for NativeFunction {
             f,
             "NativeFunction(0x{:x})",
             // Print the pointer to the function as something identifying
-            Arc::as_ptr(&self.0) as *const () as usize
+            Arc::as_ptr(&self.0).cast::<()>() as usize
         )
     }
 }
@@ -206,7 +206,7 @@ impl PartialEq for NativeFunction {
 /// TODO
 #[derive(Clone)]
 pub struct BoundFunction(
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity)]
     Arc<
         dyn Fn(&Process, Value, Vec<Value>) -> Result<Value, RuntimeError>
             + Send
@@ -252,7 +252,7 @@ impl Debug for BoundFunction {
             f,
             "BoundFunction(0x{:x})",
             // Print the pointer to the function as something identifying
-            Arc::as_ptr(&self.0) as *const () as usize
+            Arc::as_ptr(&self.0).cast::<()>() as usize
         )
     }
 }

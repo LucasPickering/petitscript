@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use petitscript::{value::Number, Engine, Error, Exports, Process, Value};
+use petitscript::{Engine, Error, Exports, Process, Value, value::Number};
 use std::{env, path::PathBuf, sync::LazyLock};
 use test_case::test_case;
 
@@ -70,13 +70,11 @@ fn error(file_name: &'static str, expected_error: &'static str) {
 /// Compile and execute a program. If the program succeeds, expected no named
 /// exports and return the default export
 fn execute(path: PathBuf) -> Result<Value, Error> {
-    if !path.exists() {
-        // Sanity check
-        panic!("Path {path:?} does not exist");
-    }
-    let process = ENGINE
-        .compile(path.clone())
-        .unwrap_or_else(|error| panic!("Error compiling {path:?}: {error}"));
+    // Sanity check
+    assert!(path.exists(), "Path {} does not exist", path.display());
+    let process = ENGINE.compile(path.clone()).unwrap_or_else(|error| {
+        panic!("Error compiling {path}: {error}", path = path.display())
+    });
     let exports = process.execute()?;
 
     assert_eq!(

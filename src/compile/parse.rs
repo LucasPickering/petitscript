@@ -121,7 +121,7 @@ struct ParseContext<'a> {
     spans: &'a mut SpanTable,
 }
 
-impl<'a> ParseContext<'a> {
+impl ParseContext<'_> {
     /// Current source being parsed
     fn current_source(&self) -> &dyn Source {
         self.sources.get(self.current_source_id)
@@ -1719,7 +1719,6 @@ impl Transform for oxc::Argument<'_> {
 
 /// TODO
 trait TransformAll<T: Transform> {
-    #[allow(clippy::type_complexity)]
     fn transform_all(
         &self,
         context: &mut ParseContext,
@@ -1830,9 +1829,7 @@ impl BindingPattern {
                 binding,
                 expression: None,
             } => Ok(binding),
-            Self { .. } => {
-                todo!("error")
-            }
+            Self { .. } => Err(todo!("error")),
         }
     }
 }
@@ -1851,12 +1848,12 @@ mod tests {
     /// ```
     #[test]
     fn string_literal_newline() {
-        let source = r#"'test\nnewline'"#;
+        let source = r"'test\nnewline'";
         let module = parse_test(source);
         assert_eq!(
             module.data(),
             &Module::new(["test\nnewline".into_expr().into()])
-        )
+        );
     }
 
     /// Test \ before a literal newline escapes the newline, allowing for
@@ -1870,13 +1867,13 @@ mod tests {
     /// ```
     #[test]
     fn string_literal_escape_newline() {
-        let source = r#"'test \
-no newline'"#;
+        let source = r"'test \
+no newline'";
         let module = parse_test(source);
         assert_eq!(
             module.data(),
             &Module::new(["test no newline".into_expr().into()])
-        )
+        );
     }
 
     fn parse_test(source: &'static str) -> Node<Module> {

@@ -299,6 +299,7 @@ impl Value {
 
     /// Apply nullish coalescing (??)
     /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing>
+    #[must_use]
     pub fn coalesce(self, other: Self) -> Self {
         match self {
             Self::Undefined | Self::Null => other,
@@ -605,7 +606,7 @@ mod tests {
     // TODO test function
     fn to_number(value: impl Into<Value>, expected: Option<impl Into<Number>>) {
         let actual = value.into().to_number();
-        let expected = expected.map(|n| n.into());
+        let expected = expected.map(Into::into);
         // NaN != NaN, so we need to use a different check if that's what we're
         // looking for
         if expected.is_some_and(Number::is_nan) {

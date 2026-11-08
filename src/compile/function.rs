@@ -26,7 +26,7 @@ impl LabelFunctions {
                 definition.name.is_none(),
                 "Function already has a name before labelling"
             );
-            definition.name = Some(identifier.clone())
+            definition.name = Some(identifier.clone());
         }
     }
 }
@@ -137,7 +137,7 @@ impl AstVisitor for CaptureFunctions {
         // Lexical declaration could have any number of names
         match &*variable.binding {
             Binding::Identifier(identifier) => {
-                self.declare(identifier.data().clone())
+                self.declare(identifier.data().clone());
             }
             Binding::Object(_) => todo!(),
             Binding::Array(_) => todo!(),

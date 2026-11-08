@@ -500,7 +500,7 @@ impl<'a, T> Repeat<'a, T> {
     }
 }
 
-impl<'a, T: DisplayIndent> DisplayIndent for Repeat<'a, T> {
+impl<T: DisplayIndent> DisplayIndent for Repeat<'_, T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         for (i, item) in self.items.iter().enumerate() {
             if i > 0 {
@@ -538,7 +538,7 @@ impl<'a, T> Indent<'a, T> {
     }
 }
 
-impl<'a, T: DisplayIndent> DisplayIndent for Indent<'a, T> {
+impl<T: DisplayIndent> DisplayIndent for Indent<'_, T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         // Shortcut to prevent newlines in empty collections/blocks
         if self.items.is_empty() {

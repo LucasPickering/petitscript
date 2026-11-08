@@ -23,11 +23,13 @@ impl Array {
     }
 
     /// Append a single value to the end of the array.
+    #[must_use]
     pub fn push(self, value: impl Into<Value>) -> Self {
         self.with_inner(|vec| vec.push(value.into()))
     }
 
     /// Insert all elements from another array into this one.
+    #[must_use]
     pub fn concat(self, other: Self) -> Self {
         // If we're the sole owner of the other object, we can move the items
         // out. Otherwise we have to clone them over

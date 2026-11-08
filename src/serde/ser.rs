@@ -1,8 +1,8 @@
 use crate::{
+    Value,
     error::ValueError,
     serde::FunctionPool,
     value::{IntoPetit, Object},
-    Value,
 };
 use indexmap::IndexMap;
 use serde::ser::{self, SerializeStruct};
@@ -413,7 +413,7 @@ impl ser::SerializeStructVariant for SerializeVariant<SerializeMap> {
 /// TODO explain or figure out a way to get rid of this
 struct U64Serializer;
 
-#[allow(unused)] // TODO remove this
+#[expect(unused)] // TODO remove this
 impl ser::Serializer for U64Serializer {
     type Ok = u64;
     type Error = ValueError;

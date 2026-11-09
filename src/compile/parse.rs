@@ -257,28 +257,41 @@ no newline'";
             )
         }
 
-        let source = "let x = 3; let y = 4;";
+        let source = "
+            let x = 3;
+            var y = 4;
+            async function f() {
+                // This does *not* produce an error; it stops at the async fn
+                let x = 3;
+            }
+        ";
         let errors = parse_test(source).unwrap_err();
         // Source matches what we put in
         assert_eq!(errors.source_code, Source::from(source));
         // There should be 2 errors
-        let (labels0, labels1) = assert_matches!(
+        let (labels_let, labels_var, labels_async) = assert_matches!(
             errors.errors.as_slice(),
             [
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
-                    labels: labels0,
+                    labels: labels_let,
                 },
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
-                    labels: labels1,
-                }
+                    labels: labels_var,
+                },
+                ParseError {
+                    error: ParseErrorKind::Unsupported(Unsupported::Async),
+                    labels: labels_async,
+                },
             ]
-            => (labels0, labels1)
+            => (labels_let, labels_var, labels_async)
         );
         // Spans are where we expect them to be
-        assert_eq!(labels0.as_slice(), [labeled_span(0, 10)]);
-        assert_eq!(labels1.as_slice(), [labeled_span(12, 10)]);
+        // TODO fix these span numbers
+        assert_eq!(labels_let.as_slice(), [labeled_span(0, 10)]);
+        assert_eq!(labels_var.as_slice(), [labeled_span(12, 10)]);
+        assert_eq!(labels_async.as_slice(), [labeled_span(12, 10)]);
     }
 
     fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {

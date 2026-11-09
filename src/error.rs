@@ -1,14 +1,14 @@
 //! Sometimes bad things happen
 
 use crate::{
-    NativeModuleName,
+    NativeModuleName, Source,
     compile::SUPPORTED_EXTENSIONS,
     source::QualifiedSpan,
     value::{Number, ValueType},
 };
-use miette::{Diagnostic, NamedSource, SourceSpan};
-use oxc_diagnostics::Diagnostics;
+use miette::{Diagnostic, LabeledSpan, Severity};
 use std::{
+    borrow::Borrow,
     error::Error as StdError,
     fmt::{self, Display},
     io,
@@ -16,6 +16,8 @@ use std::{
     string::FromUtf8Error,
 };
 use winnow::error::ContextError;
+
+// TODO consistent capitalization in errors. Probably should all be lower case
 
 /// Any error that can occur within PetitScript
 ///
@@ -31,15 +33,12 @@ pub enum Error {
     #[error("Multiple app data values of type `{type_name}` were registered")]
     DuplicateAppData { type_name: &'static str },
 
-    /// Error while parsing source code
+    /// Error(s) while parsing source code
     ///
-    /// See [ParseError].
+    /// See [ParseErrors].
+    #[diagnostic(transparent)]
     #[error(transparent)]
-    Parse(
-        #[diagnostic_source]
-        #[from]
-        ParseError,
-    ),
+    Parse(ParseErrors),
 
     /// Error while executing a PetitScript program
     ///
@@ -59,6 +58,12 @@ pub enum Error {
     /// See [Process::app_data](crate::Process::app_data).
     #[error("No app data of type `{type_name}` is registered")]
     UnknownAppData { type_name: &'static str },
+}
+
+impl From<ParseErrors> for Error {
+    fn from(errors: ParseErrors) -> Self {
+        Self::Parse(errors)
+    }
 }
 
 impl From<TracedError> for Error {
@@ -83,19 +88,43 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 /// The first step will fail if the source code is not valid syntax. The second
 /// will fail if the code is not valid PetitScript. As PS is a small subset of
 /// JS, there are many syntactic constructs in JS that are not valid PS.
+///
+/// TODO update comment
 #[derive(Debug, Diagnostic, thiserror::Error)]
-#[error("{error}")]
+#[error("{} parse error(s)", errors.len())]
+pub struct ParseErrors {
+    /// TODO
+    #[related]
+    pub errors: Vec<ParseError>,
+    /// TODO
+    #[source_code]
+    pub source_code: Source,
+}
+
+/// Allow `diagnostic_source()` through `Box<ParseErrors>`
+///
+/// Needed because [ParseErrorKind::Import] is recursive. Remove after
+/// <https://github.com/zkat/miette/pull/367>.
+impl Borrow<dyn miette::Diagnostic> for Box<ParseErrors> {
+    fn borrow(&self) -> &(dyn miette::Diagnostic + 'static) {
+        &**self
+    }
+}
+
+/// TODO
+#[derive(Debug, Diagnostic, thiserror::Error)]
+#[error("parse")] // Use a short description because the cause is descriptive
 pub struct ParseError {
     /// What bad thing happen
     #[diagnostic_source]
     #[source]
     pub error: ParseErrorKind,
-    /// Source code of the node that failed to transform
-    #[source_code]
-    pub source_code: NamedSource<String>,
-    /// The source location of the code that failed to transform
-    #[label("here")]
-    pub span: SourceSpan,
+    /// One or more spans related to the error
+    ///
+    /// In most cases this is just a single element pointing to the offending
+    /// span.
+    #[label(collection)]
+    pub labels: Vec<LabeledSpan>,
 }
 
 /// The categories of errors that can occuring during parsing
@@ -110,11 +139,9 @@ pub enum ParseErrorKind {
         /// Name/path of the module being imported
         module: String,
         /// Upstream error
-        ///
-        /// TODO use a static error here, instead of boxing
         #[diagnostic_source]
         #[source]
-        error: Box<dyn Diagnostic + Send + Sync>,
+        error: Box<ParseErrors>,
     },
 
     /// Attempted to import a module with an unrecognized file extension
@@ -144,10 +171,19 @@ pub enum ParseErrorKind {
     ///
     /// This means the syntax isn't valid JavaScript, and therefore can't be
     /// valid PetitScript.
-    #[error("TODO")]
+    ///
+    /// This is built from [oxc_diagnostics::OxcDiagnostic]. `oxc` is used as
+    /// the parser internally. Each error is remapped to this variant to
+    /// prevent leaking the `oxc` type as part of PetitScript's external API.
+    #[error("{message}")]
     Parse {
-        source_name: Option<String>,
-        errors: Diagnostics,
+        // I only included fields from OxcDiagnostic that don't require
+        // third-party types. Omitted severity, and code
+        message: String,
+        #[help]
+        help: Option<String>,
+        note: Option<String>,
+        severity: Severity,
     },
 
     /// I/O error while loading source code from a file
@@ -176,7 +212,7 @@ pub enum ParseErrorKind {
 }
 
 /// Error while loading source code from a file
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, thiserror::Error)]
 #[error("Error reading source code from {}", self.path.display())]
 pub struct SourceError {
     /// Path to the file being loaded

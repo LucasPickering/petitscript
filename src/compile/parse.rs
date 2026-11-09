@@ -10,12 +10,15 @@ mod transform;
 use crate::{
     Source,
     ast::{Module, Node, NodeId},
-    error::ParseError,
+    error::{ParseError, ParseErrorKind, ParseErrors},
     source::{SourceId, SourceTable, Span, SpanTable},
 };
+use miette::LabeledSpan;
 use oxc_allocator::Allocator;
+use oxc_diagnostics::OxcDiagnostic;
 use oxc_parser::{Parser, ParserReturn};
 use oxc_span::SourceType;
+use std::borrow::Cow;
 
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
@@ -28,7 +31,7 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 /// parsed module, this returns a debug table of source spans for each AST node.
 pub fn parse(
     sources: &mut SourceTable,
-) -> Result<(Node<Module>, SpanTable), ParseError> {
+) -> Result<(Node<Module>, SpanTable), ParseErrors> {
     let source_id = sources.root_id();
     let mut spans = SpanTable::default();
     let context = ParseContext {
@@ -46,11 +49,12 @@ pub fn parse(
 /// This is called recursively within a parse tree, once per PS module. Each
 /// module corresponds to a single source, so this will add a new source to the
 /// given source table.
-fn parse_module(mut context: ParseContext) -> Result<Node<Module>, ParseError> {
-    // TODO maybe refactor this? the oxc nodes carry their source text so we
-    // may be able to simplify the context instead of carrying source around
+fn parse_module(
+    mut context: ParseContext,
+) -> Result<Node<Module>, ParseErrors> {
     let source = context.current_source();
-    let code = source.text().expect("TODO").into_owned();
+    // TODO don't clone
+    let source_code = source.text().to_owned();
 
     // Parse via oxc
     let source_type = source
@@ -63,16 +67,19 @@ fn parse_module(mut context: ParseContext) -> Result<Node<Module>, ParseError> {
         diagnostics,
         fatal_error,
         ..
-    } = Parser::new(&allocator, &code, source_type).parse();
+    } = Parser::new(&allocator, &source_code, source_type).parse();
 
     // Check for errors
     if !diagnostics.is_empty() {
-        // TODO map oxc error to our parse error
-        todo!();
-        // return Err(ParseError::Parse {
-        //     source_name: source.path().and_then(source::display_source_path),
-        //     errors: diagnostics,
-        // });
+        // TODO explain why we map from oxc to miette
+        let errors = diagnostics
+            .into_iter()
+            .map(map_oxc_error)
+            .collect::<Vec<_>>();
+        return Err(ParseErrors {
+            errors,
+            source_code: source.clone(),
+        });
     }
 
     // Sanity check: I don't think it can return fatal_error=true if the
@@ -130,6 +137,25 @@ impl ParseContext<'_> {
         }
     }
 
+    /// TODO
+    fn map_error(&self, error: ParseErrorKind, span: Span) -> ParseErrors {
+        // Get the full code for the offending source
+        let source_code = self.sources.get(span.source_id).clone();
+        // Map from our Span to miette's SourceSpan
+        let span = miette::SourceSpan::new(
+            span.start_offset.into(),
+            span.end_offset - span.start_offset,
+        );
+        ParseErrors {
+            // TODO multiple errors
+            errors: vec![ParseError {
+                error,
+                labels: vec![LabeledSpan::new_primary_with_span(None, span)],
+            }],
+            source_code,
+        }
+    }
+
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
     fn node_id_inner(&mut self, span: Span) -> NodeId {
         let id = NodeId::new(*self.next_node_id);
@@ -139,10 +165,49 @@ impl ParseContext<'_> {
     }
 }
 
+/// Map a parse error from oxc to our parse type
+///
+/// Oxc's errors are defined in the [oxc_diagnostics] crate, which is a fork of
+/// [miette]. We use miette's error type for parse errors, so the mapping is
+/// mostly 1:1.
+fn map_oxc_error(diagnostic: OxcDiagnostic) -> ParseError {
+    // Map the oxc diagnostic to our error type
+    let diagnostic = diagnostic.inner_owned();
+    let labels = diagnostic
+        .labels
+        .into_iter()
+        .map(|label| {
+            // Map the oxc label to a miette label
+            let span = label.span();
+            let span = miette::SourceSpan::new(
+                (span.start as usize).into(),
+                (span.end - span.start) as usize,
+            );
+            let name = label.label().map(String::from);
+            if label.primary() {
+                miette::LabeledSpan::new_primary_with_span(name, span)
+            } else {
+                miette::LabeledSpan::new_with_span(name, span)
+            }
+        })
+        .collect();
+    let error = ParseErrorKind::Parse {
+        message: diagnostic.message.into_owned(),
+        help: diagnostic.help.map(Cow::into_owned),
+        note: diagnostic.note.map(Cow::into_owned),
+        severity: match diagnostic.severity {
+            oxc_diagnostics::Severity::Advice => miette::Severity::Advice,
+            oxc_diagnostics::Severity::Warning => miette::Severity::Warning,
+            oxc_diagnostics::Severity::Error => miette::Severity::Error,
+        },
+    };
+    ParseError { error, labels }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::IntoExpression;
+    use crate::{assert_matches, ast::IntoExpression, error::Unsupported};
 
     /// Test an escaped newline `\n` in a string literal
     /// ```notrust
@@ -154,7 +219,7 @@ mod tests {
     #[test]
     fn string_literal_newline() {
         let source = r"'test\nnewline'";
-        let module = parse_test(source);
+        let module = parse_test(source).unwrap();
         assert_eq!(
             module.data(),
             &Module::new(["test\nnewline".into_expr().into()])
@@ -174,18 +239,51 @@ mod tests {
     fn string_literal_escape_newline() {
         let source = r"'test \
 no newline'";
-        let module = parse_test(source);
+        let module = parse_test(source).unwrap();
         assert_eq!(
             module.data(),
             &Module::new(["test no newline".into_expr().into()])
         );
     }
 
-    fn parse_test(source: &'static str) -> Node<Module> {
+    /// If multiple AST nodes cannot be transformed, we should get errors for
+    /// all of them
+    #[test]
+    fn multiple_errors() {
+        fn labeled_span(offset: usize, length: usize) -> LabeledSpan {
+            LabeledSpan::new_primary_with_span(
+                None,
+                miette::SourceSpan::new(offset.into(), length),
+            )
+        }
+
+        let source = "let x = 3; let y = 4;";
+        let errors = parse_test(source).unwrap_err();
+        // Source matches what we put in
+        assert_eq!(errors.source_code, Source::from(source));
+        // There should be 2 errors
+        let (labels0, labels1) = assert_matches!(
+            errors.errors.as_slice(),
+            [
+                ParseError {
+                    error: ParseErrorKind::Unsupported(Unsupported::Mutation),
+                    labels: labels0,
+                },
+                ParseError {
+                    error: ParseErrorKind::Unsupported(Unsupported::Mutation),
+                    labels: labels1,
+                }
+            ]
+            => (labels0, labels1)
+        );
+        // Spans are where we expect them to be
+        assert_eq!(labels0.as_slice(), [labeled_span(0, 10)]);
+        assert_eq!(labels1.as_slice(), [labeled_span(12, 10)]);
+    }
+
+    fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {
         let mut source_table = SourceTable::default();
         source_table.insert(source);
-        let (module, _) =
-            parse(&mut source_table).unwrap_or_else(|error| panic!("{error}"));
-        module
+        parse(&mut source_table).map(|(module, _)| module)
     }
 }

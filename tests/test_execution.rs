@@ -1,5 +1,7 @@
 use indexmap::IndexMap;
-use petitscript::{Engine, Error, Exports, Process, Value, value::Number};
+use petitscript::{
+    Engine, Error, Exports, Process, Source, Value, value::Number,
+};
 use std::{env, path::PathBuf, sync::LazyLock};
 use test_case::test_case;
 
@@ -72,7 +74,8 @@ fn error(file_name: &'static str, expected_error: &'static str) {
 fn execute(path: PathBuf) -> Result<Value, Error> {
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());
-    let process = ENGINE.compile(path.clone()).unwrap_or_else(|error| {
+    let source = Source::file(&path).unwrap();
+    let process = ENGINE.compile(source).unwrap_or_else(|error| {
         panic!("Error compiling {path}: {error}", path = path.display())
     });
     let exports = process.execute()?;

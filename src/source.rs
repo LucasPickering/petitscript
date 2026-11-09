@@ -1,37 +1,64 @@
 //! Utilities for interacting with source code
 
 use crate::{ast::NodeId, error::SourceError};
+use miette::MietteError;
 use normalize_path::NormalizePath;
 use std::{
-    borrow::Cow,
     collections::HashMap,
     fmt::{self, Debug, Display},
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// Source code provider
 ///
-/// TODO
-#[derive(Clone, Debug)]
+/// TODO more
+///
+/// ## Cloning
+///
+/// Cloning is cheap because it stores source code in an `Arc<str>`.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
     /// Load source code from a string literal
     Static(&'static str),
     /// Load source code from an owned string
-    String(String),
+    String(Arc<str>),
     /// Load source code from a file
-    File(PathBuf),
+    File {
+        /// Descriptive name derived from the path
+        name: String,
+        /// TODO
+        path: PathBuf,
+        /// TODO
+        text: Arc<str>,
+    },
 }
 
 impl Source {
+    /// TODO
+    pub fn file(path: impl AsRef<Path>) -> Result<Self, SourceError> {
+        let path = path.as_ref();
+        let text = fs::read_to_string(path).map_err(|error| SourceError {
+            path: path.to_owned(),
+            error,
+        })?;
+        let name = path.normalize().display().to_string();
+        Ok(Self::File {
+            name,
+            path: path.to_owned(),
+            text: text.into(),
+        })
+    }
+
     /// Descriptive name for this source
     ///
-    /// The name is used in user-facing output (such as errors), so it should
-    /// be readable rather than specific.
-    pub fn name(&self) -> Cow<'_, str> {
+    /// The name is used in user-facing output (such as errors), so it's
+    /// readable rather than specific.
+    pub fn name(&self) -> &str {
         match self {
-            Self::Static(_) | Self::String(_) => "<source>".into(),
-            Self::File(path) => path.normalize().display().to_string().into(),
+            Self::Static(_) | Self::String(_) => "<source>",
+            Self::File { name, .. } => name,
         }
     }
 
@@ -48,22 +75,34 @@ impl Source {
     pub fn path(&self) -> Option<&Path> {
         match self {
             Self::Static(_) | Self::String(_) => None,
-            Self::File(path) => Some(path),
+            Self::File { path, .. } => Some(path),
         }
     }
 
-    /// Load source code from this source
-    pub fn text(&self) -> Result<Cow<'_, str>, SourceError> {
+    /// Get the source code
+    ///
+    /// Source code is preloaded during source creation, so this is cheap and
+    /// infallible.
+    pub fn text(&self) -> &str {
         match self {
-            Self::Static(s) => Ok((*s).into()),
-            Self::String(s) => Ok(s.as_str().into()),
-            Self::File(path) => Ok(fs::read_to_string(path)
-                .map_err(|error| SourceError {
-                    path: path.clone(),
-                    error,
-                })?
-                .into()),
+            Self::Static(s) => s,
+            Self::String(s) => s,
+            Self::File { text, .. } => text,
         }
+    }
+}
+
+/// TODO
+impl miette::SourceCode for Source {
+    fn read_span<'a>(
+        &'a self,
+        span: &miette::SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, MietteError> {
+        // TODO include name
+        self.text()
+            .read_span(span, context_lines_before, context_lines_after)
     }
 }
 
@@ -77,14 +116,7 @@ impl From<&'static str> for Source {
 /// Convert a [String] to [Source::String]
 impl From<String> for Source {
     fn from(value: String) -> Self {
-        Self::String(value)
-    }
-}
-
-/// Convert a [PathBuf] to [Source::File]
-impl From<PathBuf> for Source {
-    fn from(value: PathBuf) -> Self {
-        Self::File(value)
+        Self::String(value.into())
     }
 }
 
@@ -138,7 +170,7 @@ impl SourceTable {
     /// and lines/columns
     pub fn qualify(&self, span: Span) -> QualifiedSpan {
         let source = self.get(span.source_id);
-        let text = &source.text().expect("TODO");
+        let text = &source.text();
         // Lines/columns are 1-indexed, because reasons
         let mut line = 1;
         let mut column = 1;
@@ -169,7 +201,7 @@ impl SourceTable {
         }
 
         QualifiedSpan::Source {
-            source_name: source.name().into_owned(),
+            source_name: source.name().to_owned(),
             start_line,
             start_column,
             end_line,

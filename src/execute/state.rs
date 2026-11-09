@@ -270,9 +270,10 @@ impl From<NodeId> for CallSite {
 }
 
 impl Program {
-    /// Convert a call site to a qualified span. For AST nodes, look up the
-    /// node's span then qualify that. For native call sites, just return a
-    /// native span.
+    /// Convert a call site to a qualified span
+    ///
+    /// For AST nodes, look up the node's span then qualify that. For native
+    /// call sites, just return a native span.
     fn qualify(&self, call_site: CallSite) -> QualifiedSpan {
         match call_site {
             CallSite::Node(node_id) => {

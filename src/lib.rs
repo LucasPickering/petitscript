@@ -23,6 +23,8 @@ mod name;
 pub mod serde;
 mod source;
 mod stdlib;
+#[cfg(test)]
+mod test_util;
 pub mod value;
 
 pub use crate::{

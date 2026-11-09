@@ -20,12 +20,11 @@ pub struct LabelFunctions;
 impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
     fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
-        if let Expression::Function(definition) = expression {
-            // It shouldn't be possible for this function to have a name already
-            debug_assert!(
-                definition.name.is_none(),
-                "Function already has a name before labelling"
-            );
+        // It's possible the function already has a name, if defined via the
+        // `function f() {...}` syntax
+        if let Expression::Function(definition) = expression
+            && definition.name.is_none()
+        {
             definition.name = Some(identifier.clone());
         }
     }

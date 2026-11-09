@@ -1,10 +1,10 @@
-use petitscript::Engine;
-use std::{env, path::PathBuf};
+use petitscript::{Engine, Source};
+use std::env;
 
 fn main() -> miette::Result<()> {
     let path = env::args().nth(1).expect("Expected path");
     let engine = Engine::default();
-    let process = engine.compile(PathBuf::from(path))?;
+    let process = engine.compile(Source::file(path)?)?;
 
     let exports = process.execute()?;
     println!("Exported:\n{exports:#}");

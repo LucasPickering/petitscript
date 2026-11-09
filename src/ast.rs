@@ -225,8 +225,9 @@ pub struct Variable {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionDefinition {
-    /// A label for this function, to be passed onto the function value. This
-    /// is **not necessarily** the name the function is bound to; that is
+    /// A label for this function, to be passed onto the function value
+    ///
+    /// This is **not necessarily** the name the function is bound to; that is
     /// defined in the parent [FunctionDeclaration].
     pub name: Option<Node<Identifier>>,
     pub parameters: Box<[Node<FunctionParameter>]>,

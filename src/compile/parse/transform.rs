@@ -20,10 +20,9 @@ use crate::{
         SUPPORTED_EXTENSIONS,
         parse::{ParseContext, parse_module},
     },
-    error::{ParseError, ParseErrorKind, Unsupported},
+    error::{ParseErrorKind, ParseErrors, Unsupported},
     source::Span,
 };
-use miette::NamedSource;
 use oxc_ast::ast::{self as oxc};
 use oxc_span::GetSpan;
 use std::{
@@ -36,25 +35,10 @@ use std::{
 pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
-) -> Result<Node<Module>, ParseError> {
-    program.transform_node(context).map_err(|error| {
-        // Get the full code for the offending source
-        let source = context.sources.get(error.span.source_id);
-        let source_code = NamedSource::new(
-            source.name(),
-            source.text().expect("TODO").into_owned(),
-        );
-        // Map from our Span to miette's SourceSpan
-        let span = miette::SourceSpan::new(
-            error.span.start_offset.into(),
-            error.span.end_offset - error.span.start_offset,
-        );
-        ParseError {
-            error: error.error,
-            span,
-            source_code,
-        }
-    })
+) -> Result<Node<Module>, ParseErrors> {
+    program
+        .transform_node(context)
+        .map_err(|error| context.map_error(error.error, error.span))
 }
 
 /// Helper for returning an unsupported error
@@ -319,14 +303,18 @@ impl Transform for oxc::ImportDeclaration<'_> {
             Err(error) => {
                 // We're importing a file path. Resolve it to an absolute path
                 let module_name = error.name;
-                let module_path =
+                let source =
                     resolve_module(&module_name, context.current_source())
+                        .and_then(|path| {
+                            // Load source code
+                            Source::file(path).map_err(ParseErrorKind::from)
+                        })
                         .map_err(|error| {
                             TxError::new(context, &self.source, error)
                         })?;
 
                 // Load the module
-                let source_id = context.sources.insert(module_path);
+                let source_id = context.sources.insert(source);
                 let module = parse_module(ParseContext {
                     sources: context.sources,
                     current_source_id: source_id,

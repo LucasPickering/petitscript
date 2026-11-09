@@ -510,7 +510,6 @@ dependencies = [
  "oxc_data_structures",
  "oxc_diagnostics",
  "oxc_ecmascript",
- "oxc_regular_expression",
  "oxc_span",
  "oxc_str",
  "oxc_syntax",

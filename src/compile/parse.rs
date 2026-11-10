@@ -9,9 +9,9 @@ mod transform;
 
 use crate::{
     Source,
-    ast::{Module, Node, NodeId},
+    ast::{Module, Node},
     error::{ParseError, ParseErrorKind, ParseErrors},
-    source::{SourceId, SourceTable, Span, SpanTable},
+    source::{SourceId, SourceTable, SpanTable},
 };
 use oxc_allocator::Allocator;
 use oxc_diagnostics::OxcDiagnostic;
@@ -117,32 +117,6 @@ impl ParseContext<'_> {
     /// Current source being parsed
     fn current_source(&self) -> &Source {
         self.sources.get(self.current_source_id)
-    }
-
-    /// Generate a new node ID for a new AST node
-    ///
-    /// This ID will be unique within the entire AST, including sub-modules.
-    /// This will also insert the node's source span into the span table.
-    fn node_id(&mut self, span: oxc_span::Span) -> NodeId {
-        self.node_id_inner(self.transform_span(span))
-    }
-
-    /// Map an [oxc_span::Span] to a PetitScript [Span]
-    fn transform_span(&self, span: oxc_span::Span) -> Span {
-        Span {
-            source_id: self.current_source_id,
-            // Assuming this will never run on a <32-bit platform
-            start_offset: span.start as usize,
-            end_offset: span.end as usize,
-        }
-    }
-
-    // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
-    fn node_id_inner(&mut self, span: Span) -> NodeId {
-        let id = NodeId::new(*self.next_node_id);
-        *self.next_node_id += 1;
-        self.spans.insert(id, span);
-        id
     }
 }
 

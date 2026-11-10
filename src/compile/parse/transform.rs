@@ -10,7 +10,7 @@ use crate::{
         Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
         ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
         FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
-        ImportNamed, Literal, Module, Node, ObjectLiteral,
+        ImportNamed, Literal, Module, Node, NodeId, ObjectLiteral,
         ObjectPatternElement, ObjectProperty, OptionalPropertyAccess,
         PropertyAccess, PropertyName, Statement, TemplateChunk,
         TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
@@ -21,6 +21,7 @@ use crate::{
         parse::{ParseContext, parse_module},
     },
     error::{ParseError, ParseErrorKind, ParseErrors, Unsupported},
+    source::Span,
 };
 use miette::LabeledSpan;
 use oxc_ast::ast::{self as oxc};
@@ -94,8 +95,8 @@ macro_rules! as_expression {
 }
 
 impl ParseContext<'_> {
-    /// Generate a transformation error at a node
-    fn error(&self, node: &impl GetSpan, error: ParseErrorKind) -> ParseError {
+    /// Generate and register a transformation error at a node
+    fn error(&mut self, node: &impl GetSpan, error: ParseErrorKind) -> Reg {
         let span = node.span();
         // Map from oxc's Span to miette's SourceSpan
         let span = miette::SourceSpan::new(
@@ -105,21 +106,62 @@ impl ParseContext<'_> {
         // Every error gets a single primary label
         let new_primary_with_span =
             LabeledSpan::new_primary_with_span(None, span);
-        ParseError {
+        self.errors.push(ParseError {
             error,
             labels: vec![new_primary_with_span],
+        });
+        Reg
+    }
+
+    /// Generate a new node ID for a new AST node
+    ///
+    /// This ID will be unique within the entire AST, including sub-modules.
+    /// This will also insert the node's source span into the span table.
+    fn node_id(&mut self, span: oxc_span::Span) -> NodeId {
+        self.node_id_inner(self.transform_span(span))
+    }
+
+    /// Map an [oxc_span::Span] to a PetitScript [Span]
+    fn transform_span(&self, span: oxc_span::Span) -> Span {
+        Span {
+            source_id: self.current_source_id,
+            // Assuming this will never run on a <32-bit platform
+            start_offset: span.start as usize,
+            end_offset: span.end as usize,
         }
     }
+
+    // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
+    fn node_id_inner(&mut self, span: Span) -> NodeId {
+        let id = NodeId::new(*self.next_node_id);
+        *self.next_node_id += 1;
+        self.spans.insert(id, span);
+        id
+    }
 }
+
+/// Indicator that an error has been registered via [ParseContext::error]
+///
+/// This is the error variant for all transformations because it forces
+/// transformers to register their errors with the context.
+///
+/// **Do not construct this manually!**
+struct Reg;
 
 /// Transform an [oxc_ast] node to a local [ast](crate::ast) node
 trait Transform {
     type Output;
 
+    /// Transform the AST node
+    ///
+    /// If the transformation fails, the error will be registered with the
+    /// parse context. [Reg] is returned to indicate the error was stored.
+    /// Practically, the error variant could just be `()`, but that would make
+    /// it very easy to return `()` without actually registering an error.
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError>;
+    ) -> Result<Self::Output, Reg>;
 
     /// Transform the content of an AST node and wrap it in a [Node]
     ///
@@ -128,7 +170,7 @@ trait Transform {
     fn transform_node(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Node<Self::Output>, ParseError>
+    ) -> Result<Node<Self::Output>, Reg>
     where
         Self: GetSpan,
     {
@@ -144,7 +186,7 @@ impl Transform for oxc::Statement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             // Imports/exports
             Self::ImportDeclaration(import_declaration) => import_declaration
@@ -273,7 +315,7 @@ impl Transform for oxc::ImportDeclaration<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // TODO only allow imports at top level
 
         // There can only be zero or one default per import statement, plus any
@@ -376,7 +418,7 @@ impl Transform for oxc::ImportSpecifier<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self.import_kind {
             oxc::ImportOrExportKind::Value => {
                 // ES supports arbitrary unicode as the import source, but I
@@ -446,7 +488,7 @@ impl Transform for oxc::ExportDeclaration<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let declaration = self.declaration.transform_node(context)?;
         Ok(ExportDeclaration::Declaration(declaration))
     }
@@ -459,7 +501,7 @@ impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let expression = match self {
             // export function() { ... } (ILLEGAL)
             Self::FunctionDeclaration(_) => {
@@ -482,10 +524,7 @@ impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
 impl Transform for oxc::ExportFromDeclaration<'_> {
     type Output = ExportDeclaration;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(ExportDeclaration::Reexport {})
     }
 }
@@ -496,7 +535,7 @@ impl Transform for oxc::Declaration<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::VariableDeclaration(variable_declaration) => {
                 variable_declaration.transform(context)
@@ -524,7 +563,7 @@ impl Transform for oxc::BlockStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let statements = self.body.transform_all(context);
         Ok(Block { statements })
     }
@@ -536,7 +575,7 @@ impl Transform for oxc::IfStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let condition = self.test.transform_node(context)?;
         // This body is NOT optional
         let body = self.consequent.transform_node(context)?;
@@ -560,7 +599,7 @@ impl Transform for oxc::DoWhileStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let condition = self.test.transform_node(context)?;
         let body = self.body.transform_node(context)?;
         Ok(DoWhileLoop {
@@ -576,7 +615,7 @@ impl Transform for oxc::WhileStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let condition = self.test.transform_node(context)?;
         let body = self.body.transform_node(context)?;
         Ok(WhileLoop {
@@ -592,7 +631,7 @@ impl Transform for oxc::ForOfStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         if self.r#await {
             unsupported!(context, self, Unsupported::Async);
         }
@@ -614,7 +653,7 @@ impl Transform for oxc::ForStatementLeft<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::VariableDeclaration(variable_declaration) => {
                 // We expect a single variable with no init expression. It's
@@ -658,7 +697,7 @@ impl Transform for oxc::BreakStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         if self.label.is_none() {
             Ok(Statement::Break)
         } else {
@@ -673,7 +712,7 @@ impl Transform for oxc::ContinueStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         if self.label.is_none() {
             Ok(Statement::Continue)
         } else {
@@ -688,7 +727,7 @@ impl Transform for oxc::ReturnStatement<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let expression = if let Some(argument) = &self.argument {
             Some(argument.transform_node(context)?)
         } else {
@@ -704,7 +743,7 @@ impl Transform for oxc::VariableDeclaration<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self.kind {
             oxc::VariableDeclarationKind::Const => {
                 let variables = self.declarations.transform_all(context);
@@ -728,10 +767,10 @@ impl Transform for oxc::VariableDeclarator<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // Can't have an assignment binding here because the right side of the
         // = is stored in self.init
-        let binding = self.id.transform(context)?.try_into_binding()?;
+        let binding = BindingOnly(&self.id).transform_node(context)?;
 
         let init = if let Some(init) = &self.init {
             Some(Box::new(init.transform_node(context)?))
@@ -749,34 +788,30 @@ impl Transform for oxc::VariableDeclarator<'_> {
 ///
 /// The docs for [oxc::BindingPattern] are really helpful.
 impl Transform for oxc::BindingPattern<'_> {
-    /// This uses an internal type to carry the binding as well as the
-    /// associated expression that *may* be present.
-    type Output = BindingPattern;
+    /// TODO
+    type Output = (Node<Binding>, Option<Node<Expression>>);
 
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::BindingIdentifier(binding_identifier) => {
                 let binding = binding_identifier
                     .transform_node(context)?
                     .wrap(context, Binding::Identifier);
-                Ok(BindingPattern {
-                    binding,
-                    expression: None,
-                })
+                Ok((binding, None))
             }
             Self::ArrayPattern(_) => todo!(),
             // TODO check `rest` field
             Self::ObjectPattern(object_pattern) => {
                 let properties =
                     object_pattern.properties.transform_all(context);
-                Ok(BindingPattern {
-                    binding: Binding::Object(properties)
+                Ok((
+                    Binding::Object(properties)
                         .into_node(context, object_pattern.span()),
-                    expression: None,
-                })
+                    None,
+                ))
             }
             // Pattern with an initializer expression, like `{x = 3}`. As far
             // as I can tell, this is only possible for a nested binding within
@@ -784,17 +819,55 @@ impl Transform for oxc::BindingPattern<'_> {
             // different constructs to track the right side of the `=`.
             Self::AssignmentPattern(assignment_pattern) => {
                 // Recursion!
-                let binding = assignment_pattern
-                    .left
-                    .transform(context)?
-                    // I think a nested assignment expression is illegal
-                    .try_into_binding()?;
+                let binding = BindingOnly(&assignment_pattern.left)
+                    .transform_node(context)?;
                 let expression =
                     assignment_pattern.right.transform_node(context)?;
-                Ok(BindingPattern {
-                    binding,
-                    expression: Some(expression),
-                })
+                Ok((binding, Some(expression)))
+            }
+        }
+    }
+}
+
+/// A wrapper for [oxc::BindingPattern] enforcing it is not an assignment
+/// pattern
+///
+/// Use this for use cases where `AssignmentPattern` is an impossible variant.
+/// This is in cases where the `=` is either illegal, or is handled by other
+/// AST types.
+struct BindingOnly<'a>(&'a oxc::BindingPattern<'a>);
+
+impl GetSpan for BindingOnly<'_> {
+    fn span(&self) -> oxc::Span {
+        self.0.span()
+    }
+}
+
+impl Transform for BindingOnly<'_> {
+    /// This uses an internal type to carry the binding as well as the
+    /// associated expression that *may* be present.
+    type Output = Binding;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        match &self.0 {
+            // TODO
+            oxc::BindingPattern::AssignmentPattern(_) => todo!("error"),
+            // Everything else can't have an expression, so we can transform
+            // as usual
+            _ => {
+                match self.0.transform(context)? {
+                    (binding, None) => Ok(binding.into_data()),
+                    // Expression is illegal!!
+                    (_, Some(_)) => Err(context.error(
+                        self.0,
+                        ParseErrorKind::Unhandled {
+                            node: format!("{:?}", self.0),
+                        },
+                    )),
+                }
             }
         }
     }
@@ -804,10 +877,7 @@ impl Transform for oxc::BindingPattern<'_> {
 impl Transform for oxc::BindingIdentifier<'_> {
     type Output = Identifier;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(transform_ident(self.name))
     }
 }
@@ -817,10 +887,7 @@ impl Transform for oxc::BindingIdentifier<'_> {
 impl Transform for oxc::IdentifierName<'_> {
     type Output = Identifier;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(transform_ident(self.name))
     }
 }
@@ -830,10 +897,7 @@ impl Transform for oxc::IdentifierName<'_> {
 impl Transform for oxc::IdentifierReference<'_> {
     type Output = Identifier;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(transform_ident(self.name))
     }
 }
@@ -856,13 +920,10 @@ impl Transform for oxc::BindingProperty<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let key = self.key.transform_node(context)?;
         // Value binding and init expression both come from this transformation
-        let BindingPattern {
-            binding: value,
-            expression: init,
-        } = self.value.transform(context)?;
+        let (value, init) = self.value.transform(context)?;
 
         Ok(ObjectPatternElement::Identifier { key, value, init })
     }
@@ -883,7 +944,7 @@ impl Transform for oxc::Function<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // Check illegal function types
         if self.r#async {
             unsupported!(context, self, Unsupported::Async);
@@ -937,7 +998,7 @@ impl Transform for oxc::ArrowFunctionExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let parameters = self.params.transform(context)?;
         let body = match &self.body {
             // block w/ braces
@@ -969,7 +1030,7 @@ impl Transform for oxc::FunctionBody<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // directives are ignored
         let block = Block {
             statements: self.statements.transform_all(context),
@@ -984,7 +1045,7 @@ impl Transform for oxc::FormalParameters<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // TODO is the `kind` field important? what do with it?
         self.items
             .iter()
@@ -999,13 +1060,13 @@ impl Transform for oxc::FormalParameter<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // Type and visibility annotations are ignored because they can
         // provide value at compile time, outside the PS runtime
 
         // Can't have an assignment binding here because the right side of the
         // = is stored in self.init
-        let binding = self.pattern.transform(context)?.try_into_binding()?;
+        let binding = BindingOnly(&self.pattern).transform_node(context)?;
 
         let init = if let Some(initializer) = &self.initializer {
             Some(Box::new(initializer.transform_node(context)?))
@@ -1026,7 +1087,7 @@ impl Transform for oxc::Expression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::NullLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
@@ -1169,10 +1230,7 @@ impl Transform for oxc::Expression<'_> {
 impl Transform for oxc::BooleanLiteral {
     type Output = Literal;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(Literal::Boolean(self.value))
     }
 }
@@ -1180,10 +1238,7 @@ impl Transform for oxc::BooleanLiteral {
 impl Transform for oxc::NullLiteral {
     type Output = Literal;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         Ok(Literal::Null)
     }
 }
@@ -1191,10 +1246,7 @@ impl Transform for oxc::NullLiteral {
 impl Transform for oxc::NumericLiteral<'_> {
     type Output = Literal;
 
-    fn transform(
-        &self,
-        _: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
         // oxc reports all numbers as floats. We want to convert
         // anything without a '.' back to ints
         if self
@@ -1216,7 +1268,7 @@ impl Transform for oxc::StringLiteral<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self.value.as_str() {
             Some(s) => Ok(Literal::String(s.into())),
             // JS supports invalid UTF-8 but Rust strings don't
@@ -1231,7 +1283,7 @@ impl Transform for oxc::TemplateLiteral<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // oxc provides the quasis (literal chunks) and expressions (dynamic
         // chunks) separately. We're responsible for piecing them back together
         // in order. Collect them all into one sequence, then sort by their
@@ -1281,7 +1333,7 @@ impl Transform for oxc::ArrayExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let elements = self
             .elements
             .iter()
@@ -1315,7 +1367,7 @@ impl Transform for oxc::ObjectExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let properties = self.properties.transform_all(context);
         Ok(ObjectLiteral { properties })
     }
@@ -1327,7 +1379,7 @@ impl Transform for oxc::ObjectPropertyKind<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::ObjectProperty(property) => property.transform(context),
             Self::SpreadProperty(element) => {
@@ -1344,7 +1396,7 @@ impl Transform for oxc::ObjectProperty<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self.kind {
             // Getters, setters, and methods aren't allowed
             oxc::PropertyKind::Get | oxc::PropertyKind::Set => {
@@ -1374,7 +1426,7 @@ impl Transform for oxc::PropertyKey<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::StaticIdentifier(ident) => {
                 let identifier = ident.transform_node(context)?;
@@ -1398,7 +1450,7 @@ impl Transform for oxc::ComputedMemberExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let object = self.object.transform_node(context)?;
         let property = self.expression.transform_node(context)?;
         Ok(PropertyAccess {
@@ -1415,7 +1467,7 @@ impl Transform for oxc::StaticMemberExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let object = self.object.transform_node(context)?;
         let property = self.property.transform_node(context)?;
 
@@ -1440,7 +1492,7 @@ impl Transform for oxc::ChainExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let from_property_access =
             |context, property_access: PropertyAccess| -> Expression {
                 Expression::OptionalProperty(
@@ -1493,7 +1545,7 @@ impl Transform for oxc::UnaryExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let operator = match self.operator {
             oxc::UnaryOperator::LogicalNot => UnaryOperator::BooleanNot,
             oxc::UnaryOperator::UnaryPlus => UnaryOperator::Plus,
@@ -1523,7 +1575,7 @@ impl Transform for oxc::BinaryExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let operator = match self.operator {
             oxc::BinaryOperator::LessThan => BinaryOperator::LessThan,
             oxc::BinaryOperator::LessEqualThan => BinaryOperator::LessThanEqual,
@@ -1575,7 +1627,7 @@ impl Transform for oxc::LogicalExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let operator = match self.operator {
             oxc::LogicalOperator::Or => BinaryOperator::BooleanOr,
             oxc::LogicalOperator::And => BinaryOperator::BooleanAnd,
@@ -1597,7 +1649,7 @@ impl Transform for oxc::ConditionalExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         let condition = self.test.transform_node(context)?;
         let true_expression = self.consequent.transform_node(context)?;
         let false_expression = self.alternate.transform_node(context)?;
@@ -1615,7 +1667,7 @@ impl Transform for oxc::CallExpression<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         // Like this: a.f?.()
         if self.optional {
             todo!("support optional functional calls")
@@ -1636,7 +1688,7 @@ impl Transform for oxc::Argument<'_> {
     fn transform(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
+    ) -> Result<Self::Output, Reg> {
         match self {
             Self::SpreadElement(_) => todo!("support spread in function args"),
             // All other variants are inherited from Expression
@@ -1649,7 +1701,11 @@ impl Transform for oxc::Argument<'_> {
 trait TransformAll<T: Transform> {
     /// Transform a collection of nodes
     ///
-    /// TODO explain errors
+    /// Invalid nodes (nodes that generate an error instead of transforming)
+    /// will be **skipped** and omitted from the output. This allows the
+    /// transformation to collect as many errors as possible, rather than
+    /// failing immediately. Any error will cause the top-level transformation
+    /// to fail, but the intermediate transformations will continue.
     fn transform_all(
         &self,
         context: &mut ParseContext,
@@ -1662,14 +1718,8 @@ impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
         context: &mut ParseContext,
     ) -> Box<[Node<T::Output>]> {
         self.into_iter()
-            .filter_map(|value| match value.transform_node(context) {
-                Ok(node) => Some(node),
-                Err(error) => {
-                    // If the node is invalid, register the error and skip it
-                    context.errors.push(error);
-                    None
-                }
-            })
+            // Errors are already registered, so just skip em
+            .filter_map(|value| value.transform_node(context).ok())
             .collect()
     }
 }
@@ -1740,34 +1790,5 @@ impl<T> IntoNode for T {
         span: oxc_span::Span,
     ) -> Node<Self> {
         Node::new(context.node_id(span), self)
-    }
-}
-
-/// Temporary type to help with mapping an [oxc::BindingPattern] to a [Binding]
-///
-/// Some use cases support assignment expressions, which carry an expression on
-/// the right side. This type makes it easy to assert those expressions are
-/// absent in cases where they're illegal.
-struct BindingPattern {
-    binding: Node<Binding>,
-    /// Right-hand side of an assignment expression
-    ///
-    /// This is illegal in some cases. See [oxc::BindingPattern] for where.
-    expression: Option<Node<Expression>>,
-}
-
-impl BindingPattern {
-    /// Get the inner binding if there is no expression
-    ///
-    /// Return an error if the assignment expression is present. Use this for
-    /// use cases where the assignment case is illegal.
-    fn try_into_binding(self) -> Result<Node<Binding>, ParseError> {
-        match self {
-            Self {
-                binding,
-                expression: None,
-            } => Ok(binding),
-            Self { .. } => Err(todo!("error")),
-        }
     }
 }

@@ -1,7 +1,7 @@
 //! Sometimes bad things happen
 
 use crate::{
-    NativeModuleName, Source,
+    NativeModuleName, Source, Value,
     compile::SUPPORTED_EXTENSIONS,
     source::QualifiedSpan,
     value::{Number, ValueType},
@@ -363,46 +363,75 @@ impl Display for Unsupported {
 }
 
 /// Any error that can occur during the execution of a program
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
     /// TODO
+    #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
 
     /// Attempted to export from within a subscope
+    #[error("Export only allowed in program root")]
     IllegalExport,
 
     /// Attempted to return while not in a function
+    #[error("Cannot return while not in function")]
     IllegalReturn,
 
     /// Oopsies!
     ///
     /// TODO include bug report link here
+    #[error(
+        "Internal error occurred in the PetitScript engine. \
+        This is a bug; please report it! {0}"
+    )]
     Internal(String),
 
     /// Second assignment to a `const` variable
+    #[error("Assignment to immutable variable `{name}`")]
     ImmutableAssign { name: String },
 
     /// Error in `JSON.parse`
+    #[error("TODO: {error}")]
     JsonParse { error: ContextError },
 
     /// Custom error type, for errors originating in user-provided native
     /// functions
+    #[error(transparent)]
     Other(Box<dyn StdError + Send + Sync>),
 
+    /// Attempted to get a property of `null` or `undefined`
+    ///
+    /// TODO give this a more descriptive name
+    #[error("Cannot read properties of `{value}` (property \"{property}\")")]
+    Property { value: Value, property: Value },
+
     /// Reference to an identifier that isn't bound
+    #[error("`{name}` is not defined")]
     Reference { name: String },
 
     /// Attempt to import a name that a module doesn't export
+    #[error("Module does not export the name `{identifier}`")]
     UnknownImport { identifier: String },
 
     /// Attempt to import from a module that doesn't exist
+    #[error(
+        "Unknown module `{name}`. Native modules must be registered \
+                with the engine. If you meant to import from a local file, \
+                try `./{name}`"
+    )]
     UnknownModule { name: NativeModuleName },
 
     /// Error converting to/from PS values
-    Value(ValueError),
+    #[error(transparent)]
+    Value(#[from] ValueError),
 
     /// A runtime error with an additional context message
-    WithContext { message: String, error: Box<Self> },
+    #[error("{message}")]
+    WithContext {
+        message: String,
+        #[source]
+        error: Box<Self>,
+    },
 }
 
 impl RuntimeError {
@@ -423,71 +452,6 @@ impl RuntimeError {
             message: context.into(),
             error: Box::new(self),
         }
-    }
-}
-
-impl Display for RuntimeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AlreadyExported { name } => {
-                write!(f, "`{name}` is already exported")
-            }
-            Self::IllegalExport => {
-                write!(f, "Export only allowed in program root")
-            }
-            Self::IllegalReturn => {
-                write!(f, "Cannot return while not in function")
-            }
-            Self::Internal(message) => write!(
-                f,
-                "Internal error occurred in the PetitScript engine. \
-                This is a bug; please report it! {message}"
-            ),
-            Self::ImmutableAssign { name } => {
-                write!(f, "Assignment to immutable variable `{name}`")
-            }
-            Self::JsonParse { error } => write!(f, "TODO: {error}"),
-            Self::Other(error) => write!(f, "{error}"),
-            Self::Reference { name } => write!(f, "`{name}` is not defined"),
-            Self::UnknownImport { identifier } => {
-                write!(f, "Module does not export the name `{identifier}`")
-            }
-            Self::UnknownModule { name } => write!(
-                f,
-                "Unknown module `{name}`. Native modules must be registered \
-                with the engine. If you meant to import from a local file, \
-                try `./{name}`"
-            ),
-            Self::Value(error) => write!(f, "{error}"),
-            Self::WithContext { message, .. } => write!(f, "{message}"),
-        }
-    }
-}
-
-impl StdError for RuntimeError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        match self {
-            Self::AlreadyExported { .. } => None,
-            Self::IllegalExport => None,
-            Self::IllegalReturn => None,
-            Self::Internal(_) => None,
-            Self::ImmutableAssign { .. } => None,
-            Self::JsonParse { .. } => None,
-            // This is a transparent wrapper. We're going to print the error
-            // in our display, so don't print it again as the source
-            Self::Other(error) => error.source(),
-            Self::Reference { .. } => None,
-            Self::UnknownImport { .. } => None,
-            Self::UnknownModule { .. } => None,
-            Self::Value(error) => Some(error),
-            Self::WithContext { error, .. } => Some(error),
-        }
-    }
-}
-
-impl From<ValueError> for RuntimeError {
-    fn from(error: ValueError) -> Self {
-        Self::Value(error)
     }
 }
 

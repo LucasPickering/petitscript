@@ -261,30 +261,33 @@ impl Value {
         }
     }
 
-    /// Get a property from this value. Return `None` if the property isn't
-    /// present. If this value is `null` or `undefined`, return an error.
+    /// Get a property from this value
+    ///
+    /// Return `None` if the property isn't present. If this value is `null` or
+    /// `undefined`, return an error.
     pub(crate) fn get(
         &self,
-        key: &Self,
+        property: &Self,
     ) -> Result<Option<Value>, RuntimeError> {
-        let value: Option<Value> = match (self, key) {
+        match (self, property) {
             (Self::Array(array), Self::Number(Number::Int(i))) => {
                 // If the index is positive and in the array, get the value
                 if let Ok(i) = usize::try_from(*i) {
-                    array.get(i).cloned()
+                    Ok(array.get(i).cloned())
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => {
-                Some(object.get(key).clone())
+                Ok(Some(object.get(key).clone()))
             }
-            (Self::Undefined | Self::Null, _) => todo!("error"),
-            _ => None,
-        };
-
-        Ok(value)
+            (Self::Undefined | Self::Null, _) => Err(RuntimeError::Property {
+                value: self.clone(),
+                property: property.clone(),
+            }),
+            _ => Ok(None),
+        }
     }
 
     /// Boolean AND operator (&&)

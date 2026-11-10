@@ -672,11 +672,8 @@ pub enum ObjectPatternElement {
         /// Optional default expression for properties not in the object
         init: Option<Node<Expression>>,
     },
-    /// `const { ...x } = object` or `const { ...x = {} } = object`
-    Rest {
-        binding: Node<Binding>,
-        init: Option<Node<Expression>>,
-    },
+    /// `const { ...x } = object`
+    Rest { binding: Node<Binding> },
 }
 
 /// TODO

@@ -280,7 +280,7 @@ impl Value {
             }
             // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => {
-                Ok(Some(object.get(key).clone()))
+                Ok(object.get(key).cloned())
             }
             (Self::Undefined | Self::Null, _) => Err(RuntimeError::Property {
                 value: self.clone(),

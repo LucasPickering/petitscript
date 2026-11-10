@@ -17,6 +17,12 @@ impl PetitString {
     }
 }
 
+impl AsRef<str> for PetitString {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl Deref for PetitString {
     type Target = str;
 

@@ -21,12 +21,9 @@ impl Object {
         Self::default()
     }
 
-    /// Get a value from the object by key, or undefined if not present
-    pub fn get(&self, key: &str) -> &Value {
-        self.0
-            .iter()
-            .find_map(|(k, v)| if k == key { Some(v) } else { None })
-            .unwrap_or(&Value::Undefined)
+    /// Get a value from the object by key, or `None` if not present
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.0.iter().find_map(|(k, v)| (k == key).then_some(v))
     }
 
     /// Get the number of entries in this object

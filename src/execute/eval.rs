@@ -102,19 +102,9 @@ impl Evaluate for ObjectLiteral {
                     property,
                     expression,
                 } => {
-                    let name = match &property.data() {
-                        // {field: "value"}
-                        // Shorthand syntax unpacks to {field: field} in parsing
-                        PropertyName::Literal(identifier) => {
-                            identifier.as_str().to_owned()
-                        }
-                        // {["field"]: "value"}
-                        PropertyName::Expression(expression) => {
-                            // Convert to a string using coercion semantics.
-                            // Make sure *not* to convert with the Display impl
-                            String::from(expression.eval(state)?.to_string())
-                        }
-                    };
+                    // Convert to a string using coercion semantics.
+                    // Make sure *not* to convert with the Display impl
+                    let name = String::from(property.eval(state)?.to_string());
                     let value = expression.eval(state)?;
                     object = object.insert(name, value);
                 }
@@ -130,6 +120,18 @@ impl Evaluate for ObjectLiteral {
             }
         }
         Ok(object.into())
+    }
+}
+
+impl Evaluate for PropertyName {
+    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
+        match self {
+            // {field: "value"}
+            // Shorthand syntax unpacks to {field: field} in parsing
+            PropertyName::Literal(identifier) => Ok(identifier.as_str().into()),
+            // {["field"]: "value"}
+            PropertyName::Expression(expression) => expression.eval(state),
+        }
     }
 }
 
@@ -325,10 +327,10 @@ impl Function {
                         // No init expression, use undefined
                         Value::Undefined
                     };
-                    scope.bind(&parameter.variable.binding, value).map_err(
-                        |error| {
-                            state.trace_error(error, parameter.variable.id())
-                        },
+                    super::exec::bind(
+                        state,
+                        &parameter.variable.binding,
+                        value,
                     )?;
                 }
 

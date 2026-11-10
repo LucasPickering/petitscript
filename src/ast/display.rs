@@ -474,10 +474,7 @@ impl DisplayIndent for ObjectPatternElement {
                     _ => (key, ": ", value, init).fmt(ind),
                 }
             }
-            Self::Rest { binding, init } => {
-                ("...", binding, init.as_ref().map(|init| (" = ", init)))
-                    .fmt(ind)
-            }
+            Self::Rest { binding } => ("...", binding).fmt(ind),
         }
     }
 }

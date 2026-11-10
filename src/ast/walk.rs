@@ -130,10 +130,7 @@ impl Walk for ObjectPatternElement {
                 value.walk(visitor);
                 init.walk(visitor);
             }
-            Self::Rest { binding, init } => {
-                binding.walk(visitor);
-                init.walk(visitor);
-            }
+            Self::Rest { binding } => binding.walk(visitor),
         }
         visitor.exit_object_pattern_element(self);
     }

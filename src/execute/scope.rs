@@ -3,7 +3,7 @@
 
 use crate::{
     Process, RuntimeError,
-    ast::{Binding, Identifier},
+    ast::Identifier,
     value::{
         FromPetitArgs, Function, IntoPetitResult, Value, ValueType,
         function::{BoundFunction, Captures},
@@ -61,7 +61,7 @@ impl Scope {
     /// Declare a single name in scope, and bind it to a variable
     pub fn declare(
         &mut self,
-        name: impl Into<String>,
+        name: impl Into<String>, // TODO take identifier instead?
         value: impl Into<Value>,
     ) {
         // Grab the lowest user env
@@ -92,35 +92,12 @@ impl Scope {
             .and_then(|prototype| prototype.0.get(name))
     }
 
-    /// Declare a new binding in this scope. The binding can be a single
-    /// identifier, or a structured identifier, in which case multiple names
-    /// may be bound. This is a convenience method for calling [Self::declare]
-    /// on each name in the binding.
-    pub fn bind(
-        &mut self,
-        binding: &Binding,
-        value: Value,
-    ) -> Result<Vec<String>, RuntimeError> {
-        match binding {
-            Binding::Identifier(identifier) => {
-                let name = identifier.as_str().to_owned();
-                self.declare(name.clone(), value);
-                Ok(vec![name])
-            }
-            Binding::Object(_) => {
-                Err(RuntimeError::internal("TODO object bindings"))
-            }
-            Binding::Array(_) => {
-                Err(RuntimeError::internal("TODO array bindings"))
-            }
-        }
-    }
-
-    /// Capture values for a closure. For each given identifier that the closure
-    /// needs, grab its value. If an identifier is needed but not available,
-    /// return an error. This indicates a compiler bug. The compiler should
-    /// ensure that any captured names are available in a parent scope. An
-    /// invalid reference here means the compiler messed up.
+    /// Capture values for a closure
+    ///
+    /// For each given identifier that the closure needs, grab its value. If an
+    /// identifier is needed but not available, return an error. This indicates
+    /// a compiler bug. The compiler should ensure that any captured names are
+    /// available in a parent scope, meaning an invalid reference is a mistake.
     pub fn captures(
         &self,
         identifiers: &[Identifier],

@@ -252,9 +252,11 @@ struct CallFrame {
     call_site: CallSite,
 }
 
-/// A location from which a function can be called. Typically this is an AST
-/// node pointing to the invoking [FunctionCall](super::FunctionCall), but it
-/// can also be a point in native code.
+/// A location from which a function can be called
+///
+/// Typically this is an AST node pointing to the invoking
+/// [FunctionCall](super::FunctionCall), but it can also be a point in native
+/// code.
 #[derive(Copy, Clone, Debug)]
 pub enum CallSite {
     /// The current function was invoked from another PS function

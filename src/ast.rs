@@ -21,7 +21,7 @@ mod walk;
 // Re-export this because it fits conceptually here
 pub use crate::name::Identifier;
 pub use build::{IntoExpression, IntoNode, IntoStatement};
-pub use walk::{AstVisitor, Walk};
+pub use walk::{AstVisitor, IdentifierPosition, Walk};
 
 use crate::name::NativeModuleName;
 use std::{
@@ -626,7 +626,14 @@ pub struct TernaryConditional {
     pub false_expression: Box<Node<Expression>>,
 }
 
-/// TODO
+/// Name of an object property
+///
+/// This can appear in 3 places:
+/// - Object literal: `const o = { a: 1 };`
+/// - Object pattern: `const { a } = { a: 1 };`
+/// - Property access: `o.a` or `o["a"]`
+///
+/// This could be in an object literal, object pattern, or property access.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PropertyName {
@@ -658,8 +665,11 @@ pub enum ObjectPatternElement {
     /// - `const { x: x2 } = object`
     /// - `const { x: x2 = 3 } = object`
     Identifier {
+        /// Key extracted from the object
         key: Node<PropertyName>,
+        /// Name to bind the value to
         value: Node<Binding>,
+        /// Optional default expression for properties not in the object
         init: Option<Node<Expression>>,
     },
     /// `const { ...x } = object` or `const { ...x = {} } = object`

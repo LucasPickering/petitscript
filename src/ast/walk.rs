@@ -75,13 +75,10 @@ impl Walk for Expression {
             Self::Parenthesized(expression) => expression.walk(visitor),
             Self::Literal(literal) => literal.walk(visitor),
             Self::Template(template) => template.walk(visitor),
-            Self::Identifier(identifier) => {
-                // This is a referential usage of the identifier, so call the
-                // extra visitor method. This is the primary way to reference
-                // an identifier
-                visitor.visit_reference(identifier.data_mut());
-                identifier.walk(visitor);
-            }
+            Self::Identifier(identifier) => visitor.visit_identifier(
+                identifier.data_mut(),
+                IdentifierPosition::Reference,
+            ),
             Self::Call(call) => call.walk(visitor),
             Self::Property(property) => property.walk(visitor),
             Self::OptionalProperty(property) => property.walk(visitor),
@@ -97,6 +94,7 @@ impl Walk for Expression {
 impl Walk for Variable {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_variable(self);
+        self.binding.walk(visitor);
         self.init.walk(visitor);
         visitor.exit_variable(self);
     }
@@ -106,7 +104,8 @@ impl Walk for Binding {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_binding(self);
         match self {
-            Self::Identifier(identifier) => identifier.walk(visitor),
+            Self::Identifier(identifier) => visitor
+                .visit_identifier(identifier, IdentifierPosition::Declaration),
             Self::Object(elements) => elements.walk(visitor),
             Self::Array(elements) => elements.walk(visitor),
         }
@@ -208,7 +207,8 @@ impl Walk for PropertyName {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_property_name(self);
         match self {
-            Self::Literal(identifier) => identifier.walk(visitor),
+            Self::Literal(identifier) => visitor
+                .visit_identifier(identifier, IdentifierPosition::Property),
             Self::Expression(expression) => expression.walk(visitor),
         }
         visitor.exit_property_name(self);
@@ -269,12 +269,6 @@ impl Walk for TemplateChunk {
     }
 }
 
-impl Walk for Identifier {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.visit_identifier(self);
-    }
-}
-
 impl Walk for ArrayLiteral {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_array_literal(self);
@@ -332,7 +326,11 @@ impl Walk for FunctionCall {
 impl Walk for ImportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import(self);
-        self.default.walk(visitor);
+        // Default identifier is a declaration
+        if let Some(identifier) = &mut self.default {
+            visitor
+                .visit_identifier(identifier, IdentifierPosition::Declaration);
+        }
         self.named.walk(visitor);
         self.module.walk(visitor);
         visitor.exit_import(self);
@@ -342,8 +340,10 @@ impl Walk for ImportDeclaration {
 impl Walk for ImportNamed {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import_named(self);
-        self.imported.walk(visitor);
-        self.local.walk(visitor);
+        visitor
+            .visit_identifier(&mut self.imported, IdentifierPosition::Property);
+        visitor
+            .visit_identifier(&mut self.local, IdentifierPosition::Declaration);
         visitor.exit_import_named(self);
     }
 }
@@ -548,12 +548,33 @@ pub trait AstVisitor {
     fn enter_while_loop(&mut self, _: &mut WhileLoop) {}
     fn exit_while_loop(&mut self, _: &mut WhileLoop) {}
 
-    /// Visit any usage of an identifier, including references and declarations
-    fn visit_identifier(&mut self, _: &mut Identifier) {}
+    /// Visit a usage of an [Identifier]
+    ///
+    /// Identifiers can be used in 3 positions; see [IdentifierPosition].
+    fn visit_identifier(
+        &mut self,
+        _identifier: &mut Identifier,
+        _position: IdentifierPosition,
+    ) {
+    }
+}
 
-    /// Visit a reference to an identifier. Unlike
-    /// [AstVisitor::visit_identifier], this is *not* called for declarations;
-    /// it only visits identifiers in an expression position as `x + 1` or
-    /// `{ x }`
-    fn visit_reference(&mut self, _: &mut Identifier) {}
+/// TODO
+#[derive(Copy, Clone, Debug)]
+pub enum IdentifierPosition {
+    /// Binding position declaring a new name
+    ///
+    /// Such as `x` in `const x = 1`, `(x) => {...}`.
+    Declaration,
+    /// Expression position
+    ///
+    /// Such as `x` in `x + 1` or `const o = { x }`.
+    Reference,
+    /// Property name for an object
+    ///
+    /// Such as `x` in `o.x`, `const { x: x1 } = o`, or `import { x: x1 } from
+    /// 'source'`.
+    ///
+    /// These usages do *not* interact with the local scope at all.
+    Property,
 }

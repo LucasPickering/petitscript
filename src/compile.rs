@@ -115,9 +115,10 @@ impl Compiler<()> {
 }
 
 impl Compiler<ParsedAst> {
-    /// Label functions in bound expressions such as `const f = () => {}`, for
-    /// debuggability and convenience. This has no semantic impact on the
-    /// program
+    /// Label functions in bound expressions such as `const f = () => {}`,
+    ///
+    /// This is just for for debuggability and convenience, and has no semantic
+    /// impact on the program.
     fn label(self) -> Compiler<LabelledAst> {
         let mut module = self.program.module;
         module.walk(&mut LabelFunctions);
@@ -132,6 +133,7 @@ impl Compiler<ParsedAst> {
 }
 
 impl Compiler<LabelledAst> {
+    /// Calculate captured variables in each function definition
     fn capture(self) -> Compiler<CapturedAst> {
         let mut module = self.program.module;
         module.walk(&mut CaptureFunctions::new());

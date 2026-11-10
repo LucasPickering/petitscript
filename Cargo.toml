@@ -25,6 +25,7 @@ thiserror = "2.0.21"
 winnow = "0.7.4"
 
 [dev-dependencies]
+pretty_assertions = "1.4.1"
 serde_json = {workspace = true}
 static_assertions = "1.1.0"
 test-case = "3.3.1"

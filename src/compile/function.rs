@@ -2,7 +2,7 @@
 
 use crate::ast::{
     AstVisitor, Binding, Block, Expression, FunctionDefinition, Identifier,
-    ImportDeclaration, Node, ObjectProperty, PropertyName, Variable,
+    IdentifierPosition, Node, ObjectProperty, PropertyName, Variable,
 };
 use indexmap::IndexSet;
 
@@ -57,10 +57,11 @@ impl AstVisitor for LabelFunctions {
     }
 }
 
-/// For each function in the AST, determine which identifiers it uses in it body
-/// that must be captured from the parent scope. This doesn't capture *values*,
-/// just identifiers. The runtime will use this list to determine which values
-/// to capture.
+/// Compiler pipeline state to determine which identifiers each function uses in
+/// it body that must be captured from the parent scope
+///
+/// This doesn't capture *values*, just identifiers. The runtime will use this
+/// list to determine which values to capture.
 ///
 /// This works by walking through every function body and visiting every
 /// variable reference. For each reference, check if it's available in the
@@ -87,9 +88,46 @@ impl CaptureFunctions {
     }
 
     /// Add a declaration to the outermost scope
+    ///
+    /// Use this to track which identifiers are internal and therefore *don't*
+    /// need to be captured.
     fn declare(&mut self, identifier: Identifier) {
         let scope = self.scope_stack.last_mut().expect("Scope stack is empty");
         scope.insert(identifier);
+    }
+
+    /// Handle a reference to an identifier from within a function body
+    ///
+    /// This determines if the identifier is present in the scope or needs to
+    /// be captured.
+    fn refer(&mut self, identifier: &Identifier) {
+        // Find the innermost (last) scope that provides this name
+        let Some(providing_scope_index) = self
+            .scope_stack
+            .iter()
+            .rev()
+            .position(|scope| scope.contains(identifier))
+            // Found index is from the *end* - we need to flip it around
+            .map(|index| self.scope_stack.len() - 1 - index)
+        else {
+            // The name doesn't exist anywhere; let's assume it's in the global
+            // scope and therefore doesn't need to be captured. Otherwise, this
+            // reference will trigger an error at runtime
+            return;
+        };
+
+        // When capturing a name, we can't just capture it in the innermost
+        // function. Every function between its declaration and usage has to
+        // capture it.
+        self.function_stack
+            .iter_mut()
+            .rev()
+            // If the providing scope is lower on the stack than the function's
+            // outermost scope, we have to capture
+            .filter(|frame| providing_scope_index < frame.scope_index)
+            .for_each(|frame| {
+                frame.captures.insert(identifier.clone());
+            });
     }
 }
 
@@ -131,58 +169,18 @@ impl AstVisitor for CaptureFunctions {
         definition.captures = frame.captures.into_iter().collect();
     }
 
-    /// Declare a lexical variable
-    fn enter_variable(&mut self, variable: &mut Variable) {
-        // Lexical declaration could have any number of names
-        match &*variable.binding {
-            Binding::Identifier(identifier) => {
-                self.declare(identifier.data().clone());
-            }
-            Binding::Object(_) => todo!(),
-            Binding::Array(_) => todo!(),
+    /// Track a declaration or usage of an identifier
+    fn visit_identifier(
+        &mut self,
+        identifier: &mut Identifier,
+        position: IdentifierPosition,
+    ) {
+        match position {
+            IdentifierPosition::Declaration => self.declare(identifier.clone()),
+            IdentifierPosition::Reference => self.refer(identifier),
+            // We don't care about this. They're just like NOTHING.
+            IdentifierPosition::Property => {}
         }
-    }
-
-    /// Declare names from an import
-    fn enter_import(&mut self, import: &mut ImportDeclaration) {
-        if let Some(default) = &import.default {
-            self.declare(default.data().clone());
-        }
-        for named in &import.named {
-            self.declare(named.local.data().clone());
-        }
-    }
-
-    /// Track a reference to an identifier. We'll decide if it's accesible in
-    /// the current scope or needs to be captured
-    fn visit_reference(&mut self, identifier: &mut Identifier) {
-        // Find the innermost (last) scope that provides this name
-        let Some(providing_scope_index) = self
-            .scope_stack
-            .iter()
-            .rev()
-            .position(|scope| scope.contains(identifier))
-            // Found index is from the *end* - we need to flip it around
-            .map(|index| self.scope_stack.len() - 1 - index)
-        else {
-            // The name doesn't exist anywhere; let's assume it's in the global
-            // scope and therefore doesn't need to be captured. Otherwise, this
-            // reference will trigger an error at runtime
-            return;
-        };
-
-        // When capturing a name, we can't just capture it in the innermost
-        // function. Every function between its declaration and usage has to
-        // capture it.
-        self.function_stack
-            .iter_mut()
-            .rev()
-            // If the providing scope is lower on the stack than the function's
-            // outermost scope, we have to capture
-            .filter(|frame| providing_scope_index < frame.scope_index)
-            .for_each(|frame| {
-                frame.captures.insert(identifier.clone());
-            });
     }
 }
 
@@ -203,11 +201,12 @@ mod tests {
     use crate::{
         ast::{
             Declaration, FunctionBody, FunctionCall, FunctionParameter,
-            IntoExpression, IntoNode, IntoStatement, Module, ObjectLiteral,
-            Statement,
+            ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module,
+            ObjectLiteral, Statement,
         },
         compile::{CapturedAst, Compiler, LabelledAst},
     };
+    use pretty_assertions::assert_eq;
 
     // We use vecs in a lot of args here in an attempt to cut down on
     // monomorphization copies for the builder methods
@@ -220,8 +219,7 @@ mod tests {
             "
         const f = () => {};
         const o = {g: () => {}};
-        // TODO make this work (param doesn't parse)
-        //function param(h = () => {}) {}
+        function param(h = () => {}) {}
         ",
         )
         .parse()
@@ -244,10 +242,36 @@ mod tests {
             )]),
         )
         .into();
+        let expected_statement_3 = Declaration::new(
+            "param",
+            FunctionDefinition::new(
+                [FunctionParameter {
+                    variable: Variable::identifier(
+                        "h",
+                        Some(
+                            FunctionDefinition::new([], FunctionBody::empty())
+                                // This name was labelled!
+                                .with_name("h")
+                                .into_expr(),
+                        ),
+                    )
+                    .s(),
+                    varargs: false,
+                }],
+                FunctionBody::empty(),
+            )
+            .with_name("param")
+            .into_expr(),
+        )
+        .into();
 
         assert_eq!(
             module.data(),
-            &Module::new(vec![expected_statement_1, expected_statement_2])
+            &Module::new(vec![
+                expected_statement_1,
+                expected_statement_2,
+                expected_statement_3
+            ])
         );
     }
 

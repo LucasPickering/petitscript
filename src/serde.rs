@@ -256,7 +256,7 @@ mod tests {
                 .with_name("func")
                 .with_captures(["cap"])
                 .into(),
-            indexmap! {"cap".to_owned() => 32.into()},
+            [("cap", 32.into())].into(),
         );
         "function_user"
     )]
@@ -295,7 +295,7 @@ mod tests {
                 .with_name("func")
                 .with_captures(["cap"])
                 .into(),
-            indexmap! {"cap".to_owned() => 32.into()},
+            [("cap", 32.into())].into(),
         );
         "user"
     )]

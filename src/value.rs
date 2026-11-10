@@ -43,7 +43,7 @@ use std::{
 pub enum Value {
     /// TODO
     ///
-    /// This value serializes as the unit value: `()`
+    /// This value serializes as the unit value `()`
     #[default]
     Undefined,
     /// TODO

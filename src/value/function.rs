@@ -24,11 +24,12 @@ pub enum Function {
         /// the value can be cloned cheaply.
         /// TODO use Arc in the AST as well?
         definition: Arc<FunctionDefinition>,
-        /// All external bound values captured by this function. It would be
-        /// much easier to just store a pointer to the parent's scope, but we
-        /// need functions to be serializable so we have to store the raw
-        /// values instead. This must contain a reference to every captured
-        /// identifier in the function definition; if an identifier is
+        /// All external bound values captured by this function
+        ///
+        /// It would be much easier to just store a pointer to the parent's
+        /// scope, but we need functions to be serializable so we have to store
+        /// the raw values instead. This must contain a reference to every
+        /// captured identifier in the function definition; if an identifier is
         /// referenced in the function but not available in the parent
         /// scope, it won't be captured in either the definition or here. In
         /// that case, it must either be provided by the global scope or we'll
@@ -145,7 +146,34 @@ impl Display for Function {
 }
 
 /// A set of captured values for a closure
-pub type Captures = IndexMap<String, Value>;
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Captures(
+    /// This is boxed to limit this enum's size. This cuts down on the
+    /// size of the top-level `Value` enum dramatically.
+    Box<IndexMap<String, Value>>,
+);
+
+/// Useful for building test data
+impl<I: IntoIterator<Item = (&'static str, Value)>> From<I> for Captures {
+    fn from(value: I) -> Self {
+        value.into_iter().map(|(k, v)| (k.to_owned(), v)).collect()
+    }
+}
+
+impl<'a> IntoIterator for &'a Captures {
+    type Item = (&'a String, &'a Value);
+    type IntoIter = <&'a IndexMap<String, Value> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl FromIterator<(String, Value)> for Captures {
+    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+        Self(Box::new(iter.into_iter().collect()))
+    }
+}
 
 /// TODO
 #[derive(Clone)]

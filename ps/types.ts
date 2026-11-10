@@ -1,6 +1,6 @@
-type T = string;
+type str = string;
 function f<T>(arg: T): T {
   return arg;
 }
 
-f("asdf");
+export const s = f<str>("asdf");

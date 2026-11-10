@@ -286,8 +286,6 @@ pub enum Unsupported {
     TaggedTemplate,
     /// `this`
     This,
-    /// TODO remove this
-    TypeScript,
     /// `using`
     Using,
     /// `void`
@@ -356,11 +354,6 @@ impl Display for Unsupported {
                 ("tagged template", "Use untagged templates")
             }
             Self::This => ("`this`", "`this` is not supported"),
-            Self::TypeScript => (
-                "TypeScript",
-                "Type annotations and other TypeScript constructs \
-                are not supported",
-            ),
             Self::Using => ("`using`", "TODO"),
             Self::Void => ("`void`", "Void operator is not supported"),
             Self::Todo => ("TODO", "TODO"),

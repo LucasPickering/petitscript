@@ -13,7 +13,6 @@ use crate::{
     error::{ParseError, ParseErrorKind, ParseErrors},
     source::{SourceId, SourceTable, Span, SpanTable},
 };
-use miette::LabeledSpan;
 use oxc_allocator::Allocator;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_parser::{Parser, ParserReturn};
@@ -137,25 +136,6 @@ impl ParseContext<'_> {
         }
     }
 
-    /// TODO
-    fn map_error(&self, error: ParseErrorKind, span: Span) -> ParseErrors {
-        // Get the full code for the offending source
-        let source_code = self.sources.get(span.source_id).clone();
-        // Map from our Span to miette's SourceSpan
-        let span = miette::SourceSpan::new(
-            span.start_offset.into(),
-            span.end_offset - span.start_offset,
-        );
-        ParseErrors {
-            // TODO multiple errors
-            errors: vec![ParseError {
-                error,
-                labels: vec![LabeledSpan::new_primary_with_span(None, span)],
-            }],
-            source_code,
-        }
-    }
-
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
     fn node_id_inner(&mut self, span: Span) -> NodeId {
         let id = NodeId::new(*self.next_node_id);
@@ -208,6 +188,7 @@ fn map_oxc_error(diagnostic: OxcDiagnostic) -> ParseError {
 mod tests {
     use super::*;
     use crate::{assert_matches, ast::IntoExpression, error::Unsupported};
+    use miette::LabeledSpan;
 
     /// Test an escaped newline `\n` in a string literal
     /// ```notrust

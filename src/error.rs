@@ -78,25 +78,20 @@ impl From<TracedError> for Error {
 #[cfg(test)]
 static_assertions::assert_impl_all!(Error: Send, Sync);
 
-/// Error occurred while parsing source code or transforming it to PetitScript
+/// Container for one or more [ParseError]s during parsing
 ///
-/// PetitScript uses a two-part parser:
-/// - First, source code is parsed to an ECMAScript (JavaScript) abstract syntax
-///   tree via [oxc_parser]
-/// - Then, the ES AST is transformed to a PetitScript AST
+/// Parsing does not fail fast; it collects as many errors as it can, but will
+/// fail if there is at least one.
 ///
-/// The first step will fail if the source code is not valid syntax. The second
-/// will fail if the code is not valid PetitScript. As PS is a small subset of
-/// JS, there are many syntactic constructs in JS that are not valid PS.
-///
-/// TODO update comment
+/// This correponds to a single module's parse. Submodules will be included
+/// recursively via [ParseErrorKind::Import].
 #[derive(Debug, Diagnostic, thiserror::Error)]
 #[error("{} parse error(s)", errors.len())]
 pub struct ParseErrors {
-    /// TODO
+    /// One or more parse errors
     #[related]
     pub errors: Vec<ParseError>,
-    /// TODO
+    /// Module source code that failed to parse
     #[source_code]
     pub source_code: Source,
 }
@@ -111,7 +106,16 @@ impl Borrow<dyn miette::Diagnostic> for Box<ParseErrors> {
     }
 }
 
-/// TODO
+/// Error occurred while parsing source code or transforming it to PetitScript
+///
+/// PetitScript uses a two-part parser:
+/// - First, source code is parsed to an ECMAScript (JavaScript) abstract syntax
+///   tree via [oxc_parser]
+/// - Then, the ES AST is transformed to a PetitScript AST
+///
+/// The first step will fail if the source code is not valid syntax. The second
+/// will fail if the code is not valid PetitScript. As PS is a small subset of
+/// JS, there are many syntactic constructs in JS that are not valid PS.
 #[derive(Debug, Diagnostic, thiserror::Error)]
 #[error("parse")] // Use a short description because the cause is descriptive
 pub struct ParseError {

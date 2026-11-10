@@ -181,8 +181,7 @@ pub enum ParseErrorKind {
     /// prevent leaking the `oxc` type as part of PetitScript's external API.
     #[error("{message}")]
     Parse {
-        // I only included fields from OxcDiagnostic that don't require
-        // third-party types. Omitted severity, and code
+        // Omitting error code because I don't think it's useful
         message: String,
         #[help]
         help: Option<String>,

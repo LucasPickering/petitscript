@@ -33,20 +33,29 @@ use std::{
 
 /// Transform the AST of an ES program into a PS module
 pub fn transform_module(
-    context: &mut ParseContext,
+    mut context: ParseContext,
     program: oxc::Program<'_>,
 ) -> Result<Node<Module>, ParseErrors> {
-    program.transform_node(context).map_err(|error| {
+    // Invalid nodes are dropped and registered as errors. Errors are registered
+    // in the context instead of bubbling up. We don't want errors to cancel
+    // transformation, they should all be collected and reported together.
+    //
+    // Individual nodes can fail to transform, but multiple-error collection is
+    // done via transform_all(). When there's a list of nodes (e.g a list of
+    // statements in a block), invalid statements are tossed.
+    let statements = program.body.transform_all(&mut context);
+    if context.errors.is_empty() {
+        Ok(Module { statements }.into_node(&mut context, program.span()))
+    } else {
         // Get the full code for the offending source. Using the current source
         // is ok because any errors within a nested module would've been wrapped
         // into a ParseErrors already.
         let source_code = context.current_source().clone();
-        ParseErrors {
-            // TODO multiple errors
-            errors: vec![error],
+        Err(ParseErrors {
+            errors: context.errors,
             source_code,
-        }
-    })
+        })
+    }
 }
 
 /// Helper for returning an unsupported error
@@ -125,18 +134,6 @@ trait Transform {
     {
         self.transform(context)
             .map(|node| Node::new(context.node_id(self.span()), node))
-    }
-}
-
-impl Transform for oxc::Program<'_> {
-    type Output = Module;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, ParseError> {
-        let statements = self.body.transform_all(context)?;
-        Ok(Module { statements })
     }
 }
 
@@ -340,6 +337,8 @@ impl Transform for oxc::ImportDeclaration<'_> {
                     current_source_id: source_id,
                     next_node_id: context.next_node_id,
                     spans: context.spans,
+                    // New module, so start a new set of errors
+                    errors: vec![],
                 })
                 .map_err(|error| {
                     context.error(
@@ -526,7 +525,7 @@ impl Transform for oxc::BlockStatement<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, ParseError> {
-        let statements = self.body.transform_all(context)?;
+        let statements = self.body.transform_all(context);
         Ok(Block { statements })
     }
 }
@@ -708,7 +707,7 @@ impl Transform for oxc::VariableDeclaration<'_> {
     ) -> Result<Self::Output, ParseError> {
         match self.kind {
             oxc::VariableDeclarationKind::Const => {
-                let variables = self.declarations.transform_all(context)?;
+                let variables = self.declarations.transform_all(context);
                 Ok(Declaration { variables })
             }
             oxc::VariableDeclarationKind::Var
@@ -772,7 +771,7 @@ impl Transform for oxc::BindingPattern<'_> {
             // TODO check `rest` field
             Self::ObjectPattern(object_pattern) => {
                 let properties =
-                    object_pattern.properties.transform_all(context)?;
+                    object_pattern.properties.transform_all(context);
                 Ok(BindingPattern {
                     binding: Binding::Object(properties)
                         .into_node(context, object_pattern.span()),
@@ -973,7 +972,7 @@ impl Transform for oxc::FunctionBody<'_> {
     ) -> Result<Self::Output, ParseError> {
         // directives are ignored
         let block = Block {
-            statements: self.statements.transform_all(context)?,
+            statements: self.statements.transform_all(context),
         };
         Ok(FunctionBody::Block(block.into_node(context, self.span())))
     }
@@ -1255,9 +1254,9 @@ impl Transform for oxc::TemplateLiteral<'_> {
             // Pair each expression with its range so we can sort
             self.expressions
                 .iter()
-                .zip(self.expressions.transform_all(context)?)
-                .map(|(element, chunk)| {
-                    let span = element.span();
+                .map(GetSpan::span)
+                .zip(self.expressions.transform_all(context))
+                .map(|(span, chunk)| {
                     (
                         TemplateChunk::Expression(chunk)
                             .into_node(context, span),
@@ -1317,7 +1316,7 @@ impl Transform for oxc::ObjectExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, ParseError> {
-        let properties = self.properties.transform_all(context)?;
+        let properties = self.properties.transform_all(context);
         Ok(ObjectLiteral { properties })
     }
 }
@@ -1622,7 +1621,7 @@ impl Transform for oxc::CallExpression<'_> {
             todo!("support optional functional calls")
         }
 
-        let arguments = self.arguments.transform_all(context)?;
+        let arguments = self.arguments.transform_all(context);
         let function = self.callee.transform_node(context)?;
         Ok(FunctionCall {
             function: function.into(),
@@ -1649,20 +1648,29 @@ impl Transform for oxc::Argument<'_> {
 /// Transform a collection of nodes
 trait TransformAll<T: Transform> {
     /// Transform a collection of nodes
+    ///
+    /// TODO explain errors
     fn transform_all(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Box<[Node<T::Output>]>, ParseError>;
+    ) -> Box<[Node<T::Output>]>;
 }
 
 impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
     fn transform_all(
         &self,
         context: &mut ParseContext,
-    ) -> Result<Box<[Node<T::Output>]>, ParseError> {
+    ) -> Box<[Node<T::Output>]> {
         self.into_iter()
-            .map(|value| value.transform_node(context))
-            .collect::<Result<_, _>>()
+            .filter_map(|value| match value.transform_node(context) {
+                Ok(node) => Some(node),
+                Err(error) => {
+                    // If the node is invalid, register the error and skip it
+                    context.errors.push(error);
+                    None
+                }
+            })
+            .collect()
     }
 }
 

@@ -38,6 +38,7 @@ pub fn parse(
         current_source_id: source_id,
         next_node_id: &mut 0,
         spans: &mut spans,
+        errors: vec![],
     };
     let module = parse_module(context)?;
     Ok((module, spans))
@@ -48,9 +49,7 @@ pub fn parse(
 /// This is called recursively within a parse tree, once per PS module. Each
 /// module corresponds to a single source, so this will add a new source to the
 /// given source table.
-fn parse_module(
-    mut context: ParseContext,
-) -> Result<Node<Module>, ParseErrors> {
+fn parse_module(context: ParseContext) -> Result<Node<Module>, ParseErrors> {
     let source = context.current_source();
     // TODO don't clone
     let source_code = source.text().to_owned();
@@ -89,7 +88,7 @@ fn parse_module(
     );
 
     // Transform to a PS AST
-    transform::transform_module(&mut context, program)
+    transform::transform_module(context, program)
 }
 
 /// Context object to be passed around to every transformation. Each parsed
@@ -110,6 +109,8 @@ struct ParseContext<'a> {
     /// A map of each transformed node's source span. This will contain an
     /// entry for every node ID that's been handed out.
     spans: &'a mut SpanTable,
+    /// TODO explain error collection
+    errors: Vec<ParseError>,
 }
 
 impl ParseContext<'_> {
@@ -269,10 +270,9 @@ no newline'";
             => (labels_let, labels_var, labels_async)
         );
         // Spans are where we expect them to be
-        // TODO fix these span numbers
-        assert_eq!(labels_let.as_slice(), [labeled_span(0, 10)]);
-        assert_eq!(labels_var.as_slice(), [labeled_span(12, 10)]);
-        assert_eq!(labels_async.as_slice(), [labeled_span(12, 10)]);
+        assert_eq!(labels_let.as_slice(), [labeled_span(13, 10)]);
+        assert_eq!(labels_var.as_slice(), [labeled_span(36, 10)]);
+        assert_eq!(labels_async.as_slice(), [labeled_span(59, 139)]);
     }
 
     fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {

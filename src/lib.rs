@@ -4,7 +4,9 @@
 //! use petitscript::Engine;
 //!
 //! let engine = Engine::new();
-//! // TODO rename process
+//! // TODO reevaluate the naming of everything:
+//! // - Process is kinda clunky/confusing
+//! // - execute() doesn't sound like it should return exports
 //! let process = engine.compile("export default 4;").unwrap();
 //! let exports = process.execute().unwrap();
 //! assert_eq!(exports.default, Some(4.into()));
@@ -182,7 +184,7 @@ impl EngineBuilder {
     ///     "add",
     ///     |_process, (a, b): (Number, Number)| a + b
     /// );
-    /// Engine::builder().with_module(name, exports).build();
+    /// Engine::builder().with_module(name, module).build();
     /// ```
     ///
     /// And now you can do this:

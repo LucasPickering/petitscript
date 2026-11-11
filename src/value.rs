@@ -290,17 +290,18 @@ impl Value {
         }
     }
 
-    /// Boolean AND operator (&&)
+    /// Boolean AND operator (`&&`)
     pub fn and(&self, _: &Self) -> bool {
         todo!()
     }
 
-    /// Boolean OR operator (||)
+    /// Boolean OR operator (`||`)
     pub fn or(&self, _: &Self) -> bool {
         todo!()
     }
 
-    /// Apply nullish coalescing (??)
+    /// Apply nullish coalescing (`??`)
+    ///
     /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Nullish_coalescing>
     #[must_use]
     pub fn coalesce(self, other: Self) -> Self {
@@ -358,6 +359,7 @@ impl Add for Value {
     type Output = Self;
 
     /// Add two values together. The semantics on this replicate those of JS
+    ///
     /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Addition>
     fn add(self, rhs: Self) -> Self::Output {
         // Add is unique from the other mathematical operations. If either side

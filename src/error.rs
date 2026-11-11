@@ -58,6 +58,10 @@ pub enum Error {
     /// See [Process::app_data](crate::Process::app_data).
     #[error("No app data of type `{type_name}` is registered")]
     UnknownAppData { type_name: &'static str },
+
+    /// Error in value conversion
+    #[error(transparent)]
+    Value(#[from] ValueError),
 }
 
 impl From<ParseErrors> for Error {
@@ -280,7 +284,7 @@ pub enum Unsupported {
     ObjectMethod,
     /// `a.#f`
     Private,
-    /// ```
+    /// ```norust
     /// tag`template`
     /// ```
     TaggedTemplate,
@@ -468,13 +472,17 @@ pub(crate) struct TracedError {
 /// An error that can occur while converting to/from [Value](crate::Value)
 #[derive(Debug)]
 pub enum ValueError {
-    /// A custom error message, e.g. for deserialization
+    /// A custom error message for deserialization
+    #[cfg(feature = "serde")]
     Custom(String),
 
     /// Attempted to deserialize into a [Function] from a data format other
-    /// than [Value]. [Function] can only be serialized into/deserialized from
-    /// [Function]; it cannot be represented in other serde data formats or
-    /// transformed into another data type.
+    /// than [Value]
+    ///
+    /// [Function] can only be serialized into/deserialized from [Function]; it
+    /// cannot be represented in other serde data formats or transformed
+    /// into another data type.
+    #[cfg(feature = "serde")]
     FunctionSerde,
 
     /// Attempted to convert non-UTF-8 bytes to a string
@@ -510,7 +518,9 @@ impl ValueError {
 impl Display for ValueError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "serde")]
             Self::Custom(message) => write!(f, "{message}"),
+            #[cfg(feature = "serde")]
             Self::FunctionSerde => {
                 write!(
                     f,
@@ -540,7 +550,9 @@ impl Display for ValueError {
 impl StdError for ValueError {
     fn cause(&self) -> Option<&dyn StdError> {
         match self {
+            #[cfg(feature = "serde")]
             Self::Custom(_) => None,
+            #[cfg(feature = "serde")]
             Self::FunctionSerde { .. } => None,
             Self::InvalidUtf8(error) => Some(error),
             Self::Number { .. } => None,

@@ -7,6 +7,8 @@ mod state;
 
 pub use scope::{GlobalEnvironment, Prototype};
 
+#[cfg(feature = "serde")]
+use crate::error::ValueError;
 use crate::{
     Error, Source,
     compile::Program,
@@ -178,9 +180,58 @@ impl Exports {
         }
     }
 
+    /// TODO
+    #[cfg(feature = "serde")]
+    pub fn get_deserialize<'de, T>(&self, name: &str) -> Result<T, ValueError>
+    where
+        T: serde::Deserialize<'de>,
+    {
+        let value = self.named.get(name).expect("TODO error or return None?");
+        crate::serde::from_value(value.clone())
+    }
+
     /// Create a native function and export it with the given name
     ///
-    /// TODO example
+    /// The given function must take two arguments: `(process, args)`. `process`
+    /// is the [Process] executing the function, and `args` is a list of
+    /// arguments passed by the caller.
+    ///
+    /// `args` must implement [FromPetitArgs], which is implemented for tuples
+    /// of individual values implementing [FromPetit].
+    ///
+    /// The return value must implement [IntoPetitResult]. This can be any value
+    /// that implements [IntoPetit], or a `Result` where `T` implements
+    /// [IntoPetit] and `E` implements `Into` for [RuntimeError].
+    ///
+    /// ```
+    /// use petitscript::{Exports, Value, error::ValueError, value::Number};
+    ///
+    /// let mut module = Exports::default();
+    /// // All functions take two arguments: process and args. Use tuples to
+    /// // unpack the args
+    /// module.export_fn("args0", |_, ()| Value::Null);
+    /// module.export_fn("args1", |_, (arg,): (Value,)| arg);
+    /// module.export_fn(
+    ///     "args2",
+    ///     |_, (arg0, arg1)| -> [Value; 2] { [arg0, arg1] },
+    /// );
+    ///
+    /// // You can restrict the arg and return type:
+    /// module.export_fn("add", |_, (a, b): (Number, Number)| a + b);
+    ///
+    ///
+    /// // You can return errors:
+    /// module.export_fn(
+    ///     "fallible",
+    ///     |_, (input,): (Number,)| -> Result<Number, ValueError> {
+    ///         if input < 10.into() {
+    ///             Ok(input)
+    ///         } else {
+    ///             Err(ValueError::Other("error!".into()))
+    ///         }
+    ///     }
+    /// );
+    /// ```
     pub fn export_fn<F, Args, Out>(
         &mut self,
         name: impl Into<String>,

@@ -4,6 +4,8 @@
 //! follows [the conventions laid out by Serde](https://serde.rs/conventions.html),
 //! with the exception of the `Error` and `Result` types: we use [ValueError]
 //! instead and no `Result` alias is provided.
+//!
+//! TODO add examples
 
 mod de;
 mod impls;
@@ -28,24 +30,25 @@ pub fn from_value<'de, T: Deserialize<'de>>(
     T::deserialize(Deserializer::new(value))
 }
 
-/// A tool for out-of-band serialization and deserialization of functions.
+/// A tool for out-of-band serialization and deserialization of functions
+///
 /// Functions are challenging to serialize and serve little value as raw data.
 /// The only meaningful use case to ser/de functions is going between [Value]
 /// and another type `T` that contains a `Function` internally. So we only need
 /// to support pass-through ser/de, in which a `Function` is mapped right back
 /// to a `Function`. Rather than trying to shove the function through serde's
 /// data model and mapping it back out, it's much easier to store the function
-/// externally (using TLS) and write a simple identifier. We'll extract the ID
-/// on the other side and give it to the pool to redeem it for the original
-/// function.
+/// externally (using thread-local storage) and write a simple identifier. We'll
+/// extract the ID on the other side and give it to the pool to redeem it for
+/// the original function.
 ///
 /// This pattern allows user functions to avoid serializing their entire
-/// definition (which could be large), and enables inline storage of native
+/// definition, which could be large. It also enables inline storage of native
 /// functions, as there is no way to serialize native code (or pointers to it)
 /// without `unsafe`.
 ///
-/// This works by create a newtype struct in the data model with a unique name,
-/// such that it's very unlikely for a user to accidentally create another
+/// This works by creating a newtype struct in the data model with a unique
+/// name, such that it's very unlikely for a user to accidentally create another
 /// struct with the same name. The struct contains a single u64, which uniquely
 /// identifies a corresponding function in the pool.
 ///
@@ -61,7 +64,7 @@ pub fn from_value<'de, T: Deserialize<'de>>(
 ///   into the pool. If `T` wants a Function in that position, it will pull it
 ///   back out from the pool.
 ///
-/// https://lucumr.pocoo.org/2021/11/14/abusing-serde/
+/// <https://lucumr.pocoo.org/2021/11/14/abusing-serde/>
 struct FunctionPool {
     next_id: u64,
     pool: BTreeMap<u64, Function>,
@@ -182,10 +185,11 @@ mod tests {
         f: Function,
     }
 
-    /// Custom byte buffer to testing buffer ser/de. The only byte struct that
-    /// serde supports out of the box is &[u8], which doesn't work for us
-    /// because our Deserializer doesn't support borrowed deserialization.
-    /// bytes::Bytes doesn't support serde either.
+    /// Custom byte buffer to testing buffer ser/de
+    ///
+    /// The only byte struct that serde supports out of the box is &[u8], which
+    /// doesn't work for us because our Deserializer doesn't support
+    /// borrowed deserialization. bytes::Bytes doesn't support serde either.
     #[derive(Debug, PartialEq)]
     struct Bytes(Vec<u8>);
 
@@ -434,10 +438,11 @@ mod tests {
         assert_eq!(serialized, value, "Serialization did not match");
     }
 
-    /// Test deserialization only of certain external values. There are some
-    /// values that we expect to be able to deserialize from, but not serialize
-    /// back to. E.g. unit values can deserialize from `null` OR `undefined`,
-    /// but only serialize back to the latter
+    /// Test deserialization only of certain external values
+    ///
+    /// There are some values that we expect to be able to deserialize from, but
+    /// not serialize back to. E.g. unit values can deserialize from `null`
+    /// OR `undefined`, but only serialize back to the latter
     #[test_case(
         // By default unit variants are serialized as just "Variant", but we
         // will also accept {Variant: undefined}

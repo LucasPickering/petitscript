@@ -7,6 +7,8 @@ pub(crate) mod function;
 mod json;
 mod macros;
 mod number;
+#[cfg(feature = "promise")]
+mod promise;
 mod string;
 
 #[cfg(feature = "buffer")]
@@ -14,6 +16,9 @@ pub use buffer::Buffer;
 pub use collections::{Array, Object};
 pub use function::{FromPetitArgs, Function, IntoPetitResult};
 pub use number::Number;
+#[cfg(feature = "promise")]
+pub use promise::Promise;
+pub(crate) use promise::PromiseFuture;
 pub use string::PetitString;
 
 use crate::{
@@ -70,6 +75,9 @@ pub enum Value {
     /// An immutable byte buffer
     #[cfg(feature = "buffer")]
     Buffer(Buffer),
+    /// TODO
+    #[cfg(feature = "promise")]
+    Promise(Promise),
 }
 
 #[cfg(test)]
@@ -141,6 +149,8 @@ impl Value {
             Self::Array(_) | Self::Object(_) | Self::Function(_) => true,
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => true,
+            #[cfg(feature = "promise")]
+            Self::Promise(_) => true,
         }
     }
 
@@ -167,6 +177,8 @@ impl Value {
             Self::Array(_) | Self::Object(_) | Self::Function(_) => None,
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => None,
+            #[cfg(feature = "promise")]
+            Self::Promise(_) => None,
         }
     }
 
@@ -212,6 +224,8 @@ impl Value {
             Self::Function(function) => format!("{function}").into(),
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => "[Buffer buffer]".into(),
+            #[cfg(feature = "promise")]
+            Self::Promise(promise) => format!("{promise}").into(),
         }
     }
 
@@ -317,6 +331,8 @@ impl Value {
             Self::Function(_) => ValueType::Function,
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => ValueType::Buffer,
+            #[cfg(feature = "promise")]
+            Self::Promise(_) => ValueType::Promise,
         }
     }
 
@@ -393,6 +409,8 @@ impl Display for Value {
             Self::Function(function) => write!(f, "{function}"),
             #[cfg(feature = "buffer")]
             Self::Buffer(buffer) => write!(f, "{buffer}"),
+            #[cfg(feature = "promise")]
+            Self::Promise(promise) => write!(f, "{promise}"),
         }
     }
 }
@@ -546,6 +564,8 @@ pub enum ValueType {
     Function,
     #[cfg(feature = "buffer")]
     Buffer,
+    #[cfg(feature = "promise")]
+    Promise,
 }
 
 impl Display for ValueType {
@@ -561,6 +581,8 @@ impl Display for ValueType {
             Self::Function => write!(f, "function"),
             #[cfg(feature = "buffer")]
             Self::Buffer => write!(f, "buffer"),
+            #[cfg(feature = "promise")]
+            Self::Promise => write!(f, "promise"),
         }
     }
 }

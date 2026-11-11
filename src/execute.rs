@@ -9,6 +9,8 @@ pub use scope::{GlobalEnvironment, Prototype};
 
 #[cfg(feature = "serde")]
 use crate::error::ValueError;
+#[cfg(feature = "promise")]
+use crate::value::PromiseFuture;
 use crate::{
     Engine, Source,
     compile::Program,
@@ -367,4 +369,13 @@ impl AppData {
             }
         }
     }
+}
+
+/// TODO
+enum MaybeFuture {
+    /// TODO
+    Value(Value),
+    /// TODO
+    #[cfg(feature = "promise")]
+    Future(PromiseFuture),
 }

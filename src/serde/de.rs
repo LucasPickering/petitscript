@@ -64,6 +64,8 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
                 .deserialize_newtype_struct(FunctionPool::STRUCT_NAME, visitor),
             #[cfg(feature = "buffer")]
             Value::Buffer(buffer) => visitor.visit_byte_buf(buffer.into()),
+            #[cfg(feature = "promise")]
+            Value::Promise(_) => todo!("promise serde"),
         }
     }
 
@@ -150,6 +152,8 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Function(_) => Unexpected::Other("function"),
             #[cfg(feature = "buffer")]
             Value::Buffer(_) => Unexpected::Other("bytes"),
+            #[cfg(feature = "promise")]
+            Value::Promise(_) => Unexpected::Other("promise"),
         };
         Err(de::Error::invalid_type(unexpected, &"string or object"))
     }

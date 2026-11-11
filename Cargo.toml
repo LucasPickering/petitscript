@@ -26,6 +26,7 @@ oxc_parser = {version = "0.156.0", default-features = false}
 oxc_span = "0.156.0"
 serde = {version = "1.0.0", default-features = false, features = ["alloc", "derive", "rc"], optional = true}
 thiserror = "2.0.21"
+tokio = {version = "1.54.1", default-features = false, features = ["sync"], optional = true}
 winnow = "0.7.4"
 
 [dev-dependencies]
@@ -37,7 +38,8 @@ test-case = "3.3.1"
 
 [features]
 buffer = ["dep:bytes"]
-default = []
+default = ["promise", "buffer"] # TODO remove default features
+promise = ["dep:tokio"]
 serde = ["dep:serde", "indexmap/serde"]
 
 [lints]

@@ -34,6 +34,8 @@ impl serde::Serialize for Value {
             Value::Function(function) => function.serialize(serializer),
             #[cfg(feature = "buffer")]
             Value::Buffer(buffer) => buffer.serialize(serializer),
+            #[cfg(feature = "promise")]
+            Value::Promise(_) => todo!("promise serde"),
         }
     }
 }

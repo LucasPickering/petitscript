@@ -34,11 +34,14 @@ use std::{
 pub struct Process {
     /// The program we'll be executing
     program: Arc<Program>,
-    /// A clone of the module registry from the engine. This clone should be
-    /// relatively cheap because all the values within each export are
-    /// reference counted. Cloning snapshots the modules at the time of the
-    /// process being spawned, allowing the engine to register new modules as
-    /// needed without interfering with running modules.
+    /// A clone of the module registry from the engine
+    ///
+    /// This clone should be relatively cheap because all the values within
+    /// each export are reference counted. Cloning will snapshot the modules at
+    /// the time of the process being spawned, allowing the engine to register
+    /// new modules as needed without interfering with running modules.
+    ///
+    /// TODO hang onto the Engine instead? it's immutable
     modules: IndexMap<NativeModuleName, Exports>,
     /// Global values available to the program, i.e. the stdlib
     globals: Arc<GlobalEnvironment>,
@@ -197,11 +200,12 @@ impl Exports {
     /// arguments passed by the caller.
     ///
     /// `args` must implement [FromPetitArgs], which is implemented for tuples
-    /// of individual values implementing [FromPetit].
+    /// of individual values implementing [FromPetit](crate::value::FromPetit).
     ///
     /// The return value must implement [IntoPetitResult]. This can be any value
-    /// that implements [IntoPetit], or a `Result` where `T` implements
-    /// [IntoPetit] and `E` implements `Into` for [RuntimeError].
+    /// that implements [IntoPetit](crate::value::IntoPetit), or a `Result`
+    /// where `T` implements [IntoPetit](crate::value::IntoPetit) and `E`
+    /// implements `Into` for [RuntimeError].
     ///
     /// ```
     /// use petitscript::{Exports, Value, error::ValueError, value::Number};

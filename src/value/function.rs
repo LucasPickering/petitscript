@@ -51,18 +51,23 @@ pub enum Function {
     },
 
     /// A special case of a native function that is bound to a particular
-    /// method receiver. This is used to implement prototype functions. In the
-    /// example `array.includes(3)`, `array.includes` represents a bound
+    /// method receiver
+    ///
+    /// This is used to implement prototype functions. In the example
+    /// `array.includes(3)`, `array.includes` represents a bound
     /// function value.
     ///
     /// Prototypes cannot be modified externally. Therefore, there is no way to
     /// create a bound function in external consumers.
     Bound {
-        /// Display name for this function. Native functions should always be
-        /// created via [Function::bound], which requires a name to be given.
-        /// There's no such thing as an anonymous native function. This is for
-        /// labelling purposes only; it does not affect program behavior beyond
-        /// its `toString()` output.
+        /// Display name for this function.
+        ///
+        /// Native functions should always be created via
+        /// [Exports::export_fn](crate::Exports::export_fn),
+        /// which requires a name to be given. There's no such thing as
+        /// an anonymous native function. This is for labelling purposes only;
+        /// it does not affect program behavior beyond its `toString()`
+        /// output.
         name: Arc<str>,
         /// A pointer to this function's definition in the native function
         /// table

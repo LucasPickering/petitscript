@@ -1,4 +1,37 @@
-//! TODO explain the lib
+//! PetitScript is a **minimal** JavaScript subset designed for embeddability
+//!
+//! PS is intended as sidecar language for extensible scripting attached to
+//! Rust programs. It serves a similar role as [Lua](https://www.lua.org/),
+//! [Rhai](https://docs.rs/rhai/latest/rhai/), and others.
+//!
+//! The primary advantage of PS over other scripting languages is the
+//! familiarity of its syntax and semantics. Most people already know
+//! JavaScript, and PS avoids the complex features and footguns that JS novice's
+//! may not know. This similarity to JS not only makes it easy to learn, it
+//! also makes JS tooling applicable. You can use both JavaScript and TypeScript
+//! language servers and formatters to write PetitScript.
+//!
+//! TODO how intro this list?
+//! - Easily define native functions callable from PS code
+//! - Introspect PS programs via the [abstract syntax tree](ast)
+//! - Freely clone and share PS values across threads
+//! - [Serde](crate::serde) integration
+//!
+//! Some language features that PetitScript supports:
+//! - Primitive types
+//! - Arrays and objects
+//! - Local and native modules
+//!
+//! Here's an **incomplete** list of JavaScript features that are *not*
+//! supported by PetitScript:
+//! - Mutability
+//! - Classes
+//! - Prototypes
+//! - Object methods
+//! - Try/catch
+//! - Async
+//!
+//! Here's a simple example of compiling and executing some PetitScript code:
 //!
 //! ```
 //! use petitscript::Engine;
@@ -11,6 +44,13 @@
 //! let exports = process.execute().unwrap();
 //! assert_eq!(exports.default, Some(4.into()));
 //! ```
+//!
+//! ## Examples
+//!
+//! - TODO Native modules
+//! - TODO Local modules
+//! - TODO Compile and inspect AST
+//! - TODO value provenance (source span tracking)
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
@@ -47,7 +87,7 @@ use crate::{
 use indexmap::IndexMap;
 use std::sync::Arc;
 
-/// The main entrypoint for executing and evaluating PetitScript programs
+/// Main entrypoint for executing and evaluating PetitScript programs
 ///
 /// An engine defines how code should be executed and what modules are available
 /// to executed code. Engines are created using the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
@@ -102,9 +142,15 @@ impl Engine {
         self.modules.get(name)
     }
 
-    /// Parse some source code and return the parsed AST. The returned AST is
+    /// Parse source code into an [abstract syntax tree](crate::ast)
+    ///
+    /// The returned AST is
     /// not fully compiled and therefore can't be executed. Call
     /// [Engine::compile_ast] to complete compilation.
+    ///
+    /// This is only useful if you want to introspect the compiled program. If
+    /// you're just executing code, you should call [Engine::compile] to get
+    /// the compiled process in a single step.
     pub fn parse(
         &self,
         source: impl Into<Source>,
@@ -146,7 +192,6 @@ impl Default for Engine {
 ///
 /// ```
 /// # use petitscript::Engine;
-///
 /// let engine = Engine::builder().with_stdlib().build();
 /// ```
 #[derive(Debug)]

@@ -7,3 +7,8 @@ run = "cargo run -p petitscript_cli -- $usage_file"
 usage = '''
 arg "<file>" help="File to execute"
 '''
+
+[tasks.doc]
+description = "Build docs"
+run = "cargo doc -p petitscript --all-features"
+sources = ["Cargo.toml", "src/**/*.rs"]

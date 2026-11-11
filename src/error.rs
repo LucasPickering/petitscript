@@ -469,17 +469,17 @@ pub(crate) struct TracedError {
     pub trace: StackTrace,
 }
 
-/// An error that can occur while converting to/from [Value](crate::Value)
+/// An error that can occur while converting to/from [Value]
 #[derive(Debug)]
 pub enum ValueError {
     /// A custom error message for deserialization
     #[cfg(feature = "serde")]
     Custom(String),
 
-    /// Attempted to deserialize into a [Function] from a data format other
-    /// than [Value]
+    /// Attempted to deserialize into a [Function](crate::value::Function) from
+    /// a data format other than [Value]
     ///
-    /// [Function] can only be serialized into/deserialized from [Function]; it
+    /// `Function` can only be serialized into/deserialized from `Function`; it
     /// cannot be represented in other serde data formats or transformed
     /// into another data type.
     #[cfg(feature = "serde")]
@@ -501,7 +501,7 @@ pub enum ValueError {
 
     /// An operation required a specific type (or types), but received a value
     /// of an unsupported type. This commonly occurs during type downcasting,
-    /// e.g. [Value](crate::Value) to [Number].
+    /// e.g. [Value] to [Number].
     Type {
         expected: ValueType,
         actual: ValueType,

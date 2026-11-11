@@ -228,7 +228,7 @@ pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value
     ///
     /// This is **not necessarily** the name the function is bound to; that is
-    /// defined in the parent [FunctionDeclaration].
+    /// defined in the parent [Declaration].
     pub name: Option<Node<Identifier>>,
     pub parameters: Box<[Node<FunctionParameter>]>,
     // `Node` not necessary because both variants of the body contain it

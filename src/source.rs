@@ -71,7 +71,7 @@ impl Source {
     /// Imported local modules (`import ... from './other.js'`) from this source
     /// will be performed relative to this path. Sources that don't have a
     /// path cannot import local modules. Doing so will result in a
-    /// [ParseError::ImportNotAllowed](crate::error::ParseError::ImportNotAllowed).
+    /// [ParseErrorKind::InvalidLocalImport](crate::error::ParseErrorKind::InvalidLocalImport).
     pub fn path(&self) -> Option<&Path> {
         match self {
             Self::Static(_) | Self::String(_) => None,

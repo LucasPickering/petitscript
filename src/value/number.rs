@@ -3,6 +3,7 @@ use std::{
     cmp::Ordering,
     fmt::{self, Display},
     ops::{Add, Div, Mul, Neg, Rem, Sub},
+    str::FromStr,
 };
 
 /// A 64-bit float or 64-bit signed integer. Bit ints are *not* supported.
@@ -79,6 +80,19 @@ impl Neg for Number {
             Self::Int(i) => Self::Int(-i),
             Self::Float(f) => Self::Float(-f),
         }
+    }
+}
+
+impl FromStr for Number {
+    /// This is only used in `to_number()` which doesn't need an error
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Try as int first, then float
+        i64::from_str(s)
+            .map(Self::Int)
+            .or_else(|_| f64::from_str(s).map(Self::Float))
+            .map_err(|_| ())
     }
 }
 

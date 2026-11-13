@@ -81,9 +81,10 @@ pub enum Function {
 }
 
 impl Function {
-    /// Create a new function. A "user" function is a function defined in
-    /// PetitScript, as opposed to a "native" function that's defined in Rust.
-    /// TODO rename to `new`?
+    /// Create a new function
+    ///
+    /// A "user" function is a function defined in PetitScript, as opposed to a
+    /// "native" function that's defined in Rust. TODO rename to `new`?
     pub fn user(
         definition: Arc<FunctionDefinition>,
         captures: Captures,
@@ -94,7 +95,9 @@ impl Function {
         }
     }
 
-    /// Create a new native function. Generally it's more convenient to call
+    /// Create a new native function
+    ///
+    /// Generally it's more convenient to call
     /// [Object::insert_fn](crate::value::Object::insert_fn)
     /// or [Exports::export_fn](crate::Exports::export_fn).
     pub fn native<F, Args, Out>(name: String, function: F) -> Self
@@ -109,10 +112,12 @@ impl Function {
         }
     }
 
-    /// Create a bound function. This will bind the function definition to the
-    /// given receiver. The name will always be present for bound functions
-    /// because they're only accessible through the prototype, which can only
-    /// be accessed via string keys.
+    /// Create a bound function
+    ///
+    /// This will bind the function definition to the given receiver. The name
+    /// will always be present for bound functions because they're only
+    /// accessible through the prototype, which can only be accessed via
+    /// string keys.
     pub(crate) fn bound(
         name: String,
         function: BoundFunction,

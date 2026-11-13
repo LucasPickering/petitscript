@@ -80,8 +80,16 @@ impl Value {
         Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
     }
 
-    /// Coerce this value to a boolean. Truthy values return true, falsy values
-    /// return false.
+    /// Coerce this value to a boolean
+    ///
+    /// Values are coerced as follows:
+    /// - `undefined` and `null` => `false`
+    /// - Boolean `b` => `b`
+    /// - Number `n` => `n != 0 && n != NaN`
+    /// - String `s` => `s != ""`
+    /// - Array, object, function, or buffer => `true`
+    ///
+    /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Boolean#boolean_coercion>
     pub fn to_bool(&self) -> bool {
         match self {
             Self::Undefined | Self::Null => false,
@@ -94,7 +102,17 @@ impl Value {
         }
     }
 
-    /// Coerce this value to a number.
+    /// Coerce this value to a number
+    ///
+    /// Rules are as follows:
+    /// - `undefined` => `NaN`
+    /// - `null` => `0`
+    /// - `false` => `0`
+    /// - `true` => `1`
+    /// - Number `n` => `n`
+    /// - String `s` => Parse `s` as a number, `NaN` if parsing fails
+    /// - Array, object, function, or buffer => `NaN`
+    ///
     /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion>
     pub fn to_number(&self) -> Option<Number> {
         match self {
@@ -103,11 +121,8 @@ impl Value {
             Self::Boolean(false) => Some(0.into()),
             Self::Boolean(true) => Some(1.into()),
             Self::Number(number) => Some(*number),
-            // TODO try parsing string as number
-            Self::String(_)
-            | Self::Array(_)
-            | Self::Object(_)
-            | Self::Function(_) => None,
+            Self::String(s) => s.parse().ok(),
+            Self::Array(_) | Self::Object(_) | Self::Function(_) => None,
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => None,
         }
@@ -600,6 +615,9 @@ mod tests {
     #[test_case([1, 2], None::<Number>; "array_2")]
     #[test_case(Object::default(), None::<Number>; "object_empty")]
     #[test_case([("a", 1)], None::<Number>; "object")]
+    #[test_case(
+        Function::native("f".into(), |_, ()| ()), None::<Number>; "function"
+    )]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::default(), None::<Number>; "buffer_empty"),
@@ -608,7 +626,6 @@ mod tests {
         feature = "buffer",
         test_case(Buffer::from([1, 2]), None::<Number>; "buffer"),
     )]
-    // TODO test function
     fn to_number(value: impl Into<Value>, expected: Option<impl Into<Number>>) {
         let actual = value.into().to_number();
         let expected = expected.map(Into::into);

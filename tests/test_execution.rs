@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use petitscript::{
     Engine, Error, Exports, Process, Source, Value, value::Number,
 };
-use std::{env, path::PathBuf, sync::LazyLock};
+use std::{path::PathBuf, sync::LazyLock};
 use test_case::test_case;
 
 fn add(_: &Process, (a, b): (Number, Number)) -> Number {
@@ -19,10 +19,11 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
         .build()
 });
 
-/// Test a full compile+execution pipeline for an external PS file. This expects
-/// the script to both compile and execute successfully, and asserts on the
-/// *default* export of each script. If we need to assert on multiple values,
-/// export an object.
+/// Test a full compile+execution pipeline for an external PS file
+///
+/// This expects the script to both compile and execute successfully, and
+/// asserts on the *default* export of each script. If we need to assert on
+/// multiple values, export an object.
 #[test_case("capture", 9; "capture")]
 #[test_case("parameterScope", 7; "parameter_scope")]
 #[test_case("importLocal", 6; "import_local")]
@@ -41,10 +42,10 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
 #[test_case(
     "stackTrace",
     "Error (most recent call last)
-  in <root> at $CWD/tests/ps/stackTrace.js:11:16
-  in g at $CWD/tests/ps/stackTrace.js:8:10
-  in f at $CWD/tests/ps/stackTrace.js:4:10
-  in error at $CWD/tests/ps/common.js:3:10
+  in <root> at tests/ps/stackTrace.js:11:16
+  in g at tests/ps/stackTrace.js:8:10
+  in f at tests/ps/stackTrace.js:4:10
+  in error at tests/ps/common.js:2:28
 `x` is not defined";
     "stack_trace")]
 #[test_case(
@@ -54,16 +55,9 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
 )]
 fn error(file_name: &'static str, expected_error: &'static str) {
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-    let cwd = env::current_dir()
-        .unwrap()
-        .into_os_string()
-        .into_string()
-        .unwrap();
-    // Current dir is dynamic so we have to manually replace it
-    let expected_error = expected_error.replace("$CWD", &cwd);
     let error = execute(path).unwrap_err().to_string();
     assert!(
-        error.contains(&expected_error),
+        error.contains(expected_error),
         "Expected error message to contain `{expected_error}`\nbut it was:\n\
         {error}"
     );

@@ -162,7 +162,7 @@ fn map_oxc_error(diagnostic: OxcDiagnostic) -> ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_matches, ast::IntoExpression, error::Unsupported};
+    use crate::{assert_matches, ast::Declaration, error::Unsupported};
     use miette::LabeledSpan;
 
     /// Test an escaped newline `\n` in a string literal
@@ -174,11 +174,11 @@ mod tests {
     /// ```
     #[test]
     fn string_literal_newline() {
-        let source = r"'test\nnewline'";
+        let source = r"const s = 'test\nnewline';";
         let module = parse_test(source).unwrap();
         assert_eq!(
             module.data(),
-            &Module::new(["test\nnewline".into_expr().into()])
+            &Module::new([Declaration::new("s", "test\nnewline").into()])
         );
     }
 
@@ -193,12 +193,11 @@ mod tests {
     /// ```
     #[test]
     fn string_literal_escape_newline() {
-        let source = r"'test \
-no newline'";
+        let source = "const s = 'test \\\nno newline';";
         let module = parse_test(source).unwrap();
         assert_eq!(
             module.data(),
-            &Module::new(["test no newline".into_expr().into()])
+            &Module::new([Declaration::new("s", "test no newline").into()])
         );
     }
 

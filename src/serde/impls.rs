@@ -3,18 +3,17 @@
 
 use crate::{
     serde::FunctionPool,
-    value::{function::Function, Array, Number, Object, Value},
+    value::{Array, Number, Object, Value, function::Function},
 };
 use serde::{
+    Deserialize, Serialize,
     de::{
-        self,
+        self, MapAccess, Visitor,
         value::{
             EnumAccessDeserializer, MapAccessDeserializer,
             SeqAccessDeserializer,
         },
-        MapAccess, Visitor,
     },
-    Deserialize, Serialize,
 };
 use std::fmt;
 
@@ -159,7 +158,6 @@ impl<'de> serde::Deserialize<'de> for Value {
             where
                 D: de::Deserializer<'de>,
             {
-                // TODO how to handle if this fails
                 Function::deserialize(deserializer).map(Value::Function)
             }
         }

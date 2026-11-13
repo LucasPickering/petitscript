@@ -48,7 +48,7 @@ homepage = "https://petitscript.org"
 keywords = ["TODO"]
 license = "MIT"
 repository = "https://github.com/LucasPickering/petitscript"
-rust-version = "1.99" # Keep in sync w/ rust-toolchain.toml
+rust-version = "1.100" # Keep in sync w/ rust-toolchain.toml
 version = "0.1.0"
 
 [workspace.dependencies]

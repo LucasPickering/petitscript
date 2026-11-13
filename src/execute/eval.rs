@@ -9,7 +9,11 @@ use crate::{
         UnaryOperator,
     },
     error::{TracedError, ValueError},
-    execute::{ThreadState, exec::Execute, state::CallSite},
+    execute::{
+        ThreadState,
+        exec::{self, Execute},
+        state::CallSite,
+    },
     value::{Array, Number, Object, Value, ValueType, function::Function},
 };
 use std::{borrow::Cow, sync::Arc};
@@ -327,11 +331,7 @@ impl Function {
                         // No init expression, use undefined
                         Value::Undefined
                     };
-                    super::exec::bind(
-                        state,
-                        &parameter.variable.binding,
-                        value,
-                    )?;
+                    exec::bind(state, &parameter.variable.binding, value)?;
                 }
 
                 // Push the new frame onto the stack and execute the function

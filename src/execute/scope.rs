@@ -10,7 +10,10 @@ use crate::{
     },
 };
 use indexmap::IndexMap;
-use std::{iter, sync::Arc};
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 /// A scope is a hierarchical list of sets of bindings. Each set of bindings is
 /// known as an "environment". When we enter a new lexical scope (defined by
@@ -22,12 +25,17 @@ use std::{iter, sync::Arc};
 #[derive(Debug)]
 pub struct Scope {
     globals: Arc<GlobalEnvironment>,
-    /// The first scope in a program. This is the only scope that allows
-    /// exports. Conceptually this is part of the stack below, but by storing
-    /// it separately we ensure it can never be popped.
+    /// The first scope in a program
+    ///
+    /// This is the only scope that allows exports. Conceptually this is part
+    /// of the stack below, but by storing it separately we ensure it can never
+    /// be popped.
     root: Environment,
-    /// Sub-environments of the root. This gets pushed onto whenever entering
-    /// a new lexical scope `{ }`, and popped whenever leaving that scope.
+    /// Sub-environments of the root
+    ///
+    /// This gets pushed onto whenever entering a new lexical scope `{ }`, and
+    /// popped whenever leaving that scope. Later environments in the last take
+    /// priority.
     ///
     /// Note: This has no relation to the call stack. This stack tracks lexical
     /// scopes, whereas the call stack tracks function calls.
@@ -120,12 +128,27 @@ impl Scope {
     }
 
     /// Get an iterator over all environments in the scope, bottom-to-top
-    fn chain(&self) -> impl Iterator<Item = &Environment> {
+    fn chain(&self) -> impl DoubleEndedIterator<Item = &Environment> {
         self.stack
             .iter()
             .rev()
-            .chain(iter::once(&self.root))
-            .chain(iter::once(&self.globals.environment))
+            .chain([&self.root, &self.globals.environment])
+    }
+}
+
+impl Display for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const INDENT: usize = 2;
+
+        // Print scopes outer-to-inner, with indentation
+        // This will roughly match the indentation in the source code
+        for (i, environment) in self.chain().rev().enumerate() {
+            let indent = i * INDENT;
+            for (identifier, value) in &environment.0 {
+                writeln!(f, "{empty:indent$}{identifier}={value}", empty = "")?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -215,7 +215,12 @@ pub struct Declaration {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Variable {
+    /// Identifier(s) being bound
     pub binding: Node<Binding>,
+    /// Expression to bind to
+    ///
+    /// `None` for declarations without initializers, such as (most) function
+    /// parameters.
     pub init: Option<Box<Node<Expression>>>,
 }
 
@@ -404,6 +409,8 @@ pub enum Expression {
     /// String template
     Template(Node<TemplateLiteral>),
     /// Reference to an identifier
+    ///
+    /// `x` in `x + 1`.
     Identifier(Node<Identifier>),
     /// Function call
     Call(Node<FunctionCall>),

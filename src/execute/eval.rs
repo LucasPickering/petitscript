@@ -3,10 +3,10 @@
 use crate::{
     ast::{
         ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, FunctionDefinition, Literal, Node,
-        ObjectLiteral, ObjectProperty, OptionalPropertyAccess, PropertyAccess,
-        PropertyName, TemplateChunk, TemplateLiteral, UnaryOperation,
-        UnaryOperator,
+        Expression, FunctionCall, FunctionDefinition, FunctionParameter,
+        Literal, Node, ObjectLiteral, ObjectProperty, OptionalPropertyAccess,
+        PropertyAccess, PropertyName, TemplateChunk, TemplateLiteral,
+        UnaryOperation, UnaryOperator,
     },
     error::{TracedError, ValueError},
     execute::{ThreadState, exec::Execute, state::CallSite},
@@ -294,53 +294,25 @@ impl Function {
                 definition,
                 captures,
             } => {
-                // Create a new scope based on the global namespace, with
-                // captured bindings applied
-                let mut scope = state.process().globals.clone().scope();
-                for (name, value) in captures {
-                    scope.declare(name, value.clone());
-                }
-
-                // Add args to scope
-                // If we got fewer args than the function has defined, we'll pad
-                // it out with undefineds (or use the init expression defined in
-                // the func)
-                for (i, parameter) in definition.parameters.iter().enumerate() {
-                    let value = if let Some(value) = arguments.get(i) {
-                        // ... parameters get all the remaining args
-                        if parameter.varargs {
-                            if i < arguments.len() {
-                                Array::from(arguments[i..].to_owned())
-                            } else {
-                                Array::new()
-                            }
-                            .into()
-                        } else {
-                            value.clone()
-                        }
-                    } else if let Some(init) = &parameter.variable.init {
-                        // If the arg wasn't given, fall back to the init
-                        // expression
-                        // TODO make sure previous args are available here
-                        init.eval(state)?
-                    } else {
-                        // No init expression, use undefined
-                        Value::Undefined
-                    };
-                    super::exec::bind(
-                        state,
-                        &parameter.variable.binding,
-                        value,
-                    )?;
-                }
-
-                // Push the new frame onto the stack and execute the function
-                // body
+                // Put all declarations in a new frame. This will init a clean
+                // scope from the globals. We'll add captures and args to that
                 state.with_frame(
-                    scope,
+                    state.process().globals.clone().scope(),
                     call_site,
                     self.name().map(String::from),
-                    |state| definition.body.exec(state),
+                    |state| {
+                        // Insert captured bindings into the scope
+                        for (name, value) in captures {
+                            state.scope_mut().declare(name, value.clone());
+                        }
+                        Self::bind_arguments(
+                            state,
+                            &definition.parameters,
+                            arguments,
+                        )?;
+                        // Execute the body
+                        definition.body.exec(state)
+                    },
                 )
             }
             Self::Native { function, .. } => function
@@ -354,5 +326,42 @@ impl Function {
                 .call(state.process(), Value::clone(receiver), arguments)
                 .map_err(|error| state.trace_error(error, call_site)),
         }
+    }
+
+    /// Bind argument values to parameters in the current scope
+    fn bind_arguments(
+        state: &mut ThreadState,
+        parameters: &[Node<FunctionParameter>],
+        arguments: Vec<Value>,
+    ) -> Result<(), TracedError> {
+        for (i, parameter) in parameters.iter().enumerate() {
+            // If we got fewer args than the function has defined, we'll pad it
+            // out with defaults/undefined
+            let value = if let Some(value) = arguments.get(i) {
+                // ... parameters get all the remaining args
+                if parameter.varargs {
+                    if i < arguments.len() {
+                        Array::from(arguments[i..].to_owned())
+                    } else {
+                        Array::new()
+                    }
+                    .into()
+                } else {
+                    value.clone()
+                }
+            } else if let Some(init) = &parameter.variable.init {
+                // If the arg wasn't given, fall back to the
+                // init
+                // expression
+                // TODO make sure previous args are available
+                // here
+                init.eval(state)?
+            } else {
+                // No init expression, use undefined
+                Value::Undefined
+            };
+            state.bind(&parameter.variable.binding, value)?;
+        }
+        Ok(())
     }
 }

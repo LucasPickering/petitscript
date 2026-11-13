@@ -1,17 +1,16 @@
 //! Statement execution
 
 use crate::{
-    Exports,
+    Exports, OptionExt,
     ast::{
-        Binding, Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
+        Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
         FunctionBody, If, ImportDeclaration, ImportModule, Module, Node,
-        ObjectPatternElement, Statement, WhileLoop,
+        Statement, Variable, WhileLoop,
     },
     error::{RuntimeError, TracedError},
     execute::{ThreadState, eval::Evaluate},
-    value::{Object, Value},
+    value::Value,
 };
-use indexmap::IndexMap;
 
 // TODO normalize whether we use Node<T> or just T on all impls
 
@@ -275,16 +274,27 @@ impl Execute for Node<Declaration> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
-            let value = if let Some(init) = &variable.init {
-                init.eval(state)?
-            } else {
-                Value::Undefined
-            };
-            let names = bind(state, &variable.binding, value)?;
-            declared.extend(names);
+            declared.extend(variable.exec(state)?);
         }
 
         Ok(declared)
+    }
+}
+
+impl Execute for Variable {
+    /// Return the list of declared names
+    type Output<'process> = Vec<String>;
+
+    fn exec<'process>(
+        &self,
+        state: &mut ThreadState<'process>,
+    ) -> Result<Self::Output<'process>, TracedError> {
+        let value = self
+            .init
+            .as_ref()
+            .try_map(|init| init.eval(state))?
+            .unwrap_or(Value::Undefined);
+        state.bind(&self.binding, value)
     }
 }
 
@@ -318,76 +328,4 @@ pub enum Terminate {
     Break,
     /// Return from the current function, optionally with a return value
     Return { return_value: Option<Value> },
-}
-
-/// Declare a new binding in the current scope
-///
-/// The binding can be a single identifier, or a structured identifier, in
-/// which case multiple names may be bound. This is a convenience method for
-/// calling [Self::declare] on each name in the binding.
-///
-/// Object/array bindings may involve evaluating inner expressions, such
-/// as:
-/// - `const [a = 1] = arr;`
-/// - `const { a = 1 } = o;`
-/// - `const { [f()]: a } = o;`
-pub fn bind(
-    state: &mut ThreadState,
-    binding: &Node<Binding>,
-    value: Value,
-) -> Result<Vec<String>, TracedError> {
-    match binding.data() {
-        Binding::Identifier(identifier) => {
-            let name = identifier.as_str().to_owned();
-            state.scope_mut().declare(name.clone(), value);
-            Ok(vec![name])
-        }
-        Binding::Object(elements) => {
-            // Value must be an object. Copy its properties to another map so
-            // we can drain them as we bind them. (neede for ... bindings)
-            let object = value.try_into_object().map_err(|error| {
-                state.trace_error(error.into(), binding.id())
-            })?;
-            let mut properties = object
-                .iter()
-                .map(|(k, v)| (k.as_str(), v))
-                .collect::<IndexMap<_, _>>();
-            let mut names = vec![];
-
-            for element in elements {
-                match element.data() {
-                    ObjectPatternElement::Identifier {
-                        key,
-                        value: binding,
-                        init,
-                    } => {
-                        let key = key.eval(state)?.to_string();
-                        // Calculate the bound value:
-                        // property value -> init expression -> undefined
-                        let property_value =
-                            // shift_remove retains order
-                            properties.shift_remove(key.as_str());
-                        let value = match (property_value, init) {
-                            (Some(value), _) => value.clone(),
-                            (None, Some(init)) => init.eval(state)?,
-                            (None, None) => Value::Undefined,
-                        };
-                        names.extend(bind(state, binding, value)?);
-                    }
-                    ObjectPatternElement::Rest { binding } => {
-                        // Grab the remaining properties. This *must* be the
-                        // last element, so we can drain the map
-                        let value = properties
-                            .drain(..)
-                            .map(|(k, v)| (k.to_owned(), v.clone()))
-                            .collect::<Object>();
-                        bind(state, binding, value.into())?;
-                    }
-                }
-            }
-
-            Ok(names)
-        }
-        Binding::Array(_) => todo!("TODO array bindings"),
-    }
 }

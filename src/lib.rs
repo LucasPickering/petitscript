@@ -256,3 +256,23 @@ impl EngineBuilder {
         }
     }
 }
+
+/// Extension trait for [Option]
+///
+/// TODO move to util module
+trait OptionExt<T> {
+    /// Map an option with a fallible mapper
+    fn try_map<O, E>(
+        self,
+        f: impl FnOnce(T) -> Result<O, E>,
+    ) -> Result<Option<O>, E>;
+}
+
+impl<T> OptionExt<T> for Option<T> {
+    fn try_map<O, E>(
+        self,
+        f: impl FnOnce(T) -> Result<O, E>,
+    ) -> Result<Option<O>, E> {
+        self.map(f).transpose()
+    }
+}

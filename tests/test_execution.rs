@@ -26,8 +26,8 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 /// multiple values, export an object.
 #[test_case("capture", 9; "capture")]
 #[test_case("parameterScope", 7; "parameter_scope")]
-#[test_case("importLocal", 6; "import_local")]
-#[test_case("importNative", 6; "import_native")]
+#[test_case("importLocal", 9; "import_local")]
+#[test_case("importNative", 9; "import_native")]
 #[test_case("json", true; "json")]
 #[test_case("prototype", true; "prototype")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
@@ -37,8 +37,9 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
     assert_eq!(exported, expected_default);
 }
 
-/// Test error cases during execution. Assert the program fails with an error
-/// message _containing_ the given error
+/// Test error cases during execution
+///
+/// Assert the program fails with an error message _containing_ the given error.
 #[test_case(
     "stackTrace",
     "Error (most recent call last)
@@ -63,8 +64,10 @@ fn error(file_name: &'static str, expected_error: &'static str) {
     );
 }
 
-/// Compile and execute a program. If the program succeeds, expected no named
-/// exports and return the default export
+/// Compile and execute a program
+///
+/// If the program succeeds, expected no named exports and return the default
+/// export.
 fn execute(path: PathBuf) -> Result<Value, Error> {
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());

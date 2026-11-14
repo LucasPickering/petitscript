@@ -182,7 +182,9 @@ impl FunctionCall {
             function: function.into().s().into(),
             arguments: arguments
                 .into_iter()
-                .map(|argument| Argument::Single(Box::new(argument.s())).s())
+                .map(|argument| {
+                    Argument::Expression(Box::new(argument.s())).s()
+                })
                 .collect::<Vec<_>>()
                 .into(),
         }

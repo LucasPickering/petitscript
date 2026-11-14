@@ -177,16 +177,17 @@ impl Evaluate for Node<FunctionCall> {
         let mut arguments = Vec::new();
         for argument in &self.arguments {
             match argument.data() {
-                Argument::Single(expression) => {
+                Argument::Expression(expression) => {
                     arguments.push(expression.eval(state)?);
                 }
                 Argument::Spread(expression) => {
-                    let value = expression.eval(state)?;
-                    if let Value::Array(array) = value {
-                        arguments.extend(array);
-                    } else {
-                        todo!("error illegal spread")
-                    }
+                    let array = expression
+                        .eval(state)?
+                        .try_into_array()
+                        .map_err(|error| {
+                            state.trace_error(error.into(), expression.id())
+                        })?;
+                    arguments.extend(array);
                 }
             }
         }

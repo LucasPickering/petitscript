@@ -331,7 +331,7 @@ impl Walk for Argument {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_function_argument(self);
         match self {
-            Self::Single(expression) | Self::Spread(expression) => {
+            Self::Expression(expression) | Self::Spread(expression) => {
                 expression.walk(visitor);
             }
         }

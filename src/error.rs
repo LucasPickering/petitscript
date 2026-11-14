@@ -414,8 +414,14 @@ pub enum RuntimeError {
     Reference { name: String },
 
     /// Attempt to import a name that a module doesn't export
-    #[error("Module does not export the name `{identifier}`")]
-    UnknownImport { identifier: String },
+    #[error(
+        "Module does not provide an export with the name `{}`",
+        identifier.as_deref().unwrap_or("default")
+    )]
+    UnknownImport {
+        /// Imported identifier, or `None` for `default`
+        identifier: Option<String>,
+    },
 
     /// Attempt to import from a module that doesn't exist
     #[error(

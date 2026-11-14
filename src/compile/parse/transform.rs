@@ -1864,7 +1864,7 @@ impl Transform for oxc::Argument<'_> {
             // All other variants are inherited from Expression
             _ => as_expression!(context, self)
                 .transform_node(context)
-                .map(|expression| Argument::Single(Box::new(expression))),
+                .map(|expression| Argument::Expression(Box::new(expression))),
         }
     }
 }

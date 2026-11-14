@@ -541,7 +541,7 @@ pub struct FunctionCall {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Argument {
     /// Regular passed argument: `f(1)`
-    Single(Box<Node<Expression>>),
+    Expression(Box<Node<Expression>>),
     /// Spread expression: `f(...[1, 2, 3])`
     ///
     /// If the passed expression evaluates to an array, it will be passed

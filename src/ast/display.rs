@@ -364,7 +364,7 @@ impl DisplayIndent for FunctionCall {
 impl DisplayIndent for Argument {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Single(expression) => expression.fmt(ind),
+            Self::Expression(expression) => expression.fmt(ind),
             Self::Spread(expression) => ("...", expression).fmt(ind),
         }
     }

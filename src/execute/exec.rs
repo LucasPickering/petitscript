@@ -130,10 +130,13 @@ impl Execute for Node<ImportDeclaration> {
         let mut exports = self.module.exec(state)?;
 
         if let Some(name) = &self.default {
-            state.scope_mut().declare(
-                name.as_str(),
-                exports.default.ok_or_else(|| todo!())?,
-            );
+            let value = exports.default.ok_or_else(|| {
+                state.trace_error(
+                    RuntimeError::UnknownImport { identifier: None },
+                    name.id(),
+                )
+            })?;
+            state.scope_mut().declare(name.as_str(), value);
         }
         for named in &self.named {
             let value = exports
@@ -142,7 +145,7 @@ impl Execute for Node<ImportDeclaration> {
                 .ok_or_else(|| {
                     state.trace_error(
                         RuntimeError::UnknownImport {
-                            identifier: named.imported.to_string(),
+                            identifier: Some(named.imported.to_string()),
                         },
                         named.id(),
                     )

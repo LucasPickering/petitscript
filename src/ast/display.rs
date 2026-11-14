@@ -14,23 +14,6 @@ use std::{borrow::Cow, fmt};
 
 // TODO fix extra newline in lambda bodies
 
-impl fmt::Display for Module {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let indent = if f.alternate() { Some("  ") } else { None };
-        let mut indenter = Indenter::new(f, indent);
-        DisplayIndent::fmt(self, &mut indenter)
-    }
-}
-
-// TODO impl this automatically on all AST types
-impl fmt::Display for FunctionDefinition {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let indent = if f.alternate() { Some("  ") } else { None };
-        let mut indenter = Indenter::new(f, indent);
-        DisplayIndent::fmt(self, &mut indenter)
-    }
-}
-
 /// TODO
 struct Indenter<'a, 'f> {
     formatter: &'a mut fmt::Formatter<'f>,
@@ -426,22 +409,47 @@ impl DisplayIndent for PropertyName {
 
 impl DisplayIndent for Binding {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        /// Helper to format an element OR a `...rest` pattern
+        enum OrRest<E, R> {
+            Element(E),
+            Rest(R),
+        }
+
+        impl<E, R> DisplayIndent for OrRest<E, R>
+        where
+            E: DisplayIndent,
+            R: DisplayIndent,
+        {
+            fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+                match self {
+                    Self::Element(element) => element.fmt(ind),
+                    Self::Rest(binding) => ("...", binding).fmt(ind),
+                }
+            }
+        }
+
         match self {
             Self::Identifier(identifier) => identifier.fmt(ind),
-            Self::Object { properties, rest } => (
-                "{ ",
-                Repeat::new(properties, ", "),
-                rest.as_ref().map(|rest| ("...", rest)),
-                " }",
-            )
-                .fmt(ind),
-            Self::Array { elements, rest } => (
-                "[",
-                Repeat::new(elements, ", "),
-                rest.as_ref().map(|rest| ("...", rest)),
-                "]",
-            )
-                .fmt(ind),
+            Self::Object { properties, rest } => {
+                // Attach the ...rest to the end of the chain. The Vec
+                // allocation is a little lame, but the alternative is to have
+                // Repeat accept an iterator. That opens a giant can of worms
+                // with the type system, not worth it.
+                let properties = &properties
+                    .iter()
+                    .map(OrRest::Element)
+                    .chain(rest.as_ref().map(OrRest::Rest))
+                    .collect::<Vec<_>>();
+                ("{ ", Repeat::new(properties, ", "), " }").fmt(ind)
+            }
+            Self::Array { elements, rest } => {
+                let elements = &elements
+                    .iter()
+                    .map(OrRest::Element)
+                    .chain(rest.as_ref().map(OrRest::Rest))
+                    .collect::<Vec<_>>();
+                ("[", Repeat::new(elements, ", "), "]").fmt(ind)
+            }
         }
     }
 }
@@ -462,8 +470,15 @@ impl DisplayIndent for ObjectPatternElement {
 }
 
 impl DisplayIndent for ArrayPatternElement {
-    fn fmt(&self, _: &mut Indenter) -> fmt::Result {
-        todo!()
+    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        match self {
+            Self::Identifier { binding, init } => {
+                let init = init.as_ref().map(|init| (" = ", init));
+                (binding, init).fmt(ind)
+            }
+            // The joiner in the parent will include the , automatically
+            Self::Skip => "".fmt(ind),
+        }
     }
 }
 
@@ -701,4 +716,67 @@ impl fmt::Display for NativeModuleName {
     }
 }
 
-// TODO tests
+/// Implement [Display](std::fmt::Display) on all types that implement
+/// [DisplayIndent]
+///
+/// It would be great to do this with a blanket impl, but that's not possible
+/// because `Display` is a foreign trait
+macro_rules! impl_display {
+    ($($type:ty)*) => {
+        $(
+            impl std::fmt::Display for $type {
+                fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    let indent = Some(" ");
+                    let mut indenter = Indenter::new(f, indent);
+                    DisplayIndent::fmt(self, &mut indenter)
+                }
+            }
+        )*
+    }
+}
+
+impl_display! {
+    Module Statement Block Declaration Variable FunctionDefinition FunctionBody
+    FunctionParameter If ImportDeclaration ImportModule ExportDeclaration
+    Expression Literal TemplateLiteral TemplateChunk ArrayLiteral ObjectLiteral
+    ObjectProperty FunctionCall Argument PropertyAccess OptionalPropertyAccess
+    UnaryOperation UnaryOperator BinaryOperation BinaryOperator
+    TernaryConditional PropertyName Binding ObjectPatternElement
+    ArrayPatternElement
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fmt::Display;
+    use test_case::test_case;
+
+    /// Test stringification of AST nodes
+    #[test_case(Literal::Undefined, "undefined"; "literal undefined")]
+    #[test_case(Literal::Null, "null"; "literal null")]
+    #[test_case(Literal::from(false), "false"; "literal false")]
+    #[test_case(Literal::from(true), "true"; "literal true")]
+    #[test_case(Literal::from(-11), "-11"; "literal int")]
+    #[test_case(Literal::from(-3.24), "-3.24"; "literal float")]
+    #[test_case(Literal::from("asdf"), "\"asdf\""; "literal string")]
+    #[test_case(
+        Binding::object(
+            [("x", "x", None), ("y", "y1", Some(1))],
+            Some("z"),
+        ),
+        "{ x, y: y1 = 1, ...z }"; "binding object"
+    )]
+    #[test_case(
+        Binding::array(
+            [Some(("x", None)), None, Some(("y", Some(1)))],
+            Some("z"),
+        ),
+        "[x, , y = 1, ...z]"; "binding array"
+    )]
+    // I'll add more test cases as I go. It's definitely not exhaustive.
+    fn display<T: Display>(node: T, expected: &str) {
+        assert_eq!(node.to_string(), expected);
+    }
+
+    // TODO prop test for display -> parse round trip
+}

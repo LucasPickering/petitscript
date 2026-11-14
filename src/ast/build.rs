@@ -2,12 +2,13 @@
 //! we use associated methods vs combinators?
 
 use crate::ast::{
-    Argument, ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
-    Binding, Block, Declaration, ExportDeclaration, Expression, FunctionBody,
-    FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
-    ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
-    NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
-    Statement, TemplateChunk, TemplateLiteral, Variable,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
+    BinaryOperator, Binding, Block, Declaration, ExportDeclaration, Expression,
+    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
+    Identifier, ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
+    Node, NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    PropertyAccess, PropertyName, Statement, TemplateChunk, TemplateLiteral,
+    Variable,
 };
 
 impl Module {
@@ -330,6 +331,24 @@ impl From<FunctionCall> for Expression {
     }
 }
 
+impl From<bool> for Literal {
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
+impl From<i64> for Literal {
+    fn from(value: i64) -> Self {
+        Self::Int(value)
+    }
+}
+
+impl From<f64> for Literal {
+    fn from(value: f64) -> Self {
+        Self::Float(value)
+    }
+}
+
 impl From<&str> for Literal {
     fn from(value: &str) -> Self {
         Self::String(value.into())
@@ -486,9 +505,83 @@ impl Variable {
         init: Option<Expression>,
     ) -> Self {
         Self {
-            binding: Binding::Identifier(name.into().s()).s(),
+            binding: Binding::identifier(name).s(),
             init: init.map(|init| init.s().into()),
         }
+    }
+}
+
+impl Binding {
+    /// Create a simple identifier binding
+    pub fn identifier(name: impl Into<Identifier>) -> Self {
+        Self::Identifier(name.into().s())
+    }
+
+    /// Create an object binding
+    ///
+    /// `properties` is a list of `(key, binding, init)` tuples. `rest` is the
+    /// optional `...` element at the end of the pattern.
+    pub fn object(
+        properties: impl IntoIterator<
+            Item = (
+                impl Into<PropertyName>,
+                impl Into<Binding>,
+                Option<impl Into<Expression>>,
+            ),
+        >,
+        rest: Option<impl Into<Binding>>,
+    ) -> Self {
+        Self::Object {
+            properties: properties
+                .into_iter()
+                .map(|(key, binding, init)| {
+                    ObjectPatternElement {
+                        key: key.into().s(),
+                        binding: binding.into().s(),
+                        init: init.map(|init| init.into().s()),
+                    }
+                    .s()
+                })
+                .collect(),
+            rest: rest.map(|binding| Box::new(binding.into().s())),
+        }
+    }
+
+    /// Create an array binding
+    ///
+    /// `elements` is a list of `(binding, init)` pairs. Each element can be
+    /// `None`, which will map to [ArrayPatternElement::Skip]. `rest` is the
+    /// optional `...` element at the end of the pattern.
+    pub fn array(
+        elements: impl IntoIterator<
+            Item = Option<(impl Into<Binding>, Option<impl Into<Expression>>)>,
+        >,
+        rest: Option<impl Into<Binding>>,
+    ) -> Self {
+        Self::Array {
+            elements: elements
+                .into_iter()
+                .map(|option| {
+                    if let Some((binding, init)) = option {
+                        ArrayPatternElement::Identifier {
+                            binding: binding.into().s(),
+                            init: init.map(|init| init.into().s()),
+                        }
+                        .s()
+                    } else {
+                        ArrayPatternElement::Skip.s()
+                    }
+                })
+                .collect(),
+            rest: rest.map(|binding| Box::new(binding.into().s())),
+        }
+    }
+}
+
+/// Create an identifier binding from a string literal
+impl From<&'static str> for Binding {
+    fn from(name: &'static str) -> Self {
+        Self::identifier(name)
     }
 }
 

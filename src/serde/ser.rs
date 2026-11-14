@@ -123,7 +123,7 @@ impl serde::Serializer for Serializer {
             // A function can only be serialized from a function. The Serialize
             // impl should've put it into the function pool and we'll grab it
             // back out by ID
-            let id: u64 = value.serialize(U64Serializer)?;
+            let id: u64 = value.serialize(FunctionIdSerializer)?;
             // The only way we can hit an error here is:
             // - A bug in our code somewhere (impossible)
             // - User tried to serialize something that looks like a Function
@@ -411,10 +411,10 @@ impl ser::SerializeStructVariant for SerializeVariant<SerializeMap> {
 }
 
 /// TODO explain or figure out a way to get rid of this
-struct U64Serializer;
+struct FunctionIdSerializer;
 
 #[expect(unused)] // TODO remove this
-impl ser::Serializer for U64Serializer {
+impl ser::Serializer for FunctionIdSerializer {
     type Ok = u64;
     type Error = ValueError;
     type SerializeSeq = ser::Impossible<u64, ValueError>;
@@ -426,35 +426,35 @@ impl ser::Serializer for U64Serializer {
     type SerializeStructVariant = ser::Impossible<u64, ValueError>;
 
     fn serialize_bool(self, _v: bool) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_i8(self, _v: i8) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_i16(self, _v: i16) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_i32(self, _v: i32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_i64(self, _v: i64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_u8(self, _v: u8) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_u16(self, _v: u16) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_u32(self, _v: u32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
@@ -462,45 +462,45 @@ impl ser::Serializer for U64Serializer {
     }
 
     fn serialize_f32(self, _v: f32) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_f64(self, _v: f64) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_str(self, _v: &str) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_bytes(self, _v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + ser::Serialize,
     {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_unit_struct(
         self,
         name: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_unit_variant(
@@ -509,7 +509,7 @@ impl ser::Serializer for U64Serializer {
         variant_index: u32,
         variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_newtype_struct<T>(
@@ -520,7 +520,7 @@ impl ser::Serializer for U64Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_newtype_variant<T>(
@@ -533,21 +533,21 @@ impl ser::Serializer for U64Serializer {
     where
         T: ?Sized + ser::Serialize,
     {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_seq(
         self,
         len: Option<usize>,
     ) -> Result<Self::SerializeSeq, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple(
         self,
         len: usize,
     ) -> Result<Self::SerializeTuple, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple_struct(
@@ -555,7 +555,7 @@ impl ser::Serializer for U64Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple_variant(
@@ -565,14 +565,14 @@ impl ser::Serializer for U64Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_map(
         self,
         len: Option<usize>,
     ) -> Result<Self::SerializeMap, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_struct(
@@ -580,7 +580,7 @@ impl ser::Serializer for U64Serializer {
         name: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 
     fn serialize_struct_variant(
@@ -590,6 +590,6 @@ impl ser::Serializer for U64Serializer {
         variant: &'static str,
         len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        todo!()
+        unimplemented!("function ID must be u64")
     }
 }

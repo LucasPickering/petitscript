@@ -134,8 +134,8 @@ mod tests {
         },
     };
     use indexmap::indexmap;
-    use serde::de::{DeserializeOwned, Visitor};
-    use std::fmt::{self, Debug};
+    use serde::de::DeserializeOwned;
+    use std::fmt::Debug;
     use test_case::test_case;
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -189,8 +189,10 @@ mod tests {
     /// doesn't work for us because our Deserializer doesn't support
     /// borrowed deserialization. bytes::Bytes doesn't support serde either.
     #[derive(Debug, PartialEq)]
+    #[cfg(feature = "buffer")]
     struct Bytes(Vec<u8>);
 
+    #[cfg(feature = "buffer")]
     impl Serialize for Bytes {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
@@ -200,6 +202,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "buffer")]
     impl<'de> Deserialize<'de> for Bytes {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -207,13 +210,13 @@ mod tests {
         {
             struct BytesVisitor;
 
-            impl Visitor<'_> for BytesVisitor {
+            impl serde::de::Visitor<'_> for BytesVisitor {
                 type Value = Bytes;
 
                 fn expecting(
                     &self,
-                    formatter: &mut fmt::Formatter,
-                ) -> fmt::Result {
+                    formatter: &mut std::fmt::Formatter,
+                ) -> std::fmt::Result {
                     write!(formatter, "bytes")
                 }
 

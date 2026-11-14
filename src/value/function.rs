@@ -14,14 +14,18 @@ use std::{
 /// An executable function
 #[derive(Clone, Debug, PartialEq)]
 pub enum Function {
-    /// A function defined in PetitScript code. All user functions are
-    /// closures, meaning they capture their environment when created.
-    /// References to outside variables can be used within the function body.
+    /// A function defined in PetitScript code
+    ///
+    /// All user functions are closures, meaning they capture their environment
+    /// when created. References to outside variables can be used within the
+    /// function body.
     User {
-        /// A pointer to the function's definition. This is reference counted
-        /// so the function can be cheaply clonable. We expect to clone
-        /// definitions once from the AST during value creation, but after that
-        /// the value can be cloned cheaply.
+        /// A pointer to the function's definition.
+        ///
+        /// This is reference-counted so the function can be cheaply clonable.
+        /// We expect to clone definitions once from the AST during
+        /// value creation, but after that the value can be cloned
+        /// cheaply.
         /// TODO use Arc in the AST as well?
         definition: Arc<FunctionDefinition>,
         /// All external bound values captured by this function
@@ -39,11 +43,12 @@ pub enum Function {
 
     /// A function defined in Rust
     Native {
-        /// Display name for this function. Native functions should always be
-        /// created via [Function::native], which requires a name to be given.
-        /// There's no such thing as an anonymous native function. This is for
-        /// labelling purposes only; it does not affect program behavior beyond
-        /// its `toString()` output.
+        /// Display name for this function
+        ///
+        /// Native functions should always be created via [Function::native],
+        /// which requires a name to be given. There's no such thing as an
+        /// anonymous native function. This is for labelling purposes only; it
+        /// does not affect program behavior beyond its `toString()` output.
         name: Arc<str>,
         /// A pointer to this function's definition in the native function
         /// table
@@ -60,22 +65,23 @@ pub enum Function {
     /// Prototypes cannot be modified externally. Therefore, there is no way to
     /// create a bound function in external consumers.
     Bound {
-        /// Display name for this function.
+        /// Display name for this function
         ///
         /// Native functions should always be created via
         /// [Exports::export_fn](crate::Exports::export_fn),
-        /// which requires a name to be given. There's no such thing as
-        /// an anonymous native function. This is for labelling purposes only;
-        /// it does not affect program behavior beyond its `toString()`
-        /// output.
+        /// which requires a name to be given. There's no such thing as an
+        /// anonymous native function. This is for labelling purposes only;
+        /// it does not affect program behavior beyond its `toString()` output.
         name: Arc<str>,
         /// A pointer to this function's definition in the native function
         /// table
         function: BoundFunction,
-        /// The value bound to this method. This is akin to the `self` value in
-        /// Rust or Python methods. Unlike JS, PS doesn't support accessing the
-        /// receiver via the `this` keyword, because bound functions can only
-        /// be defined natively and not in PS code.
+        /// The value bound to this method
+        ///
+        /// This is akin to the `self` value in Rust or Python methods. Unlike
+        /// JS, PS doesn't support accessing the receiver via the `this`
+        /// keyword, because bound functions can only be defined natively and
+        /// not in PS code.
         receiver: Box<Value>,
     },
 }

@@ -530,8 +530,23 @@ pub enum ObjectProperty {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionCall {
+    /// Expression evaluating to the function to invoke
     pub function: Box<Node<Expression>>,
-    pub arguments: Box<[Node<Expression>]>,
+    /// Values to pass to the function
+    pub arguments: Box<[Node<Argument>]>,
+}
+
+/// One argument in a [FunctionCall]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum Argument {
+    /// Regular passed argument: `f(1)`
+    Single(Box<Node<Expression>>),
+    /// Spread expression: `f(...[1, 2, 3])`
+    ///
+    /// If the passed expression evaluates to an array, it will be passed
+    /// as multiple arguments. Otherwise, error!
+    Spread(Box<Node<Expression>>),
 }
 
 /// TODO

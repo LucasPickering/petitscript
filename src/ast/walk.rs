@@ -1,12 +1,12 @@
 use crate::ast::{
-    ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation, Binding,
-    Block, Declaration, DoWhileLoop, ExportDeclaration, Expression, ForOfLoop,
-    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    Identifier, If, ImportDeclaration, ImportModule, ImportNamed, Literal,
-    Module, Node, ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    Variable, WhileLoop,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
+    Binding, Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
+    ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
+    FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
+    ImportNamed, Literal, Module, Node, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
+    UnaryOperation, Variable, WhileLoop,
 };
 use std::ops::DerefMut;
 
@@ -327,6 +327,18 @@ impl Walk for FunctionCall {
     }
 }
 
+impl Walk for Argument {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_function_argument(self);
+        match self {
+            Self::Single(expression) | Self::Spread(expression) => {
+                expression.walk(visitor);
+            }
+        }
+        visitor.exit_function_argument(self);
+    }
+}
+
 impl Walk for ImportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import(self);
@@ -432,12 +444,12 @@ impl<T: Walk> Walk for Option<T> {
     }
 }
 
-/// A trait for applying actions to individual nodes of an AST. This should be
-/// used in conjunction with [Walk] to apply an action to _all_ nodes of the
-/// AST. This trait defines one method for each AST node type, which all do
-/// nothing by default. Override individual functions as needed to apply your
-/// visitor actions.
+/// A trait for applying actions to individual nodes of an AST
 ///
+/// This should be used in conjunction with [Walk] to apply an action to _all_
+/// nodes of the AST. This trait defines one method for each AST node type,
+/// which all do nothing by default. Override individual functions as needed to
+/// apply your visitor actions.
 ///
 /// For each node type, this trait provides one method called *before*
 /// traversing that node's children (`enter_*`), and another called after
@@ -450,6 +462,7 @@ impl<T: Walk> Walk for Option<T> {
 /// but that requires specialization in order to provide default impls for all
 /// other node types.
 pub trait AstVisitor {
+    // TODO docs on each method
     fn enter_array_element(&mut self, _: &mut ArrayElement) {}
     fn exit_array_element(&mut self, _: &mut ArrayElement) {}
 
@@ -482,6 +495,9 @@ pub trait AstVisitor {
 
     fn enter_for_of_loop(&mut self, _: &mut ForOfLoop) {}
     fn exit_for_of_loop(&mut self, _: &mut ForOfLoop) {}
+
+    fn enter_function_argument(&mut self, _: &mut Argument) {}
+    fn exit_function_argument(&mut self, _: &mut Argument) {}
 
     fn enter_function_body(&mut self, _: &mut FunctionBody) {}
     fn exit_function_body(&mut self, _: &mut FunctionBody) {}

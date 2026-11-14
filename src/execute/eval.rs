@@ -2,7 +2,7 @@
 
 use crate::{
     ast::{
-        ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
+        Argument, ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
         Expression, FunctionCall, FunctionDefinition, FunctionParameter,
         Literal, Node, ObjectLiteral, ObjectProperty, OptionalPropertyAccess,
         PropertyAccess, PropertyName, TemplateChunk, TemplateLiteral,
@@ -172,11 +172,24 @@ impl Evaluate for Node<FunctionDefinition> {
 impl Evaluate for Node<FunctionCall> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let function = self.function.eval(state)?;
-        let arguments = self
-            .arguments
-            .iter()
-            .map(|argument| argument.eval(state))
-            .collect::<Result<Vec<_>, _>>()?;
+
+        // Collect arguments
+        let mut arguments = Vec::new();
+        for argument in &self.arguments {
+            match argument.data() {
+                Argument::Single(expression) => {
+                    arguments.push(expression.eval(state)?);
+                }
+                Argument::Spread(expression) => {
+                    let value = expression.eval(state)?;
+                    if let Value::Array(array) = value {
+                        arguments.extend(array);
+                    } else {
+                        todo!("error illegal spread")
+                    }
+                }
+            }
+        }
 
         match function {
             Value::Function(function) => {

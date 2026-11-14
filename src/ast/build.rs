@@ -2,8 +2,8 @@
 //! we use associated methods vs combinators?
 
 use crate::ast::{
-    ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
-    Block, Declaration, ExportDeclaration, Expression, FunctionBody,
+    Argument, ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
+    Binding, Block, Declaration, ExportDeclaration, Expression, FunctionBody,
     FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
     ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
     NodeId, ObjectLiteral, ObjectProperty, PropertyAccess, PropertyName,
@@ -182,7 +182,7 @@ impl FunctionCall {
             function: function.into().s().into(),
             arguments: arguments
                 .into_iter()
-                .map(IntoNode::s)
+                .map(|argument| Argument::Single(Box::new(argument.s())).s())
                 .collect::<Vec<_>>()
                 .into(),
         }

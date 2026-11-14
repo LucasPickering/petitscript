@@ -6,10 +6,10 @@
 use crate::{
     NativeModuleName, OptionExt, Source,
     ast::{
-        ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-        BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
-        ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
-        FunctionDefinition, FunctionParameter, Identifier, If,
+        Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
+        BinaryOperation, BinaryOperator, Binding, Block, Declaration,
+        DoWhileLoop, ExportDeclaration, Expression, ForOfLoop, FunctionBody,
+        FunctionCall, FunctionDefinition, FunctionParameter, Identifier, If,
         ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
         NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
         OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
@@ -1073,14 +1073,13 @@ impl Transform for oxc::BindingProperty<'_> {
 /// `function` declaration
 ///
 /// This maps to the same AST node as an arrow function bound via `const`.
-/// TODO how to handle TS nodes?
-///
-/// ```norust
-/// declare function foo(a: number): number;
-/// function bar(a: number): number;
-/// ```
 impl Transform for oxc::Function<'_> {
     /// `None` for TypeScript stub declarations
+    ///
+    /// ```norust
+    /// declare function foo(a: number): number;
+    /// function bar(a: number): number;
+    /// ```
     type Output = Option<Declaration>;
 
     fn transform(
@@ -1187,11 +1186,28 @@ impl Transform for oxc::FormalParameters<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        // TODO is the `kind` field important? what do with it?
-        self.items
+        let mut parameters: Vec<_> = self
+            .items
             .iter()
             .map(|parameter| parameter.transform_node(context))
-            .collect::<Result<_, _>>()
+            .collect::<Result<_, _>>()?;
+        // Add the rest param in separately
+        if let Some(rest) = &self.rest {
+            // = isn't allowed here because the default is always []
+            let binding =
+                BindingOnly(&rest.rest.argument).transform_node(context)?;
+            parameters.push(
+                FunctionParameter {
+                    variable: binding.wrap(context, |binding| Variable {
+                        binding,
+                        init: None,
+                    }),
+                    varargs: true,
+                }
+                .into_node(context, rest.span()),
+            );
+        }
+        Ok(parameters.into())
     }
 }
 
@@ -1834,16 +1850,21 @@ impl Transform for oxc::CallExpression<'_> {
 }
 
 impl Transform for oxc::Argument<'_> {
-    type Output = Expression;
+    type Output = Argument;
 
     fn transform(
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         match self {
-            Self::SpreadElement(_) => todo!("support spread in function args"),
+            Self::SpreadElement(spread_element) => spread_element
+                .argument
+                .transform_node(context)
+                .map(|expression| Argument::Spread(Box::new(expression))),
             // All other variants are inherited from Expression
-            _ => as_expression!(context, self).transform(context),
+            _ => as_expression!(context, self)
+                .transform_node(context)
+                .map(|expression| Argument::Single(Box::new(expression))),
         }
     }
 }

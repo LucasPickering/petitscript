@@ -1,7 +1,7 @@
 //! Generate source code from AST nodes
 
 use crate::ast::{
-    ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
     BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
     ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
     FunctionDefinition, FunctionParameter, Identifier, If, ImportDeclaration,
@@ -361,6 +361,15 @@ impl DisplayIndent for FunctionCall {
     }
 }
 
+impl DisplayIndent for Argument {
+    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        match self {
+            Self::Single(expression) => expression.fmt(ind),
+            Self::Spread(expression) => ("...", expression).fmt(ind),
+        }
+    }
+}
+
 impl DisplayIndent for PropertyAccess {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match &*self.property {
@@ -526,10 +535,11 @@ impl DisplayIndent for Newline {
     }
 }
 
-/// Print a sequence of values separated by a delimiter. If indentation is
-/// enabled, print a newline and indentation before each item. A newline
-/// will be printed before the first item and after the last. The delimiter will
-/// be printed after each item *except the last*.
+/// Print a sequence of values separated by a delimiter
+///
+/// If indentation is enabled, print a newline and indentation before each item.
+/// A newline will be printed before the first item and after the last. The
+/// delimiter will be printed after each item *except the last*.
 struct Indent<'a, T> {
     items: &'a [T],
     delimiter: &'a str,

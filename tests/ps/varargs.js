@@ -1,6 +1,6 @@
 // Test varargs in function parameters (decl position) and arguments (expr position)
 function call(f, ...args) {
-  f(...args);
+  return f(...args);
 }
 
 function add(a, b) {

@@ -93,9 +93,7 @@ fn execute(path: PathBuf) -> Result<Value, Error> {
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());
     let source = Source::file(&path).unwrap();
-    let process = ENGINE.compile(source).unwrap_or_else(|error| {
-        panic!("Error compiling {path}: {error}", path = path.display())
-    });
+    let process = ENGINE.compile(source).unwrap();
     let exports = process.execute()?;
 
     assert_eq!(

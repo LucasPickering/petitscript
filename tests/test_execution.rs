@@ -72,7 +72,7 @@ fn execution(file_name: &'static str, expected: impl Into<Value>) {
     "stack_trace")]
 #[test_case(
     "importUnknown",
-    "Module does not export the name `unknown`";
+    "Module does not provide an export with the name `unknown`";
     "import_unknown"
 )]
 fn error(file_name: &'static str, expected_error: &'static str) {

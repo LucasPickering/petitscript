@@ -286,8 +286,8 @@ impl Evaluate for BinaryOperation {
             BinaryOperator::LessThan => Ok((lhs < rhs).into()),
             BinaryOperator::LessThanEqual => Ok((lhs <= rhs).into()),
 
-            BinaryOperator::BooleanAnd => Ok(lhs.and(&rhs).into()),
-            BinaryOperator::BooleanOr => Ok(lhs.or(&rhs).into()),
+            BinaryOperator::LogicalAnd => Ok(lhs.and(rhs)),
+            BinaryOperator::LogicalOr => Ok(lhs.or(rhs)),
             BinaryOperator::NullishCoalesce => Ok(lhs.coalesce(rhs)),
         }
     }

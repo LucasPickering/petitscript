@@ -612,9 +612,9 @@ pub enum BinaryOperator {
     Mod,
 
     /// `&&`
-    BooleanAnd,
+    LogicalAnd,
     /// `||`
-    BooleanOr,
+    LogicalOr,
 
     /// **Strict** equality: `===`
     Equal,

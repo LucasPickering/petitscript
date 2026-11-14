@@ -305,14 +305,22 @@ impl Value {
         }
     }
 
-    /// Boolean AND operator (`&&`)
-    pub fn and(&self, _: &Self) -> bool {
-        todo!()
+    /// Logical AND operator (`&&`)
+    ///
+    /// If `self` is falsy, return `self`. Otherwise return `other`. This is
+    /// *not* strictly for boolean operations.
+    #[must_use]
+    pub fn and(self, other: Self) -> Value {
+        if self.to_bool() { other } else { self }
     }
 
-    /// Boolean OR operator (`||`)
-    pub fn or(&self, _: &Self) -> bool {
-        todo!()
+    /// Logical OR operator (`||`)
+    ///
+    /// If `self` is truthy, return `self`. Otherwise return `other`. This is
+    /// *not* strictly for boolean operations.
+    #[must_use]
+    pub fn or(self, other: Self) -> Value {
+        if self.to_bool() { self } else { other }
     }
 
     /// Apply nullish coalescing (`??`)
@@ -762,5 +770,23 @@ mod tests {
         let b = b.into();
         assert_eq!(a.clone() + b.clone(), expected1.into());
         assert_eq!(b + a, expected2.into());
+    }
+
+    /// Test binary logical operators: `&&`, `||`, and `??`
+    #[test_case(Value::and, 0, 1, 0; "and falsy")]
+    #[test_case(Value::and, 1, 2, 2; "and truthy")]
+    #[test_case(Value::or, 0, 1, 1; "or falsy")]
+    #[test_case(Value::or, 1, 2, 1; "or truthy")]
+    #[test_case(Value::coalesce, Value::Undefined, 1, 1; "coalesce undefined")]
+    #[test_case(Value::coalesce, Value::Null, 1, 1; "coalesce null")]
+    #[test_case(Value::coalesce, false, 1, false; "coalesce falsy")]
+    #[test_case(Value::coalesce, true, 1, true; "coalesce truthy")]
+    fn binary_logical(
+        operator: impl FnOnce(Value, Value) -> Value,
+        lhs: impl Into<Value>,
+        rhs: impl Into<Value>,
+        expected: impl Into<Value>,
+    ) {
+        assert_eq!(operator(lhs.into(), rhs.into()), expected.into());
     }
 }

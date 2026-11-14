@@ -1785,8 +1785,8 @@ impl Transform for oxc::LogicalExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         let operator = match self.operator {
-            oxc::LogicalOperator::Or => BinaryOperator::BooleanOr,
-            oxc::LogicalOperator::And => BinaryOperator::BooleanAnd,
+            oxc::LogicalOperator::Or => BinaryOperator::LogicalOr,
+            oxc::LogicalOperator::And => BinaryOperator::LogicalAnd,
             oxc::LogicalOperator::Coalesce => BinaryOperator::NullishCoalesce,
         };
         let lhs = self.left.transform_node(context)?;

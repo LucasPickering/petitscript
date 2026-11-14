@@ -49,6 +49,16 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 #[test_case("importNative", 9; "import_native")]
 #[test_case("json", true; "json")]
 #[test_case("parameterScope", 7; "parameter_scope")]
+#[test_case(
+    "propertyAccess",
+    [
+        ("id", 1.into()),
+        ("opt", 2.into()),
+        ("expr", 3.into()),
+        ("missing", Value::Undefined),
+    ];
+    "property_access"
+)]
 #[test_case("prototype", true; "prototype")]
 #[test_case("varargs", 3; "varargs")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {

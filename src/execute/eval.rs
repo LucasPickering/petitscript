@@ -8,7 +8,7 @@ use crate::{
         PropertyAccess, PropertyName, TemplateChunk, TemplateLiteral,
         UnaryOperation, UnaryOperator,
     },
-    error::{TracedError, ValueError},
+    error::{RuntimeError, TracedError, ValueError},
     execute::{ThreadState, exec::Execute, state::CallSite},
     value::{Array, Number, Object, Value, ValueType, function::Function},
 };
@@ -205,53 +205,60 @@ impl Evaluate for Node<FunctionCall> {
     }
 }
 
+/// Property access: `.` or `[...]`
 impl Evaluate for Node<PropertyAccess> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        let value = self.object.eval(state)?;
-        let key: Value = match &self.property.data() {
-            PropertyName::Literal(identifier) => identifier.as_str().into(),
-            PropertyName::Expression(expression) => expression.eval(state)?,
-        };
-        let value = value
-            // Check for the property directly on the value
-            .get(&key)
-            .map_err(|error| state.trace_error(error, self.id()))?
-            // If it wasn't directly on the value, check the prototype
-            .or_else(|| {
-                // If the key isn't a string, we know it won't be in the
-                // prototype so we can bail out
-                let name = key.as_str()?;
-                let function =
-                    state.scope().get_prototype(value.type_(), name)?;
-                Some(
-                    Function::bound(
-                        name.into(),
-                        function.clone(),
-                        value.clone(),
-                    )
-                    .into(),
-                )
-            })
-            .unwrap_or_default();
-        Ok(value)
+        let target = self.object.eval(state)?;
+        let property = self.property.eval(state)?;
+        get_property(state, target, property)
+            .map_err(|error| state.trace_error(error, self.id()))
     }
 }
 
-impl Evaluate for OptionalPropertyAccess {
+/// Optional object/array property access: `?.` or `?.[...]`
+impl Evaluate for Node<OptionalPropertyAccess> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
-        let target = self.object.eval(state)?;
-        match target {
+        match self.object.eval(state)? {
+            // Do NOT evaluate the property expression if the target is
+            // null/undefined
             Value::Undefined | Value::Null => Ok(Value::Undefined),
-            Value::Boolean(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_)
-            | Value::Object(_)
-            | Value::Function(_) => todo!(),
-            #[cfg(feature = "buffer")]
-            Value::Buffer(_) => todo!(),
+            target => {
+                let property = self.property.eval(state)?;
+                get_property(state, target, property).map_err(|error| {
+                    // Error should be impossible here, because we handled the
+                    // failure cases above
+                    let error = RuntimeError::internal(error);
+                    state.trace_error(error, self.id())
+                })
+            }
         }
     }
+}
+
+/// Get a property from a target
+///
+/// This will first check the value itself (for arrays/objects), then check
+/// its prototype. Error if `target` is `null`/`undefined`.
+fn get_property(
+    state: &mut ThreadState<'_>,
+    target: Value,
+    property: Value,
+) -> Result<Value, RuntimeError> {
+    Ok(target
+        // Check for the property directly on the value
+        .get(&property)?
+        // Check the prototype
+        .or_else(|| {
+            // If the key isn't a string, we know it won't be in the prototype
+            // so we can bail out
+            let name = property.as_str()?;
+            let function = state.scope().get_prototype(target.type_(), name)?;
+            Some(
+                Function::bound(name.into(), function.clone(), target.clone())
+                    .into(),
+            )
+        })
+        .unwrap_or_default())
 }
 
 impl Evaluate for UnaryOperation {

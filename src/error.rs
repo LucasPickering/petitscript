@@ -400,7 +400,7 @@ pub enum RuntimeError {
         "Internal error occurred in the PetitScript engine. \
         This is a bug; please report it! {0}"
     )]
-    Internal(String),
+    Internal(Box<dyn StdError + Send + Sync>),
 
     /// Second assignment to a `const` variable
     #[error("Assignment to immutable variable `{name}`")]
@@ -463,7 +463,9 @@ impl RuntimeError {
     }
 
     /// Create an error that indicates an internal bug in the runtime
-    pub(crate) fn internal(message: impl Into<String>) -> Self {
+    pub(crate) fn internal(
+        message: impl Into<Box<dyn StdError + Send + Sync>>,
+    ) -> Self {
         Self::Internal(message.into())
     }
 

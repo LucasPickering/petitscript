@@ -18,7 +18,11 @@ pub fn write_json(buf: &mut String, value: &Value) {
     // Errors aren't possible in any of these writes because we're writing to
     // a string
     match value {
-        Value::Undefined => todo!(),
+        // Undefined is hard because it's variable in JS:
+        // JSON.stringify(undefined) => undefined
+        // JSON.stringify({a: undefined}) => "{}"
+        // JSON.stringify([undefined]) => "[null]"
+        Value::Undefined => todo!("undefined to json"),
         Value::Null => write!(buf, "null").unwrap(),
         Value::Boolean(b) => write!(buf, "{b}").unwrap(),
         Value::Number(number) => write!(buf, "{number}").unwrap(),

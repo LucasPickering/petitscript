@@ -278,8 +278,8 @@ impl Value {
 
     /// Get a property from this value
     ///
-    /// Return `None` if the property isn't present. If this value is `null` or
-    /// `undefined`, return an error.
+    /// Return `Ok(None)` if the property isn't present. If this value is `null`
+    /// or `undefined`, return an error.
     pub(crate) fn get(
         &self,
         property: &Self,

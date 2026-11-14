@@ -38,6 +38,9 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
         // Plain const bindings
         ("x", 1.into()),
         ("y", 2.into()),
+        ("objDef", 7.into()),
+        ("arrDef", 7.into()),
+        ("skip", [1, 3].into()),
     ];
     "bindings"
 )]

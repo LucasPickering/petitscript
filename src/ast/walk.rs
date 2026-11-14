@@ -106,8 +106,14 @@ impl Walk for Binding {
         match self {
             Self::Identifier(identifier) => visitor
                 .visit_identifier(identifier, IdentifierPosition::Declaration),
-            Self::Object(elements) => elements.walk(visitor),
-            Self::Array(elements) => elements.walk(visitor),
+            Self::Object { properties, rest } => {
+                properties.walk(visitor);
+                rest.walk(visitor);
+            }
+            Self::Array { elements, rest } => {
+                elements.walk(visitor);
+                rest.walk(visitor);
+            }
         }
         visitor.exit_binding(self);
     }
@@ -116,7 +122,13 @@ impl Walk for Binding {
 impl Walk for ArrayPatternElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_array_pattern_element(self);
-        // TODO
+        match self {
+            Self::Identifier { binding, init } => {
+                binding.walk(visitor);
+                init.walk(visitor);
+            }
+            Self::Skip => {}
+        }
         visitor.exit_array_pattern_element(self);
     }
 }
@@ -124,14 +136,9 @@ impl Walk for ArrayPatternElement {
 impl Walk for ObjectPatternElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_object_pattern_element(self);
-        match self {
-            Self::Identifier { key, value, init } => {
-                key.walk(visitor);
-                value.walk(visitor);
-                init.walk(visitor);
-            }
-            Self::Rest { binding } => binding.walk(visitor),
-        }
+        self.key.walk(visitor);
+        self.binding.walk(visitor);
+        self.init.walk(visitor);
         visitor.exit_object_pattern_element(self);
     }
 }

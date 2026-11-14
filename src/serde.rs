@@ -88,8 +88,6 @@ impl FunctionPool {
         static POOL: RefCell<FunctionPool> = const {
             RefCell::new(FunctionPool::new())
         };
-        // TODO
-        // static IS_ACTIVE: AtomicBool = false;
     }
 
     const fn new() -> Self {

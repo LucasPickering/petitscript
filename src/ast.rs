@@ -657,35 +657,55 @@ pub enum Binding {
     /// `const x = 3`
     Identifier(Node<Identifier>),
     /// An object pattern: `const { a, b, c } = object`
-    Object(Box<[Node<ObjectPatternElement>]>),
+    Object {
+        properties: Box<[Node<ObjectPatternElement>]>,
+        /// `const { ...x } = object`
+        ///
+        /// This can only appear once, at the end of the pattern.
+        rest: Option<Box<Node<Binding>>>,
+    },
     /// An array pattern: `const [a, b, c] = array`
-    Array(Box<[Node<ArrayPatternElement>]>),
+    Array {
+        elements: Box<[Node<ArrayPatternElement>]>,
+        /// `const [...x] = array`
+        ///
+        /// This can only appear once, at the end of the pattern.
+        rest: Option<Box<Node<Binding>>>,
+    },
 }
 
-/// One property in a [Binding::Object]
+/// A specific bound field in a [Binding::Object]
+///
+/// - `const { x } = object`
+/// - `const { x: x2 } = object`
+/// - `const { x: x2 = 3 } = object`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ObjectPatternElement {
-    /// A specific bound field
-    ///
-    /// - `const { x } = object`
-    /// - `const { x: x2 } = object`
-    /// - `const { x: x2 = 3 } = object`
-    Identifier {
-        /// Key extracted from the object
-        key: Node<PropertyName>,
-        /// Name to bind the value to
-        value: Node<Binding>,
-        /// Optional default expression for properties not in the object
-        init: Option<Node<Expression>>,
-    },
-    /// `const { ...x } = object`
-    Rest { binding: Node<Binding> },
+pub struct ObjectPatternElement {
+    /// Key extracted from the object
+    pub key: Node<PropertyName>,
+    /// Name to bind the value to
+    pub binding: Node<Binding>,
+    /// Optional default expression for properties not in the object
+    pub init: Option<Node<Expression>>,
 }
 
-/// TODO
+/// One element in a [Binding::Array]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayPatternElement {
-    // TODO
+    /// A specific bound field
+    ///
+    /// - `const [x] = array`
+    /// - `const [x = 3] = array`
+    Identifier {
+        /// Name to bind the value to
+        binding: Node<Binding>,
+        /// Optional default expression for elements not in the array
+        init: Option<Node<Expression>>,
+    },
+    /// Skip this field while binding
+    ///
+    /// `const [a,, c] = [1, 2, 3]`
+    Skip,
 }

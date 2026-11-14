@@ -334,6 +334,8 @@ impl Function {
         parameters: &[Node<FunctionParameter>],
         arguments: Vec<Value>,
     ) -> Result<(), TracedError> {
+        // Each parameter will be added to the scope for the next param,
+        // meaning `f(a, b = a + 1) {...}` is *legal*
         for (i, parameter) in parameters.iter().enumerate() {
             // If we got fewer args than the function has defined, we'll pad it
             // out with defaults/undefined
@@ -350,11 +352,7 @@ impl Function {
                     value.clone()
                 }
             } else if let Some(init) = &parameter.variable.init {
-                // If the arg wasn't given, fall back to the
-                // init
-                // expression
-                // TODO make sure previous args are available
-                // here
+                // If the arg wasn't given, fall back to the init expression
                 init.eval(state)?
             } else {
                 // No init expression, use undefined

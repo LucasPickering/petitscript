@@ -4,17 +4,17 @@
 //! initial parsing to the parent.
 
 use crate::{
-    NativeModuleName, Source,
+    NativeModuleName, OptionExt, Source,
     ast::{
-        ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator, Binding,
-        Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
-        ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
-        FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
-        ImportNamed, Literal, Module, Node, NodeId, ObjectLiteral,
-        ObjectPatternElement, ObjectProperty, OptionalPropertyAccess,
-        PropertyAccess, PropertyName, Statement, TemplateChunk,
-        TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
-        Variable, WhileLoop,
+        ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
+        BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
+        ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
+        FunctionDefinition, FunctionParameter, Identifier, If,
+        ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
+        NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
+        TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+        UnaryOperator, Variable, WhileLoop,
     },
     compile::{
         SUPPORTED_EXTENSIONS,
@@ -176,6 +176,51 @@ trait Transform {
     {
         self.transform(context)
             .map(|node| Node::new(context.node_id(self.span()), node))
+    }
+}
+
+/// Transform a collection of nodes
+trait TransformAll<T: Transform> {
+    /// Transform a collection of nodes
+    ///
+    /// Invalid nodes (nodes that generate an error instead of transforming)
+    /// will be **skipped** and omitted from the output. This allows the
+    /// transformation to collect as many errors as possible, rather than
+    /// failing immediately. Any error will cause the top-level transformation
+    /// to fail, but the intermediate transformations will continue.
+    fn transform_all(
+        &self,
+        context: &mut ParseContext,
+    ) -> Box<[Node<T::Output>]>;
+}
+
+/// Transform oxc-provided vecs
+impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
+    fn transform_all(
+        &self,
+        context: &mut ParseContext,
+    ) -> Box<[Node<T::Output>]> {
+        self.iter()
+            // Errors are already registered, so just skip em
+            .filter_map(|value| value.transform_node(context).ok())
+            .collect()
+    }
+}
+
+/// Transform self-constructed vecs
+///
+/// This is a little hacky but it's the best/simplest solution I could come
+/// up with. Can't implement `TransformAll` on an iterator because the iter
+/// item needs to support both `T` and `&T`. I think it would work if `GetSpan`
+/// had a blanket impl on `&T`.
+impl<T: GetSpan + Transform> TransformAll<T> for Vec<T> {
+    fn transform_all(
+        &self,
+        context: &mut ParseContext,
+    ) -> Box<[Node<T::Output>]> {
+        self.iter()
+            .filter_map(|value| value.transform_node(context).ok())
+            .collect()
     }
 }
 
@@ -824,13 +869,49 @@ impl Transform for oxc::BindingPattern<'_> {
                     .wrap(context, Binding::Identifier);
                 Ok((binding, None))
             }
-            Self::ArrayPattern(_) => todo!(),
-            // TODO check `rest` field
+            Self::ArrayPattern(array_pattern) => {
+                // Map to an intermediate type so we can call transform_all().
+                // We can't map directly from the Option<BindingPattern> because
+                // that doesn't carry all the span info we need
+                let elements: Vec<_> = array_pattern
+                    .elements
+                    .iter()
+                    .map(|pattern_option| {
+                        if let Some(pattern) = pattern_option {
+                            ArrayPatternBinding::Bound(pattern)
+                        } else {
+                            // Skip comma doesn't carry a span, so we have to
+                            // use the parent
+                            ArrayPatternBinding::Skip(array_pattern.span())
+                        }
+                    })
+                    .collect();
+                let elements = elements.transform_all(context);
+                let rest = array_pattern.rest.as_ref().try_map(|rest| {
+                    // = isn't supported here, because it defaults to []
+                    BindingOnly(&rest.argument)
+                        .transform_node(context)
+                        .map(Box::new)
+                })?;
+
+                Ok((
+                    Binding::Array { elements, rest }
+                        .into_node(context, array_pattern.span()),
+                    None,
+                ))
+            }
             Self::ObjectPattern(object_pattern) => {
                 let properties =
                     object_pattern.properties.transform_all(context);
+                // ...rest always goes at the end
+                let rest = object_pattern.rest.as_ref().try_map(|rest| {
+                    // = isn't supported here, because it defaults to []
+                    BindingOnly(&rest.argument)
+                        .transform_node(context)
+                        .map(Box::new)
+                })?;
                 Ok((
-                    Binding::Object(properties)
+                    Binding::Object { properties, rest }
                         .into_node(context, object_pattern.span()),
                     None,
                 ))
@@ -895,6 +976,44 @@ impl Transform for BindingOnly<'_> {
     }
 }
 
+/// Wrapper for transforming elements of [oxc::BindingPattern::ArrayPattern]
+///
+/// These elements are options to indicate bound vs skipped elements. Since
+/// the option isn't inherent specific to arrays, this wrapper type makes the
+/// transformation more specific.
+enum ArrayPatternBinding<'a> {
+    Bound(&'a oxc::BindingPattern<'a>),
+    /// oxc doesn't provide any node for the skip comma, so we have to hold
+    /// onto the span for the parent binding
+    Skip(oxc_span::Span),
+}
+
+impl GetSpan for ArrayPatternBinding<'_> {
+    fn span(&self) -> oxc::Span {
+        match self {
+            Self::Bound(binding_pattern) => binding_pattern.span(),
+            Self::Skip(span) => *span,
+        }
+    }
+}
+
+impl Transform for ArrayPatternBinding<'_> {
+    type Output = ArrayPatternElement;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        match self {
+            Self::Bound(binding_pattern) => {
+                let (binding, init) = binding_pattern.transform(context)?;
+                Ok(ArrayPatternElement::Identifier { binding, init })
+            }
+            Self::Skip(_) => Ok(ArrayPatternElement::Skip),
+        }
+    }
+}
+
 /// TODO explain difference from IdentifierName/IdentifierReference
 impl Transform for oxc::BindingIdentifier<'_> {
     type Output = Identifier;
@@ -945,9 +1064,9 @@ impl Transform for oxc::BindingProperty<'_> {
     ) -> Result<Self::Output, Reg> {
         let key = self.key.transform_node(context)?;
         // Value binding and init expression both come from this transformation
-        let (value, init) = self.value.transform(context)?;
+        let (binding, init) = self.value.transform(context)?;
 
-        Ok(ObjectPatternElement::Identifier { key, value, init })
+        Ok(ObjectPatternElement { key, binding, init })
     }
 }
 
@@ -1726,33 +1845,6 @@ impl Transform for oxc::Argument<'_> {
             // All other variants are inherited from Expression
             _ => as_expression!(context, self).transform(context),
         }
-    }
-}
-
-/// Transform a collection of nodes
-trait TransformAll<T: Transform> {
-    /// Transform a collection of nodes
-    ///
-    /// Invalid nodes (nodes that generate an error instead of transforming)
-    /// will be **skipped** and omitted from the output. This allows the
-    /// transformation to collect as many errors as possible, rather than
-    /// failing immediately. Any error will cause the top-level transformation
-    /// to fail, but the intermediate transformations will continue.
-    fn transform_all(
-        &self,
-        context: &mut ParseContext,
-    ) -> Box<[Node<T::Output>]>;
-}
-
-impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
-    fn transform_all(
-        &self,
-        context: &mut ParseContext,
-    ) -> Box<[Node<T::Output>]> {
-        self.into_iter()
-            // Errors are already registered, so just skip em
-            .filter_map(|value| value.transform_node(context).ok())
-            .collect()
     }
 }
 

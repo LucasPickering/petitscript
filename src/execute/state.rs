@@ -1,8 +1,8 @@
 //! Program state management
 
 use crate::{
-    Process, RuntimeError,
-    ast::{Binding, Node, NodeId, ObjectPatternElement},
+    OptionExt, Process, RuntimeError,
+    ast::{ArrayPatternElement, Binding, Node, NodeId},
     compile::Program,
     error::{StackTraceFrame, TracedError},
     execute::{
@@ -11,10 +11,10 @@ use crate::{
         scope::{GlobalEnvironment, Scope},
     },
     source::QualifiedSpan,
-    value::{Object, Value},
+    value::{Array, Object, Value},
 };
 use indexmap::{IndexMap, map::Entry};
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 /// TODO
 #[derive(Debug)]
@@ -194,54 +194,79 @@ impl<'process> ThreadState<'process> {
                 self.scope_mut().declare(name.clone(), value);
                 Ok(vec![name])
             }
-            Binding::Object(elements) => {
+            Binding::Object { properties, rest } => {
                 // Value must be an object. Copy its properties to another map
                 // so we can drain them as we bind them. (neede
                 // for ... bindings)
                 let object = value.try_into_object().map_err(|error| {
                     self.trace_error(error.into(), binding.id())
                 })?;
-                let mut properties = object
-                    .iter()
-                    .map(|(k, v)| (k.as_str(), v))
-                    .collect::<IndexMap<_, _>>();
+                let mut values = IndexMap::from(object);
                 let mut names = vec![];
 
-                for element in elements {
-                    match element.data() {
-                        ObjectPatternElement::Identifier {
-                            key,
-                            value: binding,
-                            init,
-                        } => {
-                            let key = key.eval(self)?.to_string();
-                            // Calculate the bound value:
-                            // property value -> init expression -> undefined
-                            let property_value =
-                            // shift_remove retains order
-                            properties.shift_remove(key.as_str());
-                            let value = match (property_value, init) {
-                                (Some(value), _) => value.clone(),
-                                (None, Some(init)) => init.eval(self)?,
-                                (None, None) => Value::Undefined,
-                            };
-                            names.extend(self.bind(binding, value)?);
-                        }
-                        ObjectPatternElement::Rest { binding } => {
-                            // Grab the remaining properties. This *must* be the
-                            // last element, so we can drain the map
-                            let value = properties
-                                .drain(..)
-                                .map(|(k, v)| (k.to_owned(), v.clone()))
-                                .collect::<Object>();
-                            self.bind(binding, value.into())?;
-                        }
-                    }
+                for property in properties {
+                    let key = property.key.eval(self)?.to_string();
+                    // Calculate the bound value:
+                    // property value -> init expression -> undefined
+                    let value = values
+                        // shift_remove retains order (important!)
+                        .shift_remove(key.as_str())
+                        .or_else_try(|| {
+                            property
+                                .init
+                                .as_ref()
+                                .try_map(|init| init.eval(self))
+                        })?
+                        .unwrap_or(Value::Undefined);
+                    names.extend(self.bind(&property.binding, value)?);
+                }
+                if let Some(rest) = rest {
+                    // Grab the remaining properties
+                    let value = values.drain(..).collect::<Object>();
+                    names.extend(self.bind(rest, value.into())?);
                 }
 
                 Ok(names)
             }
-            Binding::Array(_) => todo!("TODO array bindings"),
+            Binding::Array { elements, rest } => {
+                // Value must be an array. Copy its elements to another array
+                // so we can drain them as we bind them. (needed for ...
+                // bindings)
+                let array = value.try_into_array().map_err(|error| {
+                    self.trace_error(error.into(), binding.id())
+                })?;
+                // We'll be popping off the front, so a deque is better
+                let mut values = VecDeque::from_iter(array);
+                let mut names = vec![];
+
+                for element in elements {
+                    match element.data() {
+                        ArrayPatternElement::Identifier { binding, init } => {
+                            // Calculate the bound value:
+                            // element value -> init expression -> undefined
+                            let value = values
+                                .pop_front()
+                                .or_else_try(|| {
+                                    init.as_ref()
+                                        .try_map(|init| init.eval(self))
+                                })?
+                                .unwrap_or(Value::Undefined);
+                            names.extend(self.bind(binding, value)?);
+                        }
+                        ArrayPatternElement::Skip => {
+                            values.pop_front(); // Skip this element
+                        }
+                    }
+                }
+
+                if let Some(rest) = rest {
+                    // Grab the remaining elements
+                    let value = values.drain(..).collect::<Array>();
+                    names.extend(self.bind(rest, value.into())?);
+                }
+
+                Ok(names)
+            }
         }
     }
 }

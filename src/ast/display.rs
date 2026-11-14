@@ -452,29 +452,35 @@ impl DisplayIndent for Binding {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
             Self::Identifier(identifier) => identifier.fmt(ind),
-            Self::Object(object) => {
-                ("{", Repeat::new(object, ", "), "}").fmt(ind)
-            }
-            Self::Array(array) => ("[", Repeat::new(array, ", "), "]").fmt(ind),
+            Self::Object { properties, rest } => (
+                "{ ",
+                Repeat::new(properties, ", "),
+                rest.as_ref().map(|rest| ("...", rest)),
+                " }",
+            )
+                .fmt(ind),
+            Self::Array { elements, rest } => (
+                "[",
+                Repeat::new(elements, ", "),
+                rest.as_ref().map(|rest| ("...", rest)),
+                "]",
+            )
+                .fmt(ind),
         }
     }
 }
 
 impl DisplayIndent for ObjectPatternElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Identifier { key, value, init } => {
-                let init = init.as_ref().map(|init| (" = ", init));
-                match (key.data(), value.data()) {
-                    // Use shorthand where available
-                    (
-                        PropertyName::Literal(key),
-                        Binding::Identifier(value),
-                    ) if key == value => (key, init).fmt(ind),
-                    _ => (key, ": ", value, init).fmt(ind),
-                }
+        let init = self.init.as_ref().map(|init| (" = ", init));
+        match (self.key.data(), self.binding.data()) {
+            // Use shorthand where available
+            (PropertyName::Literal(key), Binding::Identifier(value))
+                if key == value =>
+            {
+                (key, init).fmt(ind)
             }
-            Self::Rest { binding } => ("...", binding).fmt(ind),
+            _ => (&self.key, ": ", &self.binding, init).fmt(ind),
         }
     }
 }

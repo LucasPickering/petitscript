@@ -45,10 +45,10 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     "bindings"
 )]
 #[test_case("capture", 9; "capture")]
-#[test_case("parameterScope", 7; "parameter_scope")]
 #[test_case("importLocal", 9; "import_local")]
 #[test_case("importNative", 9; "import_native")]
 #[test_case("json", true; "json")]
+#[test_case("parameterScope", 7; "parameter_scope")]
 #[test_case("prototype", true; "prototype")]
 #[test_case("varargs", 3; "varargs")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {

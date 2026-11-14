@@ -2,14 +2,13 @@
 
 use crate::ast::{
     Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    BinaryOperator, Binding, Block, Declaration, DoWhileLoop,
-    ExportDeclaration, Expression, ForOfLoop, FunctionBody, FunctionCall,
-    FunctionDefinition, FunctionParameter, Identifier, If, ImportDeclaration,
-    ImportModule, ImportNamed, Literal, Module, NativeModuleName, Node,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    UnaryOperator, Variable, WhileLoop,
+    BinaryOperator, Binding, Block, Declaration, ExportDeclaration, Expression,
+    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
+    Identifier, If, ImportDeclaration, ImportModule, ImportNamed, Literal,
+    Module, NativeModuleName, Node, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
+    UnaryOperation, UnaryOperator, Variable,
 };
 use std::{borrow::Cow, fmt};
 
@@ -90,9 +89,6 @@ impl DisplayIndent for Statement {
             Self::Expression(expression) => (expression, ";").fmt(ind),
             Self::Declaration(declaration) => declaration.fmt(ind),
             Self::If(if_) => if_.fmt(ind),
-            Self::ForOfLoop(for_of_loop) => for_of_loop.fmt(ind),
-            Self::WhileLoop(while_loop) => while_loop.fmt(ind),
-            Self::DoWhileLoop(do_while_loop) => do_while_loop.fmt(ind),
             Self::Return(expression) => {
                 if let Some(expression) = expression {
                     ("return ", expression, ";").fmt(ind)
@@ -100,8 +96,6 @@ impl DisplayIndent for Statement {
                     "return;".fmt(ind)
                 }
             }
-            Self::Break => "break;".fmt(ind),
-            Self::Continue => "continue;".fmt(ind),
             Self::Import(import) => import.fmt(ind),
             Self::Export(export) => export.fmt(ind),
         }?;
@@ -176,32 +170,6 @@ impl DisplayIndent for FunctionBody {
 impl DisplayIndent for If {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         ("if (", &self.condition, ") ", &self.body, &self.else_body).fmt(ind)
-    }
-}
-
-impl DisplayIndent for ForOfLoop {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        (
-            "for (const ",
-            &self.binding,
-            " of ",
-            &self.iterable,
-            ") ",
-            &self.body,
-        )
-            .fmt(ind)
-    }
-}
-
-impl DisplayIndent for WhileLoop {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        ("while (", &self.condition, ") ", &self.body).fmt(ind)
-    }
-}
-
-impl DisplayIndent for DoWhileLoop {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        ("do ", &self.body, "while (", &self.condition, ")").fmt(ind)
     }
 }
 

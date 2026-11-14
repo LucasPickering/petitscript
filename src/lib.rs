@@ -25,6 +25,7 @@
 //! Here's an **incomplete** list of JavaScript features that are *not*
 //! supported by PetitScript:
 //! - Mutability
+//! - Loops
 //! - Classes
 //! - Prototypes
 //! - Object methods

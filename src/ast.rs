@@ -181,15 +181,11 @@ pub enum Statement {
     /// `const` declaration
     Declaration(Node<Declaration>),
 
+    // Control flow
+    // Loops aren't supported at all because they aren't very useful without
+    // mutation. I may add them at some point, but I'm starting minimal.
     If(Node<If>),
-    // For loops aren't supposed because they usually require mutability
-    ForOfLoop(Node<ForOfLoop>),
-    WhileLoop(Node<WhileLoop>),
-    DoWhileLoop(Node<DoWhileLoop>),
-
     Return(Option<Node<Expression>>),
-    Break,
-    Continue,
 
     Import(Node<ImportDeclaration>),
     Export(Node<ExportDeclaration>),
@@ -287,60 +283,10 @@ pub struct If {
     pub else_body: Option<Box<Node<Statement>>>,
 }
 
-/// A loop that iterates over each element of a an array or string.
-///
-/// ```notrust
-/// for (const n of [1, 2, 3]) {
-///   console.log(n);
-/// }
-///
-/// for (const c of "hello!") {
-///   console.log(c);
-/// }
-///
-/// // Objects are iterable!
-/// for (const [key, value] of { a: 1, b: 2 }) {
-///   console.log(key, value);
-/// }
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ForOfLoop {
-    pub binding: Node<Binding>,
-    pub iterable: Node<Expression>,
-    pub body: Box<Node<Statement>>,
-}
-
-/// A loop that runs until its condition is falsy
-///
-/// ```notrust
-/// while (shouldRun()) {
-///   console.log("running");
-/// }
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct WhileLoop {
-    pub condition: Node<Expression>,
-    pub body: Box<Node<Statement>>,
-}
-
-/// A loop that runs once, then continues to run until its condition is falsy
-///
-/// ```notrust
-/// do {
-///   console.log("running");
-/// } while (shouldKeepRunning());
-/// ```
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct DoWhileLoop {
-    pub condition: Node<Expression>,
-    pub body: Box<Node<Statement>>,
-}
-
 /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
-/// No other import formats are supported
+///
+/// No other import formats are supported.
+///
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import>
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

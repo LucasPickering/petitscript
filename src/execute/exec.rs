@@ -3,9 +3,8 @@
 use crate::{
     Exports, OptionExt,
     ast::{
-        Block, Declaration, DoWhileLoop, ExportDeclaration, ForOfLoop,
-        FunctionBody, If, ImportDeclaration, ImportModule, Module, Node,
-        Statement, Variable, WhileLoop,
+        Block, Declaration, ExportDeclaration, FunctionBody, If,
+        ImportDeclaration, ImportModule, Module, Node, Statement, Variable,
     },
     error::{RuntimeError, TracedError},
     execute::{ThreadState, eval::Evaluate},
@@ -56,12 +55,12 @@ impl Execute for Module {
 
 impl Execute for Node<Statement> {
     /// We can break out of a loop iter, loop, or fn from here
-    type Output<'process> = Option<Terminate>;
+    type Output<'process> = Option<Return>;
 
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
+    ) -> Result<Option<Return>, TracedError> {
         match &self.data() {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
@@ -80,19 +79,13 @@ impl Execute for Node<Statement> {
             }
 
             Statement::If(if_statement) => if_statement.exec(state),
-            Statement::DoWhileLoop(do_while_loop) => do_while_loop.exec(state),
-            Statement::WhileLoop(while_loop) => while_loop.exec(state),
-            Statement::ForOfLoop(for_of_loop) => for_of_loop.exec(state),
-
-            Statement::Continue => Ok(Some(Terminate::Continue)),
-            Statement::Break => Ok(Some(Terminate::Break)),
             Statement::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
                     Some(expression.eval(state)?)
                 } else {
                     None
                 };
-                Ok(Some(Terminate::Return { return_value }))
+                Ok(Some(Return(return_value)))
             }
 
             Statement::Import(import) => {
@@ -108,12 +101,12 @@ impl Execute for Node<Statement> {
 }
 
 impl Execute for Block {
-    type Output<'process> = Option<Terminate>;
+    type Output<'process> = Option<Return>;
 
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
+    ) -> Result<Option<Return>, TracedError> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -206,12 +199,12 @@ impl Execute for Node<ExportDeclaration> {
 }
 
 impl Execute for If {
-    type Output<'process> = Option<Terminate>;
+    type Output<'process> = Option<Return>;
 
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
+    ) -> Result<Option<Return>, TracedError> {
         if self.condition.eval(state)?.to_bool() {
             self.body.exec(state)
         } else if let Some(statement) = &self.else_body {
@@ -219,49 +212,6 @@ impl Execute for If {
         } else {
             Ok(None)
         }
-    }
-}
-
-impl Execute for DoWhileLoop {
-    type Output<'process> = Option<Terminate>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
-        loop {
-            self.body.exec(state)?;
-            if !self.condition.eval(state)?.to_bool() {
-                break;
-            }
-        }
-        Ok(None)
-    }
-}
-
-impl Execute for WhileLoop {
-    type Output<'process> = Option<Terminate>;
-
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
-        while self.condition.eval(state)?.to_bool() {
-            self.body.exec(state)?;
-        }
-        Ok(None)
-    }
-}
-
-impl Execute for ForOfLoop {
-    type Output<'process> = Option<Terminate>;
-
-    fn exec(
-        &self,
-        _state: &mut ThreadState,
-    ) -> Result<Option<Terminate>, TracedError> {
-        // TODO objects should be iterable! (not compatible w/ ES)
-        todo!()
     }
 }
 
@@ -311,23 +261,14 @@ impl Execute for FunctionBody {
         match self {
             Self::Expression(expression) => expression.eval(state),
             Self::Block(block) => match block.exec(state)? {
-                Some(Terminate::Return {
-                    return_value: Some(return_value),
-                }) => Ok(return_value),
+                Some(Return(Some(return_value))) => Ok(return_value),
                 _ => Ok(Value::Undefined),
             },
         }
     }
 }
 
-/// TODO
+/// Return from the current function, optionally with a return value
 #[derive(Debug)]
 #[must_use]
-pub enum Terminate {
-    /// Skip to the entire of the current loop iteration
-    Continue,
-    /// Break out of the current loop
-    Break,
-    /// Return from the current function, optionally with a return value
-    Return { return_value: Option<Value> },
-}
+pub struct Return(Option<Value>);

@@ -258,8 +258,6 @@ pub enum Unsupported {
     Exponent,
     /// `export { x } from 'source'`
     ExportFrom,
-    /// `for ... in ...`
-    ForIn,
     /// `const x = function() {}`
     ///
     /// This is different from [Self::AnonymousFunction] because function
@@ -272,8 +270,11 @@ pub enum Unsupported {
     ImportExpression,
     /// `<Component></Component>`
     Jsx,
-    /// `'label`, `break label`, `continue label`
+    /// `'label`
     Label,
+    /// `for`, `for ... of`, `for ... in`, `while`, `do ... while`, `break`, and
+    /// `continue`
+    Loop,
     /// `==` and `!=`
     LooseEquality,
     /// `let`, `var`, `delete`, and reassignment
@@ -326,7 +327,6 @@ impl Display for Unsupported {
                 ("`export ... from ...`", "Re-export not supported")
             }
             Self::Exponent => ("`**`", "Exponent operator is not supported"),
-            Self::ForIn => ("`for...in`", "Use `for...of` instead"),
             Self::FunctionExpression => (
                 "TODO",
                 "`function` keyword not allowed in an expression position; \
@@ -337,12 +337,19 @@ impl Display for Unsupported {
                 ("`import()`", "Use the ES6-style `import` keyword instead")
             }
             Self::Jsx => ("JSX", "This isn't React..."),
-            Self::Label => ("TODO", "TODO"),
+            Self::Label => (
+                "label",
+                "Labels have to use because loops are not supported",
+            ),
+            Self::Loop => {
+                // TODO link to a page on recursion
+                ("loop", "Loops are not supported; use recursion instead")
+            }
             Self::LooseEquality => {
                 ("loose equality", "use `===` or `!==` instead")
             }
-            // TODO add link to docs explaining immutability
             Self::Mutation => (
+                // TODO add link to docs explaining immutability
                 "`let`/`var`",
                 "Mutable bindings are not supported; use `const` instead",
             ),

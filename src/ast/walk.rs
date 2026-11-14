@@ -1,12 +1,12 @@
 use crate::ast::{
     Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    Binding, Block, Declaration, DoWhileLoop, ExportDeclaration, Expression,
-    ForOfLoop, FunctionBody, FunctionCall, FunctionDefinition,
-    FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, Literal, Module, Node, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
-    UnaryOperation, Variable, WhileLoop,
+    Binding, Block, Declaration, ExportDeclaration, Expression, FunctionBody,
+    FunctionCall, FunctionDefinition, FunctionParameter, Identifier, If,
+    ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
+    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable,
 };
 use std::ops::DerefMut;
 
@@ -40,13 +40,10 @@ impl Walk for Statement {
             Self::Expression(expression) => expression.walk(visitor),
             Self::Block(block) => block.statements.walk(visitor),
             Self::If(if_statement) => if_statement.walk(visitor),
-            Self::ForOfLoop(for_of_loop) => for_of_loop.walk(visitor),
-            Self::WhileLoop(while_loop) => while_loop.walk(visitor),
-            Self::DoWhileLoop(do_while_loop) => do_while_loop.walk(visitor),
             Self::Return(expression) => expression.walk(visitor),
             Self::Import(import) => import.walk(visitor),
             Self::Export(export) => export.walk(visitor),
-            Self::Empty | Self::Break | Self::Continue => {}
+            Self::Empty => {}
         }
         visitor.exit_statement(self);
     }
@@ -150,32 +147,6 @@ impl Walk for If {
         self.body.walk(visitor);
         self.else_body.walk(visitor);
         visitor.exit_if(self);
-    }
-}
-
-impl Walk for ForOfLoop {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_for_of_loop(self);
-        self.binding.walk(visitor);
-        self.iterable.walk(visitor);
-        self.body.walk(visitor);
-        visitor.exit_for_of_loop(self);
-    }
-}
-
-impl Walk for WhileLoop {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_while_loop(self);
-        self.condition.walk(visitor);
-        visitor.exit_while_loop(self);
-    }
-}
-
-impl Walk for DoWhileLoop {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_do_while_loop(self);
-        self.condition.walk(visitor);
-        visitor.exit_do_while_loop(self);
     }
 }
 
@@ -483,17 +454,11 @@ pub trait AstVisitor {
     fn enter_block(&mut self, _: &mut Block) {}
     fn exit_block(&mut self, _: &mut Block) {}
 
-    fn enter_do_while_loop(&mut self, _: &mut DoWhileLoop) {}
-    fn exit_do_while_loop(&mut self, _: &mut DoWhileLoop) {}
-
     fn enter_export(&mut self, _: &mut ExportDeclaration) {}
     fn exit_export(&mut self, _: &mut ExportDeclaration) {}
 
     fn enter_expression(&mut self, _: &mut Expression) {}
     fn exit_expression(&mut self, _: &mut Expression) {}
-
-    fn enter_for_of_loop(&mut self, _: &mut ForOfLoop) {}
-    fn exit_for_of_loop(&mut self, _: &mut ForOfLoop) {}
 
     fn enter_function_argument(&mut self, _: &mut Argument) {}
     fn exit_function_argument(&mut self, _: &mut Argument) {}
@@ -563,9 +528,6 @@ pub trait AstVisitor {
 
     fn enter_variable(&mut self, _: &mut Variable) {}
     fn exit_variable(&mut self, _: &mut Variable) {}
-
-    fn enter_while_loop(&mut self, _: &mut WhileLoop) {}
-    fn exit_while_loop(&mut self, _: &mut WhileLoop) {}
 
     /// Visit a usage of an [Identifier]
     ///

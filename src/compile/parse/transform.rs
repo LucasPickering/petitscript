@@ -8,13 +8,13 @@ use crate::{
     ast::{
         Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
         BinaryOperation, BinaryOperator, Binding, Block, Declaration,
-        DoWhileLoop, ExportDeclaration, Expression, ForOfLoop, FunctionBody,
-        FunctionCall, FunctionDefinition, FunctionParameter, Identifier, If,
+        ExportDeclaration, Expression, FunctionBody, FunctionCall,
+        FunctionDefinition, FunctionParameter, Identifier, If,
         ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
         NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
         OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
         TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-        UnaryOperator, Variable, WhileLoop,
+        UnaryOperator, Variable,
     },
     compile::{
         SUPPORTED_EXTENSIONS,
@@ -282,21 +282,6 @@ impl Transform for oxc::Statement<'_> {
             Self::IfStatement(if_stmt) => {
                 if_stmt.transform_node(context).map(Statement::If)
             }
-            Self::DoWhileStatement(do_while_stmt) => do_while_stmt
-                .transform_node(context)
-                .map(Statement::DoWhileLoop),
-            Self::WhileStatement(while_stmt) => {
-                while_stmt.transform_node(context).map(Statement::WhileLoop)
-            }
-            Self::ForOfStatement(for_of_stmt) => for_of_stmt
-                .transform_node(context)
-                .map(Statement::ForOfLoop),
-            Self::BreakStatement(break_statement) => {
-                break_statement.transform(context)
-            }
-            Self::ContinueStatement(continue_statement) => {
-                continue_statement.transform(context)
-            }
             Self::ReturnStatement(return_statement) => {
                 return_statement.transform(context)
             }
@@ -317,11 +302,14 @@ impl Transform for oxc::Statement<'_> {
                 // export { c } from 'source';
                 unsupported!(context, self, Unsupported::ExportFrom)
             }
-            Self::ForStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
-            }
-            Self::ForInStatement(_) => {
-                unsupported!(context, self, Unsupported::ForIn);
+            Self::BreakStatement(_)
+            | Self::ContinueStatement(_)
+            | Self::DoWhileStatement(_)
+            | Self::ForStatement(_)
+            | Self::ForInStatement(_)
+            | Self::ForOfStatement(_)
+            | Self::WhileStatement(_) => {
+                unsupported!(context, self, Unsupported::Loop);
             }
             Self::LabeledStatement(_) => {
                 unsupported!(context, self, Unsupported::Label);
@@ -642,134 +630,6 @@ impl Transform for oxc::IfStatement<'_> {
             body: body.into(),
             else_body: else_body.map(Box::new),
         })
-    }
-}
-
-impl Transform for oxc::DoWhileStatement<'_> {
-    type Output = DoWhileLoop;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        let condition = self.test.transform_node(context)?;
-        let body = self.body.transform_node(context)?;
-        Ok(DoWhileLoop {
-            condition,
-            body: Box::new(body),
-        })
-    }
-}
-
-impl Transform for oxc::WhileStatement<'_> {
-    type Output = WhileLoop;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        let condition = self.test.transform_node(context)?;
-        let body = self.body.transform_node(context)?;
-        Ok(WhileLoop {
-            condition,
-            body: Box::new(body),
-        })
-    }
-}
-
-impl Transform for oxc::ForOfStatement<'_> {
-    type Output = ForOfLoop;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        if self.r#await {
-            unsupported!(context, self, Unsupported::Async);
-        }
-        let binding = self.left.transform_node(context)?;
-        let iterable = self.right.transform_node(context)?;
-        let body = self.body.transform_node(context)?;
-        Ok(ForOfLoop {
-            binding,
-            iterable,
-            body: Box::new(body),
-        })
-    }
-}
-
-/// Left side (binding) of a `for of` loop
-impl Transform for oxc::ForStatementLeft<'_> {
-    type Output = Binding;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        match self {
-            Self::VariableDeclaration(variable_declaration) => {
-                // We expect a single variable with no init expression. It's
-                // possible to pass 0 or 2 variables though, and define an init
-                // expression, so we need to catch those cases here.
-                let declaration = variable_declaration.transform(context)?;
-                let Ok([variable]) =
-                    <Box<[_; 1]>>::try_from(declaration.variables).map(|b| *b)
-                else {
-                    todo!("expected exactly 1 variable")
-                };
-                match variable.into_data() {
-                    Variable {
-                        binding,
-                        init: None,
-                    } => Ok(binding.into_data()),
-                    _ => todo!("expected no init expression"),
-                }
-            }
-            // for (x of arr) {} (reassigns to x)
-            Self::AssignmentTargetIdentifier(_) => {
-                unsupported!(context, self, Unsupported::Mutation)
-            }
-            // No idea if/how these are accessible
-            Self::TSAsExpression(_) => todo!(),
-            Self::TSSatisfiesExpression(_) => todo!(),
-            Self::TSNonNullExpression(_) => todo!(),
-            Self::TSTypeAssertion(_) => todo!(),
-            Self::ComputedMemberExpression(_) => todo!(),
-            Self::StaticMemberExpression(_) => todo!(),
-            Self::PrivateFieldExpression(_) => todo!(),
-            Self::ArrayAssignmentTarget(_) => todo!(),
-            Self::ObjectAssignmentTarget(_) => todo!(),
-        }
-    }
-}
-
-impl Transform for oxc::BreakStatement<'_> {
-    type Output = Statement;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        if self.label.is_none() {
-            Ok(Statement::Break)
-        } else {
-            unsupported!(context, self, Unsupported::Label);
-        }
-    }
-}
-
-impl Transform for oxc::ContinueStatement<'_> {
-    type Output = Statement;
-
-    fn transform(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Self::Output, Reg> {
-        if self.label.is_none() {
-            Ok(Statement::Continue)
-        } else {
-            unsupported!(context, self, Unsupported::Label);
-        }
     }
 }
 

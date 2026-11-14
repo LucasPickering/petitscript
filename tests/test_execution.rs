@@ -24,12 +24,30 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 /// This expects the script to both compile and execute successfully, and
 /// asserts on the *default* export of each script. If we need to assert on
 /// multiple values, export an object.
+#[test_case(
+    "bindings",
+    [
+        // Object bindings
+        ("a", Value::from(1)),
+        ("b", 2.into()),
+        ("cd", [("c", 3), ("d", 4)].into()),
+        // Arr bindings
+        ("j", 1.into()),
+        ("k", 2.into()),
+        ("lm", [3, 4].into()),
+        // Plain const bindings
+        ("x", 1.into()),
+        ("y", 2.into()),
+    ];
+    "bindings"
+)]
 #[test_case("capture", 9; "capture")]
 #[test_case("parameterScope", 7; "parameter_scope")]
 #[test_case("importLocal", 9; "import_local")]
 #[test_case("importNative", 9; "import_native")]
 #[test_case("json", true; "json")]
 #[test_case("prototype", true; "prototype")]
+#[test_case("varargs", 3; "varargs")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
     let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
     let exported = execute(path).unwrap_or_else(|error| panic!("{error}"));

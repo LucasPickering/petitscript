@@ -413,7 +413,6 @@ impl ser::SerializeStructVariant for SerializeVariant<SerializeMap> {
 /// TODO explain or figure out a way to get rid of this
 struct FunctionIdSerializer;
 
-#[expect(unused)] // TODO remove this
 impl ser::Serializer for FunctionIdSerializer {
     type Ok = u64;
     type Error = ValueError;
@@ -485,7 +484,7 @@ impl ser::Serializer for FunctionIdSerializer {
         unimplemented!("function ID must be u64")
     }
 
-    fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
+    fn serialize_some<T>(self, _value: &T) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + ser::Serialize,
     {
@@ -498,24 +497,24 @@ impl ser::Serializer for FunctionIdSerializer {
 
     fn serialize_unit_struct(
         self,
-        name: &'static str,
+        _name: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_unit_variant(
         self,
-        name: &'static str,
-        variant_index: u32,
-        variant: &'static str,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
     ) -> Result<Self::Ok, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_newtype_struct<T>(
         self,
-        name: &'static str,
-        value: &T,
+        _name: &'static str,
+        _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + ser::Serialize,
@@ -525,10 +524,10 @@ impl ser::Serializer for FunctionIdSerializer {
 
     fn serialize_newtype_variant<T>(
         self,
-        name: &'static str,
-        variant_index: u32,
-        variant: &'static str,
-        value: &T,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _value: &T,
     ) -> Result<Self::Ok, Self::Error>
     where
         T: ?Sized + ser::Serialize,
@@ -538,57 +537,57 @@ impl ser::Serializer for FunctionIdSerializer {
 
     fn serialize_seq(
         self,
-        len: Option<usize>,
+        _len: Option<usize>,
     ) -> Result<Self::SerializeSeq, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple(
         self,
-        len: usize,
+        _len: usize,
     ) -> Result<Self::SerializeTuple, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple_struct(
         self,
-        name: &'static str,
-        len: usize,
+        _name: &'static str,
+        _len: usize,
     ) -> Result<Self::SerializeTupleStruct, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_tuple_variant(
         self,
-        name: &'static str,
-        variant_index: u32,
-        variant: &'static str,
-        len: usize,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_map(
         self,
-        len: Option<usize>,
+        _len: Option<usize>,
     ) -> Result<Self::SerializeMap, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_struct(
         self,
-        name: &'static str,
-        len: usize,
+        _name: &'static str,
+        _len: usize,
     ) -> Result<Self::SerializeStruct, Self::Error> {
         unimplemented!("function ID must be u64")
     }
 
     fn serialize_struct_variant(
         self,
-        name: &'static str,
-        variant_index: u32,
-        variant: &'static str,
-        len: usize,
+        _name: &'static str,
+        _variant_index: u32,
+        _variant: &'static str,
+        _len: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
         unimplemented!("function ID must be u64")
     }

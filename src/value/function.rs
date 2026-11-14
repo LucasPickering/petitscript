@@ -156,7 +156,7 @@ impl Display for Function {
         write!(
             f,
             "[Function `{}` ({kind})]",
-            self.name().unwrap_or("<anon>")
+            self.name().unwrap_or("<anonymous>")
         )
     }
 }

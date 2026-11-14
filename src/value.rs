@@ -166,8 +166,8 @@ impl Value {
             // lol. This is stupid but it matches JS
             Self::Object(_) => "[Object object]".into(),
             #[cfg(feature = "buffer")]
-            Self::Buffer(_) => "TODO".into(),
-            Self::Function(_) => todo!(),
+            Self::Buffer(_) => "[Buffer buffer]".into(),
+            Self::Function(function) => format!("{function}").into(),
         }
     }
 
@@ -658,7 +658,7 @@ mod tests {
     #[test_case([("a", 1)], "[Object object]"; "object")]
     #[cfg_attr(
         feature = "buffer",
-        test_case(Buffer::from([1, 2]), "TODO"; "buffer"),
+        test_case(Buffer::from([1, 2]), "[Buffer buffer]"; "buffer"),
     )]
     // TODO test function
     fn to_string(value: impl Into<Value>, expected: &str) {
@@ -757,7 +757,10 @@ mod tests {
     )]
     #[cfg_attr(
         feature = "buffer",
-        test_case(Buffer::from([1, 2]), "s", "TODOs", "sTODO"; "buffer string"),
+        test_case(
+            Buffer::from([1, 2]), "s", "[Buffer buffer]s", "s[Buffer buffer]";
+            "buffer string"
+        ),
     )]
     // TODO test functions
     fn add_string(

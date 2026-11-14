@@ -388,10 +388,6 @@ pub enum ImportModule {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportDeclaration {
-    /// TODO
-    Reexport {
-        // TODO
-    },
     /// `export const x = 3;`
     Declaration(Node<Declaration>),
     /// `export default 3;`

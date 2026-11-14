@@ -246,7 +246,6 @@ impl DisplayIndent for ImportModule {
 impl DisplayIndent for ExportDeclaration {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Reexport {} => todo!(),
             Self::Declaration(declaration) => ("export ", declaration).fmt(ind),
             Self::DefaultExpression(expression) => {
                 ("export default ", expression, ";").fmt(ind)

@@ -255,12 +255,6 @@ impl Transform for oxc::Statement<'_> {
                     .map(Statement::Export)
                     .unwrap_or(Statement::Empty))
             }
-            // export { c } from 'source';
-            Self::ExportFromDeclaration(export_from_declaration) => {
-                export_from_declaration
-                    .transform_node(context)
-                    .map(Statement::Export)
-            }
 
             // Declarations
             Self::VariableDeclaration(variable_declaration) => {
@@ -319,6 +313,10 @@ impl Transform for oxc::Statement<'_> {
             | Self::TSTypeAliasDeclaration(_) => Ok(Statement::Empty),
 
             // Unsupported
+            Self::ExportFromDeclaration(_) => {
+                // export { c } from 'source';
+                unsupported!(context, self, Unsupported::ExportFrom)
+            }
             Self::ForStatement(_) => {
                 unsupported!(context, self, Unsupported::Todo);
             }
@@ -577,15 +575,6 @@ impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
                 Ok(Some(ExportDeclaration::DefaultExpression(expression)))
             }
         }
-    }
-}
-
-/// `export { c } from 'source';`
-impl Transform for oxc::ExportFromDeclaration<'_> {
-    type Output = ExportDeclaration;
-
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
-        Ok(ExportDeclaration::Reexport {})
     }
 }
 

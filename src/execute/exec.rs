@@ -187,7 +187,6 @@ impl Execute for Node<ExportDeclaration> {
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
         match &self.data() {
-            ExportDeclaration::Reexport { .. } => todo!(),
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
                     state.export(name).map_err(|error| {

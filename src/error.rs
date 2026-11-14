@@ -256,6 +256,8 @@ pub enum Unsupported {
     ///
     /// Could support this one, I'm just being lazy.
     Exponent,
+    /// `export { x } from 'source'`
+    ExportFrom,
     /// `for ... in ...`
     ForIn,
     /// `const x = function() {}`
@@ -320,6 +322,9 @@ impl Display for Unsupported {
                 ("bitwise", "Bitwise operations are not supported")
             }
             Self::Class => ("`class`", "Classes are not supported"),
+            Self::ExportFrom => {
+                ("`export ... from ...`", "Re-export not supported")
+            }
             Self::Exponent => ("`**`", "Exponent operator is not supported"),
             Self::ForIn => ("`for...in`", "Use `for...of` instead"),
             Self::FunctionExpression => (

@@ -383,7 +383,6 @@ impl Walk for ExportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_export(self);
         match self {
-            Self::Reexport {} => todo!(),
             Self::Declaration(declaration) => declaration.walk(visitor),
             Self::DefaultExpression(expression) => expression.walk(visitor),
         }

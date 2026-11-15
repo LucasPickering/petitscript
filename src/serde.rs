@@ -134,8 +134,8 @@ mod tests {
         },
     };
     use indexmap::indexmap;
-    use serde::de::DeserializeOwned;
-    use std::fmt::Debug;
+    use serde::de::{DeserializeOwned, Visitor};
+    use std::fmt::{self, Debug};
     use test_case::test_case;
 
     #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -189,10 +189,8 @@ mod tests {
     /// doesn't work for us because our Deserializer doesn't support
     /// borrowed deserialization. bytes::Bytes doesn't support serde either.
     #[derive(Debug, PartialEq)]
-    #[cfg(feature = "buffer")]
     struct Bytes(Vec<u8>);
 
-    #[cfg(feature = "buffer")]
     impl Serialize for Bytes {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
         where
@@ -202,7 +200,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "buffer")]
     impl<'de> Deserialize<'de> for Bytes {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -210,13 +207,13 @@ mod tests {
         {
             struct BytesVisitor;
 
-            impl serde::de::Visitor<'_> for BytesVisitor {
+            impl Visitor<'_> for BytesVisitor {
                 type Value = Bytes;
 
                 fn expecting(
                     &self,
-                    formatter: &mut std::fmt::Formatter,
-                ) -> std::fmt::Result {
+                    formatter: &mut fmt::Formatter,
+                ) -> fmt::Result {
                     write!(formatter, "bytes")
                 }
 
@@ -347,9 +344,18 @@ mod tests {
     #[cfg_attr(
         feature = "buffer",
         test_case(
-           Bytes(vec![0u8, 1u8, 2u8]),
+            Bytes(vec![0u8, 1u8, 2u8]),
             Value::Buffer([0u8, 1u8, 2u8].as_slice().into());
             "buffer"
+        ),
+    )]
+    #[cfg_attr(
+        // With "buffer" disabled, bytes serialize as an array
+        not(feature = "buffer"),
+        test_case(
+            Bytes(vec![0u8, 1u8, 2u8]),
+            Value::Array([0, 1, 2].into());
+            "byte array"
         ),
     )]
     #[test_case(None::<&str>, Value::Null; "option none")]

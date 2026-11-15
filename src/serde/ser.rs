@@ -84,7 +84,6 @@ impl serde::Serializer for Serializer {
 
     #[cfg(not(feature = "buffer"))]
     fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-        // TODO write a test for this case
         Ok(Value::Array(v.to_owned().into()))
     }
 

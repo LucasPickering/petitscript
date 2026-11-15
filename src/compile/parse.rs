@@ -11,7 +11,7 @@ use crate::{
     Source,
     ast::{Module, Node},
     error::{ParseError, ParseErrorKind, ParseErrors},
-    source::{SourceId, SourceTable, SpanTable},
+    source::{SourceId, SourceTable, Span, SpanTable},
 };
 use oxc_allocator::Allocator;
 use oxc_diagnostics::OxcDiagnostic;
@@ -33,15 +33,27 @@ pub fn parse(
 ) -> Result<(Node<Module>, SpanTable), ParseErrors> {
     let source_id = sources.root_id();
     let mut spans = SpanTable::default();
-    let context = ParseContext {
+    let mut context = ParseContext {
         sources,
         current_source_id: source_id,
         next_node_id: &mut 0,
         spans: &mut spans,
         errors: vec![],
     };
-    let module = parse_module(context)?;
-    Ok((module, spans))
+    let module = parse_module(&mut context);
+
+    // If any errors occurred, the returned module is invalid
+    if context.errors.is_empty() {
+        Ok((module, spans))
+    } else {
+        Err(ParseErrors {
+            errors: context.errors,
+            // Store the entire source table. We pack all parse errors together,
+            // so we need access to all sources during error rendering. See
+            // SourceTable's impl of miette::SourceCode
+            source_code: context.sources.clone(),
+        })
+    }
 }
 
 /// Helper for parsing a single module
@@ -49,7 +61,7 @@ pub fn parse(
 /// This is called recursively within a parse tree, once per PS module. Each
 /// module corresponds to a single source, so this will add a new source to the
 /// given source table.
-fn parse_module(context: ParseContext) -> Result<Node<Module>, ParseErrors> {
+fn parse_module(context: &mut ParseContext) -> Node<Module> {
     let source = context.current_source();
     // TODO don't clone
     let source_code = source.text().to_owned();
@@ -63,29 +75,23 @@ fn parse_module(context: ParseContext) -> Result<Node<Module>, ParseErrors> {
     let ParserReturn {
         program,
         diagnostics,
-        fatal_error,
+        // Don't need to check fatal_error because we fail if there are any
+        // diagnostics in the list
         ..
     } = Parser::new(&allocator, &source_code, source_type).parse();
 
     // Check for errors
     if !diagnostics.is_empty() {
         // TODO explain why we map from oxc to miette
-        let errors = diagnostics
-            .into_iter()
-            .map(map_oxc_error)
-            .collect::<Vec<_>>();
-        return Err(ParseErrors {
-            errors,
-            source_code: source.clone(),
-        });
+        context.errors.extend(
+            diagnostics
+                .into_iter()
+                .map(|diagnostic| context.map_oxc_diagnostic(diagnostic))
+                .collect::<Vec<_>>(), // Collect to detach lifetimes
+        );
+        // We can continue with transformation even if parsing wasn't 100%
+        // successful. We'll collect as many errors as possible.
     }
-
-    // Sanity check: I don't think it can return fatal_error=true if the
-    // diagnostics list is empty
-    assert!(
-        !fatal_error,
-        "fatal_error should be false when there are no diagnostics"
-    );
 
     // Transform to a PS AST
     transform::transform_module(context, program)
@@ -118,45 +124,53 @@ impl ParseContext<'_> {
     fn current_source(&self) -> &Source {
         self.sources.get(self.current_source_id)
     }
-}
 
-/// Map a parse error from oxc to our parse type
-///
-/// Oxc's errors are defined in the [oxc_diagnostics] crate, which is a fork of
-/// [miette]. We use miette's error type for parse errors, so the mapping is
-/// mostly 1:1.
-fn map_oxc_error(diagnostic: OxcDiagnostic) -> ParseError {
-    // Map the oxc diagnostic to our error type
-    let diagnostic = diagnostic.inner_owned();
-    let labels = diagnostic
-        .labels
-        .into_iter()
-        .map(|label| {
-            // Map the oxc label to a miette label
-            let span = label.span();
-            let span = miette::SourceSpan::new(
-                (span.start as usize).into(),
-                (span.end - span.start) as usize,
-            );
-            let name = label.label().map(String::from);
-            if label.primary() {
-                miette::LabeledSpan::new_primary_with_span(name, span)
-            } else {
-                miette::LabeledSpan::new_with_span(name, span)
-            }
-        })
-        .collect();
-    let error = ParseErrorKind::Parse {
-        message: diagnostic.message.into_owned(),
-        help: diagnostic.help.map(Cow::into_owned),
-        note: diagnostic.note.map(Cow::into_owned),
-        severity: match diagnostic.severity {
-            oxc_diagnostics::Severity::Advice => miette::Severity::Advice,
-            oxc_diagnostics::Severity::Warning => miette::Severity::Warning,
-            oxc_diagnostics::Severity::Error => miette::Severity::Error,
-        },
-    };
-    ParseError { error, labels }
+    /// Map an [oxc_span::Span] to a PetitScript [Span]
+    fn map_span(&self, span: oxc_span::Span) -> Span {
+        Span {
+            source_id: self.current_source_id,
+            // Assuming this will never run on a <32-bit platform
+            start_offset: span.start as usize,
+            end_offset: span.end as usize,
+        }
+    }
+
+    /// Map a parse error from oxc to our parse type
+    ///
+    /// Oxc's errors are defined in the [oxc_diagnostics] crate, which is a fork
+    /// of [miette]. We use miette's error type for parse errors, so the
+    /// mapping is mostly 1:1.
+    fn map_oxc_diagnostic(&self, diagnostic: OxcDiagnostic) -> ParseError {
+        // Map the oxc diagnostic to our error type
+        let diagnostic = diagnostic.inner_owned();
+        let labels = diagnostic
+            .labels
+            .into_iter()
+            .map(|label| {
+                // Map the span from oxc -> PS -> miette
+                // The intermediate mapping is helpful to handle source ID
+                // encoding
+                let span = self.map_span(label.span()).into_miette();
+                let name = label.label().map(String::from);
+                if label.primary() {
+                    miette::LabeledSpan::new_primary_with_span(name, span)
+                } else {
+                    miette::LabeledSpan::new_with_span(name, span)
+                }
+            })
+            .collect();
+        let error = ParseErrorKind::Parse {
+            message: diagnostic.message.into_owned(),
+            help: diagnostic.help.map(Cow::into_owned),
+            note: diagnostic.note.map(Cow::into_owned),
+            severity: match diagnostic.severity {
+                oxc_diagnostics::Severity::Advice => miette::Severity::Advice,
+                oxc_diagnostics::Severity::Warning => miette::Severity::Warning,
+                oxc_diagnostics::Severity::Error => miette::Severity::Error,
+            },
+        };
+        ParseError { error, labels }
+    }
 }
 
 #[cfg(test)]
@@ -221,8 +235,6 @@ mod tests {
             }
         ";
         let errors = parse_test(source).unwrap_err();
-        // Source matches what we put in
-        assert_eq!(errors.source_code, Source::from(source));
         // There should be 2 errors
         let (labels_let, labels_var, labels_async) = assert_matches!(
             errors.errors.as_slice(),
@@ -250,7 +262,7 @@ mod tests {
 
     fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {
         let mut source_table = SourceTable::default();
-        source_table.insert(source);
+        source_table.insert(source.into()).unwrap();
         parse(&mut source_table).map(|(module, _)| module)
     }
 }

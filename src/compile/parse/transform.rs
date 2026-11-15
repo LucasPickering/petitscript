@@ -20,7 +20,7 @@ use crate::{
         SUPPORTED_EXTENSIONS,
         parse::{ParseContext, parse_module},
     },
-    error::{ParseError, ParseErrorKind, ParseErrors, Unsupported},
+    error::{ParseError, ParseErrorKind, Unsupported},
     source::Span,
 };
 use miette::LabeledSpan;
@@ -28,35 +28,27 @@ use oxc_ast::ast::{self as oxc};
 use oxc_span::GetSpan;
 use std::{
     ffi::OsStr,
+    mem,
     ops::Deref,
     path::{Path, PathBuf},
 };
 
 /// Transform the AST of an ES program into a PS module
+///
+/// Invalid nodes are dropped and registered as errors. Errors are registered
+/// in the context instead of bubbling up. We don't want errors to cancel
+/// transformation, they should all be collected and reported together.
+///
+/// Individual nodes can fail to transform, but multiple-error collection is
+/// done via transform_all(). When there's a list of nodes (e.g a list of
+/// statements in a block), invalid statements are tossed. Check
+/// `context.errors` to if any errors occur.
 pub fn transform_module(
-    mut context: ParseContext,
+    context: &mut ParseContext,
     program: oxc::Program<'_>,
-) -> Result<Node<Module>, ParseErrors> {
-    // Invalid nodes are dropped and registered as errors. Errors are registered
-    // in the context instead of bubbling up. We don't want errors to cancel
-    // transformation, they should all be collected and reported together.
-    //
-    // Individual nodes can fail to transform, but multiple-error collection is
-    // done via transform_all(). When there's a list of nodes (e.g a list of
-    // statements in a block), invalid statements are tossed.
-    let statements = program.body.transform_all(&mut context);
-    if context.errors.is_empty() {
-        Ok(Module { statements }.into_node(&mut context, program.span()))
-    } else {
-        // Get the full code for the offending source. Using the current source
-        // is ok because any errors within a nested module would've been wrapped
-        // into a ParseErrors already.
-        let source_code = context.current_source().clone();
-        Err(ParseErrors {
-            errors: context.errors,
-            source_code,
-        })
-    }
+) -> Node<Module> {
+    let statements = program.body.transform_all(context);
+    Module { statements }.into_node(context, program.span())
 }
 
 /// Helper for returning an unsupported error
@@ -64,7 +56,8 @@ pub fn transform_module(
 /// Context and node are needed to attach the source span.
 macro_rules! unsupported {
     ($context:expr, $node:expr, $reason:expr) => {
-        return Err($context.error($node, ParseErrorKind::Unsupported($reason)))
+        return Err($context
+            .register_error($node, ParseErrorKind::Unsupported($reason)))
     };
 }
 
@@ -83,7 +76,7 @@ macro_rules! as_expression {
         match $node.as_expression() {
             Some(expression) => expression,
             None => {
-                return Err($context.error(
+                return Err($context.register_error(
                     $node,
                     ParseErrorKind::Unhandled {
                         node: format!("{:?}", $node),
@@ -96,13 +89,14 @@ macro_rules! as_expression {
 
 impl ParseContext<'_> {
     /// Generate and register a transformation error at a node
-    fn error(&mut self, node: &impl GetSpan, error: ParseErrorKind) -> Reg {
-        let span = node.span();
-        // Map from oxc's Span to miette's SourceSpan
-        let span = miette::SourceSpan::new(
-            (span.start as usize).into(),
-            (span.end - span.start) as usize,
-        );
+    fn register_error(
+        &mut self,
+        node: &impl GetSpan,
+        error: ParseErrorKind,
+    ) -> Reg {
+        // Map the span from oxc -> PS -> miette
+        // The intermediate mapping is helpful to handle source ID encoding
+        let span = self.map_span(node.span()).into_miette();
         // Every error gets a single primary label
         let new_primary_with_span =
             LabeledSpan::new_primary_with_span(None, span);
@@ -118,17 +112,7 @@ impl ParseContext<'_> {
     /// This ID will be unique within the entire AST, including sub-modules.
     /// This will also insert the node's source span into the span table.
     fn node_id(&mut self, span: oxc_span::Span) -> NodeId {
-        self.node_id_inner(self.transform_span(span))
-    }
-
-    /// Map an [oxc_span::Span] to a PetitScript [Span]
-    fn transform_span(&self, span: oxc_span::Span) -> Span {
-        Span {
-            source_id: self.current_source_id,
-            // Assuming this will never run on a <32-bit platform
-            start_offset: span.start as usize,
-            end_offset: span.end as usize,
-        }
+        self.node_id_inner(self.map_span(span))
     }
 
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
@@ -139,14 +123,6 @@ impl ParseContext<'_> {
         id
     }
 }
-
-/// Indicator that an error has been registered via [ParseContext::error]
-///
-/// This is the error variant for all transformations because it forces
-/// transformers to register their errors with the context.
-///
-/// **Do not construct this manually!**
-struct Reg;
 
 /// Transform an [oxc_ast] node to a local [ast](crate::ast) node
 trait Transform {
@@ -416,29 +392,23 @@ impl Transform for oxc::ImportDeclaration<'_> {
                             // Load source code
                             Source::file(path).map_err(ParseErrorKind::from)
                         })
-                        .map_err(|error| context.error(&self.source, error))?;
+                        .map_err(|error| {
+                            context.register_error(&self.source, error)
+                        })?;
 
-                // Load the module
-                let source_id = context.sources.insert(source);
-                let module = parse_module(ParseContext {
-                    sources: context.sources,
-                    current_source_id: source_id,
-                    next_node_id: context.next_node_id,
-                    spans: context.spans,
-                    // New module, so start a new set of errors
-                    errors: vec![],
-                })
-                .map_err(|error| {
-                    context.error(
-                        // Attribute the error to just the source, not
-                        // the full import statement
-                        &self.source,
-                        ParseErrorKind::Import {
-                            module: module_name,
-                            error: error.into(),
-                        },
-                    )
-                })?;
+                // Load the module. Swap out the source ID in the context
+                let new_source_id =
+                    context.sources.insert(source).map_err(|error| {
+                        context.register_error(&self.source, error.into())
+                    })?;
+                let old_source_id =
+                    mem::replace(&mut context.current_source_id, new_source_id);
+                // If this fails, its errors will be registered in the context
+                // already so we can just continue and see if there are any more
+                // errors.
+                let module = parse_module(context);
+                context.current_source_id = old_source_id;
+
                 ImportModule::Local(module)
             }
         }
@@ -821,7 +791,7 @@ impl Transform for BindingOnly<'_> {
                 match self.0.transform(context)? {
                     (binding, None) => Ok(binding.into_data()),
                     // Expression is illegal!!
-                    (_, Some(_)) => Err(context.error(
+                    (_, Some(_)) => Err(context.register_error(
                         self.0,
                         ParseErrorKind::Unhandled {
                             node: format!("{:?}", self.0),
@@ -1794,3 +1764,11 @@ impl<T> IntoNode for T {
         Node::new(context.node_id(span), self)
     }
 }
+
+/// Indicator that an error has been registered via [ParseContext::error]
+///
+/// This is the error variant for all transformations because it forces
+/// transformers to register their errors with the context.
+///
+/// **Do not construct this manually!**
+struct Reg;

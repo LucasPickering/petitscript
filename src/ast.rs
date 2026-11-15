@@ -1,4 +1,4 @@
-//! The [Abstract Syntax Tree](https://w.wiki/6jCi) types of PetitScript
+//! [Abstract Syntax Tree](https://w.wiki/6jCi) types of PetitScript
 //!
 //! These define all the possible components of a valid PetitScript program.
 //! Because PetitScript is implemented as a tree-walking interpreter, these

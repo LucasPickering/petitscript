@@ -1,14 +1,13 @@
 //! Sometimes bad things happen
 
 use crate::{
-    NativeModuleName, Source, Value,
+    NativeModuleName, Value,
     compile::SUPPORTED_EXTENSIONS,
-    source::QualifiedSpan,
+    source::{QualifiedSpan, SourceTable},
     value::{Number, ValueType},
 };
 use miette::{Diagnostic, LabeledSpan, Severity};
 use std::{
-    borrow::Borrow,
     error::Error as StdError,
     fmt::{self, Display},
     io,
@@ -87,8 +86,8 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 /// Parsing does not fail fast; it collects as many errors as it can, but will
 /// fail if there is at least one.
 ///
-/// This correponds to a single module's parse. Submodules will be included
-/// recursively via [ParseErrorKind::Import].
+/// This can hold errors from multiple modules. During error reporting, it will
+/// grab code from the correct source based on each error's span.
 #[derive(Debug, Diagnostic, thiserror::Error)]
 #[error("{} parse error(s)", errors.len())]
 pub struct ParseErrors {
@@ -96,18 +95,10 @@ pub struct ParseErrors {
     #[related]
     pub errors: Vec<ParseError>,
     /// Module source code that failed to parse
+    ///
+    /// [SourceTable] maps miette's spans back to individual files.
     #[source_code]
-    pub source_code: Source,
-}
-
-/// Allow `diagnostic_source()` through `Box<ParseErrors>`
-///
-/// Needed because [ParseErrorKind::Import] is recursive. Remove after
-/// <https://github.com/zkat/miette/pull/367>.
-impl Borrow<dyn miette::Diagnostic> for Box<ParseErrors> {
-    fn borrow(&self) -> &(dyn miette::Diagnostic + 'static) {
-        &**self
-    }
+    pub(crate) source_code: SourceTable,
 }
 
 /// Error occurred while parsing source code or transforming it to PetitScript
@@ -120,19 +111,66 @@ impl Borrow<dyn miette::Diagnostic> for Box<ParseErrors> {
 /// The first step will fail if the source code is not valid syntax. The second
 /// will fail if the code is not valid PetitScript. As PS is a small subset of
 /// JS, there are many syntactic constructs in JS that are not valid PS.
-#[derive(Debug, Diagnostic, thiserror::Error)]
-#[error("parse")] // Use a short description because the cause is descriptive
+#[derive(Debug)]
 pub struct ParseError {
     /// What bad thing happen
-    #[diagnostic_source]
-    #[source]
     pub error: ParseErrorKind,
     /// One or more spans related to the error
     ///
     /// In most cases this is just a single element pointing to the offending
     /// span.
-    #[label(collection)]
     pub labels: Vec<LabeledSpan>,
+}
+
+// ===============
+// Manual impls are needed here to flatten the error stack
+// ===============
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl StdError for ParseError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.error.source()
+    }
+}
+
+impl Diagnostic for ParseError {
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.code()
+    }
+
+    fn severity(&self) -> Option<Severity> {
+        self.error.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.error.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        Some(Box::new(self.labels.iter().cloned()))
+    }
+
+    fn related<'a>(
+        &'a self,
+    ) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.error.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error.diagnostic_source()
+    }
 }
 
 /// The categories of errors that can occuring during parsing
@@ -141,17 +179,6 @@ pub struct ParseError {
 /// source context.
 #[derive(Debug, Diagnostic, thiserror::Error)]
 pub enum ParseErrorKind {
-    /// A nested error while parsing an imported local module
-    #[error("Importing '{module}'")]
-    Import {
-        /// Name/path of the module being imported
-        module: String,
-        /// Upstream error
-        #[diagnostic_source]
-        #[source]
-        error: Box<ParseErrors>,
-    },
-
     /// Attempted to import a module with an unrecognized file extension
     #[error(
         "Unsupported extension for imported module at path {path}. \
@@ -170,10 +197,6 @@ pub enum ParseErrorKind {
         /// Name of the module being imported
         module: String,
     },
-
-    /// Attempted to register a native module with an invalid name
-    #[error(transparent)]
-    InvalidModuleName(#[from] ModuleNameError),
 
     /// [oxc_parser] failed to parse the source
     ///
@@ -199,6 +222,10 @@ pub enum ParseErrorKind {
     #[error(transparent)]
     Source(#[from] SourceError),
 
+    /// Tried to load too many modules in a single program
+    #[error(transparent)]
+    TooManyModules(#[from] TooManyModules),
+
     /// AST node type wasn't handled
     ///
     /// This occurs when a node is downcast (using oxc's AST inheritance
@@ -220,7 +247,7 @@ pub enum ParseErrorKind {
 
 /// Error while loading source code from a file
 #[derive(Debug, Diagnostic, thiserror::Error)]
-#[error("Error reading source code from {}", self.path.display())]
+#[error("reading source code from {}", self.path.display())]
 pub struct SourceError {
     /// Path to the file being loaded
     pub path: PathBuf,
@@ -228,6 +255,14 @@ pub struct SourceError {
     #[source]
     pub error: io::Error,
 }
+
+/// Tried to load too many modules in a single program
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "too many modules; PetitScript program can contain up to {} modules",
+    SourceTable::MAX_SOURCES
+)]
+pub struct TooManyModules;
 
 /// Description of an unsupported feature
 ///

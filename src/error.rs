@@ -46,7 +46,7 @@ pub enum Error {
     /// the program where the error occurred.
     #[error("{trace}{error}")]
     Runtime {
-        /// TODO
+        /// Inner error
         #[source]
         error: RuntimeError,
         /// A trace showing every function call leading up to the error
@@ -248,16 +248,24 @@ pub enum Unsupported {
     Async,
     /// `import 'source'`
     BareImport,
+    /// >64-bit int literal
+    BigIntLiteral,
     /// `~`, `&`, `|`, etc.
     Bitwise,
     /// `class` and friends
     Class,
+    /// `debugger`
+    Debugger,
+    /// `try`, `catch`, and `throw`
+    Exception,
     /// `**`
     ///
     /// Could support this one, I'm just being lazy.
     Exponent,
     /// `export { x } from 'source'`
     ExportFrom,
+    /// `export { c }`
+    ExportNamedDeclaration,
     /// `const x = function() {}`
     ///
     /// This is different from [Self::AnonymousFunction] because function
@@ -268,6 +276,10 @@ pub enum Unsupported {
     Generator,
     /// `import()`
     ImportExpression,
+    /// `import { x as "anything" } from "..."`
+    ImportStringIdentifier,
+    /// `import.meta`
+    ImportMeta,
     /// `<Component></Component>`
     Jsx,
     /// `'label`
@@ -287,6 +299,12 @@ pub enum Unsupported {
     ObjectMethod,
     /// `a.#f`
     Private,
+    /// Regular expression literal
+    RegExp,
+    /// `a++, b++` in `let a = 1, b = 2; let result = (a++, b++);`
+    Sequence,
+    /// `switch`
+    Switch,
     /// ```norust
     /// tag`template`
     /// ```
@@ -295,10 +313,12 @@ pub enum Unsupported {
     This,
     /// `using`
     Using,
+    /// Wonky V8-specific shit
+    V8Intrinstic,
     /// `void`
     Void,
-    // TODO remove this!!
-    Todo,
+    /// `with`
+    With,
 }
 
 impl Display for Unsupported {
@@ -307,81 +327,110 @@ impl Display for Unsupported {
         let (name, help) = match self {
             Self::AnonymousFunction => (
                 "anonymous `function`",
-                "Functions declared with `function` must have a name. \
-                Use `=>` for anonymous functions",
+                Some(
+                    "Functions declared with `function` must have a name. \
+                    Use `=>` for anonymous functions",
+                ),
             ),
             Self::ArrayElision => {
-                ("array elision", "Array elements cannot be elided")
+                ("empty slots", Some("sparse arrays are not supported"))
             }
-            Self::Async => ("`async`", "Async-await is not supported"),
-            Self::BareImport => (
-                "TODO",
-                "Modules have no side-effects, \
-                so there's no use for bare imports",
+            Self::Async => ("`async`/`await`", None),
+            Self::BareImport => {
+                ("`import \"...\"`", Some("values must be imported by name"))
+            }
+            Self::Bitwise => ("bitwise operations", None),
+            Self::BigIntLiteral => {
+                ("big int literal", Some("integer literal out of range"))
+            }
+            Self::Class => ("`class`", None),
+            Self::Debugger => ("`debugger`", None),
+            Self::Exception => (
+                "exceptions",
+                Some(
+                    "exceptions cannot be thrown or caught in PetitScript code",
+                ),
             ),
-            Self::Bitwise => {
-                ("bitwise", "Bitwise operations are not supported")
-            }
-            Self::Class => ("`class`", "Classes are not supported"),
-            Self::ExportFrom => {
-                ("`export ... from ...`", "Re-export not supported")
-            }
-            Self::Exponent => ("`**`", "Exponent operator is not supported"),
+            Self::ExportFrom => (
+                "`export ... from ...`",
+                Some(
+                    "import the value and re-export it in separate statements",
+                ),
+            ),
+            Self::Exponent => ("`**`", None),
+            Self::ExportNamedDeclaration => (
+                "`export {...}`",
+                Some("export declarations directly: `export const c = ...`"),
+            ),
             Self::FunctionExpression => (
-                "TODO",
-                "`function` keyword not allowed in an expression position; \
-                Use `=>` for function expressions",
+                "`function()`",
+                Some(
+                    "`function` keyword not allowed in an expression position; \
+                    Use `=>` for function expressions",
+                ),
             ),
-            Self::Generator => ("generator", "Generators are not supported"),
-            Self::ImportExpression => {
-                ("`import()`", "Use the ES6-style `import` keyword instead")
-            }
-            Self::Jsx => ("JSX", "This isn't React..."),
-            Self::Label => (
-                "label",
-                "Labels have to use because loops are not supported",
+            Self::Generator => ("generator", None),
+            Self::ImportExpression => (
+                "`import()`",
+                Some("use the ES6-style `import` keyword instead"),
             ),
-            Self::Loop => {
-                // TODO link to a page on recursion
-                ("loop", "Loops are not supported; use recursion instead")
-            }
+            Self::ImportStringIdentifier => (
+                "`import { x as \"...\"}`",
+                Some("import renames must be identifiers"),
+            ),
+            Self::ImportMeta => ("`import.meta`", None),
+            Self::Jsx => ("JSX", Some("This isn't React...")),
+            Self::Label => ("label", None),
+            // TODO link to a page on recursion
+            Self::Loop => ("loop", Some("use recursion instead")),
             Self::LooseEquality => {
-                ("loose equality", "use `===` or `!==` instead")
+                ("`==`/`!=`", Some("use `===` or `!==` instead"))
             }
             Self::Mutation => (
                 // TODO add link to docs explaining immutability
                 "`let`/`var`",
-                "Mutable bindings are not supported; use `const` instead",
+                Some("mutable bindings are not supported; use `const` instead"),
             ),
             Self::NamespaceImport => (
-                "TODO",
-                "List specific imports with `import { ... } from 'source'`",
+                "`import *`",
+                Some(
+                    "list specific imports with `import { ... } from 'source'`",
+                ),
             ),
             Self::NonUtf => (
                 "non-UTF-8 string literal",
-                "String literals must be valid UTF-8",
+                Some("string literals must be valid UTF-8"),
             ),
             Self::ObjectMethod => (
                 "object method",
-                "use a static field with an arrow function expression value",
+                Some(
+                    "use a static field with an arrow function: \
+                    `{ f: (...) => {...} }`",
+                ),
             ),
-            Self::Private => ("TODO", "TODO"),
+            Self::Private => ("private field", None),
+            Self::RegExp => ("regular expression", None),
+            Self::Sequence => ("sequence", None),
+            Self::Switch => ("`switch`", None),
             Self::TaggedTemplate => {
-                ("tagged template", "Use untagged templates")
+                ("tagged template", Some("use untagged templates"))
             }
-            Self::This => ("`this`", "`this` is not supported"),
-            Self::Using => ("`using`", "TODO"),
-            Self::Void => ("`void`", "Void operator is not supported"),
-            Self::Todo => ("TODO", "TODO"),
+            Self::This => ("`this`", None),
+            Self::Using => ("`using`", None),
+            Self::V8Intrinstic => ("V8 intrinsic", None),
+            Self::Void => ("`void`", None),
+            Self::With => ("`with`", None),
         };
-        write!(f, "Unsupported: {name}; {help}")
+        let help =
+            help.unwrap_or("this feature is not supported in PetitScript");
+        write!(f, "unsupported: {name}; {help}")
     }
 }
 
 /// Any error that can occur during the execution of a program
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
-    /// TODO
+    /// Attempted to export the same name twice
     #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
 
@@ -416,8 +465,6 @@ pub enum RuntimeError {
     Other(Box<dyn StdError + Send + Sync>),
 
     /// Attempted to get a property of `null` or `undefined`
-    ///
-    /// TODO give this a more descriptive name
     #[error("Cannot read properties of `{value}` (property \"{property}\")")]
     Property { value: Value, property: Value },
 
@@ -490,10 +537,11 @@ pub(crate) struct TracedError {
 }
 
 /// An error that can occur while converting to/from [Value]
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ValueError {
     /// A custom error message for deserialization
     #[cfg(feature = "serde")]
+    #[error("{0}")]
     Custom(String),
 
     /// Attempted to deserialize into a [Function](crate::value::Function) from
@@ -503,13 +551,20 @@ pub enum ValueError {
     /// cannot be represented in other serde data formats or transformed
     /// into another data type.
     #[cfg(feature = "serde")]
+    #[error(
+        "Invalid function serialization/deserialization. PetitScript functions \
+        can only be serialized into and deserialized from petitscript::Value. \
+        Other data formats are not supported."
+    )]
     FunctionSerde,
 
     /// Attempted to convert non-UTF-8 bytes to a string
-    InvalidUtf8(FromUtf8Error),
+    #[error(transparent)]
+    InvalidUtf8(#[from] FromUtf8Error),
 
     /// Error converting [Number] to a specific number type. Could be a
     /// mismatch (float -> int or vice versa), or a value out of range
+    #[error("Cannot convert number {number} to {expected}: {description}")]
     Number {
         expected: &'static str,
         number: Number,
@@ -517,11 +572,13 @@ pub enum ValueError {
     },
 
     /// Wrapper for an external error type
+    #[error(transparent)]
     Other(Box<dyn StdError + Send + Sync>),
 
     /// An operation required a specific type (or types), but received a value
     /// of an unsupported type. This commonly occurs during type downcasting,
     /// e.g. [Value] to [Number].
+    #[error("Type error: expected {expected}, received {actual}")]
     Type {
         expected: ValueType,
         actual: ValueType,
@@ -535,98 +592,26 @@ impl ValueError {
     }
 }
 
-impl Display for ValueError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            #[cfg(feature = "serde")]
-            Self::Custom(message) => write!(f, "{message}"),
-            #[cfg(feature = "serde")]
-            Self::FunctionSerde => {
-                write!(
-                    f,
-                    "Invalid function serialization/deserialization. \
-                    PetitScript functions can only be serialized into and \
-                    deserialized from petitscript::Value. Other data formats \
-                    are not supported."
-                )
-            }
-            Self::InvalidUtf8(error) => write!(f, "{error}"),
-            Self::Number {
-                expected,
-                number,
-                description,
-            } => write!(
-                f,
-                "Cannot convert number {number} to {expected}: {description}"
-            ),
-            Self::Other(error) => write!(f, "{error}"),
-            Self::Type { expected, actual } => {
-                write!(f, "Type error: expected {expected}, received {actual}")
-            }
-        }
-    }
-}
-
-impl StdError for ValueError {
-    fn cause(&self) -> Option<&dyn StdError> {
-        match self {
-            #[cfg(feature = "serde")]
-            Self::Custom(_) => None,
-            #[cfg(feature = "serde")]
-            Self::FunctionSerde { .. } => None,
-            Self::InvalidUtf8(error) => Some(error),
-            Self::Number { .. } => None,
-            Self::Other(error) => Some(&**error),
-            Self::Type { .. } => None,
-        }
-    }
-}
-
-impl From<FromUtf8Error> for ValueError {
-    fn from(error: FromUtf8Error) -> Self {
-        Self::InvalidUtf8(error)
-    }
-}
-
 /// Error while parsing a string to
 /// [Identifier](crate::ast::Identifier)
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "invalid identifier `{identifier}`; must be non-empty, contain only UTF-8 \
+    letters, `0-9`, `_`, or `$`, and not start with a digit"
+)]
 pub struct IdentifierError {
     pub identifier: String,
 }
 
-impl Display for IdentifierError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { identifier } = self;
-        write!(
-            f,
-            "Invalid identifier: `{identifier}`; identifiers must not be \
-            empty, TODO update this"
-        )
-    }
-}
-
-impl StdError for IdentifierError {}
-
 /// Error while parsing a string to [NativeModuleName]
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "invalid module name `{name}`; module names must not be empty and can \
+    only contain alphanumeric characters, hyphens (-) or underscores (_)"
+)]
 pub struct ModuleNameError {
     pub name: String,
 }
-
-impl Display for ModuleNameError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { name } = self;
-        write!(
-            f,
-            "Invalid module name: `{name}`; module names must not be empty, \
-            and can only contain alphanumeric characters, hyphens (-) or \
-            underscores (_)"
-        )
-    }
-}
-
-impl StdError for ModuleNameError {}
 
 /// A list of source locations representing the function call stack
 ///

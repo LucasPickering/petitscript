@@ -315,19 +315,19 @@ impl Transform for oxc::Statement<'_> {
                 unsupported!(context, self, Unsupported::Label);
             }
             Self::SwitchStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::Switch);
             }
             Self::ThrowStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::Exception);
             }
             Self::TryStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::Exception);
             }
             Self::DebuggerStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::Debugger);
             }
             Self::WithStatement(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::With);
             }
             Self::ClassDeclaration(_) => {
                 unsupported!(context, self, Unsupported::Class);
@@ -335,12 +335,16 @@ impl Transform for oxc::Statement<'_> {
 
             // export * as c from 'source';
             Self::ExportAllDeclaration(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::ExportFrom);
             }
             // const c = 4; export { c };
             // There may be value in allowing this, but I'm not for now
             Self::ExportNamedDeclaration(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(
+                    context,
+                    self,
+                    Unsupported::ExportNamedDeclaration
+                );
             }
         }
     }
@@ -469,7 +473,11 @@ impl Transform for oxc::ImportSpecifier<'_> {
                 // ES supports arbitrary unicode as the import source, but I
                 // don't want to support that
                 let Some(imported) = self.imported.identifier_name() else {
-                    unsupported!(context, self, Unsupported::Todo);
+                    unsupported!(
+                        context,
+                        self,
+                        Unsupported::ImportStringIdentifier
+                    );
                 };
                 let imported_span = self.imported.span();
                 let imported =
@@ -1105,13 +1113,13 @@ impl Transform for oxc::Expression<'_> {
                 literal.transform_node(context).map(Expression::Literal)
             }
             Self::BigIntLiteral(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::BigIntLiteral);
             }
             Self::StringLiteral(literal) => {
                 literal.transform_node(context).map(Expression::Literal)
             }
             Self::RegExpLiteral(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::RegExp);
             }
             Self::TemplateLiteral(template) => {
                 template.transform_node(context).map(Expression::Template)
@@ -1201,7 +1209,7 @@ impl Transform for oxc::Expression<'_> {
                 unsupported!(context, self, Unsupported::FunctionExpression)
             }
             Self::SequenceExpression(_) => {
-                unsupported!(context, self, Unsupported::Todo)
+                unsupported!(context, self, Unsupported::Sequence)
             }
             Self::UpdateExpression(_) => {
                 unsupported!(context, self, Unsupported::Mutation);
@@ -1219,7 +1227,7 @@ impl Transform for oxc::Expression<'_> {
                 unsupported!(context, self, Unsupported::Private);
             }
             Self::ImportMeta(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::ImportMeta);
             }
             Self::ImportExpression(_) => {
                 unsupported!(context, self, Unsupported::ImportExpression);
@@ -1237,7 +1245,7 @@ impl Transform for oxc::Expression<'_> {
                 unsupported!(context, self, Unsupported::Jsx);
             }
             Self::V8IntrinsicExpression(_) => {
-                unsupported!(context, self, Unsupported::Todo);
+                unsupported!(context, self, Unsupported::V8Intrinstic);
             }
         }
     }

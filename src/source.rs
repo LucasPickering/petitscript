@@ -245,12 +245,57 @@ impl miette::SourceCode for SourceTable {
         let span = miette::SourceSpan::new(offset.into(), span.len());
         let source = self.0.get(&source_id).ok_or(MietteError::OutOfBounds)?;
 
-        // TODO include the source name
-        source.text().read_span(
-            &span,
-            context_lines_before,
-            context_lines_after,
-        )
+        source
+            .text()
+            .read_span(&span, context_lines_before, context_lines_after)
+            .map(|contents| {
+                Box::new(NamedSpanContents {
+                    name: source.name(),
+                    contents,
+                }) as Box<dyn miette::SpanContents>
+            })
+    }
+}
+
+/// Wrapper for [miette::SpanContents] to attach a name
+///
+/// [miette::MietteSpanContents] accepts a name, but the utility function to
+/// build the rest of the fields for that struct is private within miette. This
+/// wrapper lets us call the [miette::SourceCode::read_span] impl for `&str`,
+/// then attach a name to the returned value.
+struct NamedSpanContents<'a> {
+    name: &'a str,
+    contents: Box<dyn 'a + miette::SpanContents<'a>>,
+}
+
+impl<'a> miette::SpanContents<'a> for NamedSpanContents<'a> {
+    fn name(&self) -> Option<&str> {
+        Some(self.name)
+    }
+
+    // Everything else is dispatched from the inner
+    fn data(&self) -> &'a [u8] {
+        self.contents.data()
+    }
+
+    fn span(&self) -> &miette::SourceSpan {
+        self.contents.span()
+    }
+
+    fn line(&self) -> usize {
+        self.contents.line()
+    }
+
+    fn column(&self) -> usize {
+        self.contents.column()
+    }
+
+    fn line_count(&self) -> usize {
+        self.contents.line_count()
+    }
+
+    fn language(&self) -> Option<&str> {
+        self.contents.language()
     }
 }
 

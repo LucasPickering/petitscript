@@ -51,7 +51,7 @@ pub fn parse(
             // Store the entire source table. We pack all parse errors together,
             // so we need access to all sources during error rendering. See
             // SourceTable's impl of miette::SourceCode
-            source_code: context.sources.clone(),
+            source_table: context.sources.clone(),
         })
     }
 }
@@ -143,33 +143,16 @@ impl ParseContext<'_> {
     fn map_oxc_diagnostic(&self, diagnostic: OxcDiagnostic) -> ParseError {
         // Map the oxc diagnostic to our error type
         let diagnostic = diagnostic.inner_owned();
-        let labels = diagnostic
-            .labels
-            .into_iter()
-            .map(|label| {
-                // Map the span from oxc -> PS -> miette
-                // The intermediate mapping is helpful to handle source ID
-                // encoding
-                let span = self.map_span(label.span()).into_miette();
-                let name = label.label().map(String::from);
-                if label.primary() {
-                    miette::LabeledSpan::new_primary_with_span(name, span)
-                } else {
-                    miette::LabeledSpan::new_with_span(name, span)
-                }
-            })
-            .collect();
+        // Theoretically oxc can have multiple labels for errors, but I didn't
+        // see it so I don't feel like handling it. Maybe I'll look into it
+        // later, but for now just grab the span of the first one.
+        let span = self.map_span(diagnostic.labels[0].span());
         let error = ParseErrorKind::Parse {
             message: diagnostic.message.into_owned(),
             help: diagnostic.help.map(Cow::into_owned),
             note: diagnostic.note.map(Cow::into_owned),
-            severity: match diagnostic.severity {
-                oxc_diagnostics::Severity::Advice => miette::Severity::Advice,
-                oxc_diagnostics::Severity::Warning => miette::Severity::Warning,
-                oxc_diagnostics::Severity::Error => miette::Severity::Error,
-            },
         };
-        ParseError { error, labels }
+        ParseError { error, span }
     }
 }
 
@@ -177,7 +160,6 @@ impl ParseContext<'_> {
 mod tests {
     use super::*;
     use crate::{assert_matches, ast::Declaration, error::Unsupported};
-    use miette::LabeledSpan;
 
     /// Test an escaped newline `\n` in a string literal
     /// ```notrust
@@ -219,13 +201,6 @@ mod tests {
     /// all of them
     #[test]
     fn multiple_errors() {
-        fn labeled_span(offset: usize, length: usize) -> LabeledSpan {
-            LabeledSpan::new_primary_with_span(
-                None,
-                miette::SourceSpan::new(offset.into(), length),
-            )
-        }
-
         let source = "
             let x = 3;
             var y = 4;
@@ -234,35 +209,42 @@ mod tests {
                 let x = 3;
             }
         ";
-        let errors = parse_test(source).unwrap_err();
-        // There should be 2 errors
-        let (labels_let, labels_var, labels_async) = assert_matches!(
+        let mut source_table = SourceTable::default();
+        let source_id = source_table.insert(source.into());
+        let errors = parse(&mut source_table)
+            .map(|(module, _)| module)
+            .unwrap_err();
+        // There should be 3 errors
+        let (span_let, span_var, span_async) = assert_matches!(
             errors.errors.as_slice(),
             [
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
-                    labels: labels_let,
+                    span: span_let,
+                    ..
                 },
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
-                    labels: labels_var,
+                    span: span_var,
+                    ..
                 },
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Async),
-                    labels: labels_async,
+                    span: span_async,
+                    ..
                 },
             ]
-            => (labels_let, labels_var, labels_async)
+            => (*span_let, *span_var, *span_async)
         );
         // Spans are where we expect them to be
-        assert_eq!(labels_let.as_slice(), [labeled_span(13, 10)]);
-        assert_eq!(labels_var.as_slice(), [labeled_span(36, 10)]);
-        assert_eq!(labels_async.as_slice(), [labeled_span(59, 139)]);
+        assert_eq!(span_let, Span::new(source_id, 13, 23));
+        assert_eq!(span_var, Span::new(source_id, 36, 46));
+        assert_eq!(span_async, Span::new(source_id, 59, 198));
     }
 
     fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {
         let mut source_table = SourceTable::default();
-        source_table.insert(source.into()).unwrap();
+        source_table.insert(source.into());
         parse(&mut source_table).map(|(module, _)| module)
     }
 }

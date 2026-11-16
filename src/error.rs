@@ -3,10 +3,10 @@
 use crate::{
     NativeModuleName, Value,
     compile::SUPPORTED_EXTENSIONS,
-    source::{QualifiedSpan, SourceTable},
+    source::{QualifiedSpan, SourceTable, Span},
     value::{Number, ValueType},
 };
-use miette::{Diagnostic, LabeledSpan, Severity};
+use annotate_snippets::{AnnotationKind, Level, Snippet};
 use std::{
     error::Error as StdError,
     fmt::{self, Display},
@@ -24,7 +24,7 @@ use winnow::error::ContextError;
 /// can be more specific.
 /// - [ParseError] TODO
 /// - [RuntimeError] TODO
-#[derive(Debug, Diagnostic, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Attempted to register two values of the same type as app data
     ///
@@ -35,7 +35,6 @@ pub enum Error {
     /// Error(s) while parsing source code
     ///
     /// See [ParseErrors].
-    #[diagnostic(transparent)]
     #[error(transparent)]
     Parse(ParseErrors),
 
@@ -51,6 +50,12 @@ pub enum Error {
         /// A trace showing every function call leading up to the error
         trace: StackTrace,
     },
+
+    /// Error loading a source
+    ///
+    /// See [SourceError].
+    #[error(transparent)]
+    Source(#[from] SourceError),
 
     /// Requested app data of a type that has not been set
     ///
@@ -83,22 +88,53 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 
 /// Container for one or more [ParseError]s during parsing
 ///
-/// Parsing does not fail fast; it collects as many errors as it can, but will
+/// Parsing does not fail fast. It collects as many errors as it can, but will
 /// fail if there is at least one.
 ///
-/// This can hold errors from multiple modules. During error reporting, it will
-/// grab code from the correct source based on each error's span.
-#[derive(Debug, Diagnostic, thiserror::Error)]
+/// This can hold errors from multiple modules. Each error has a `span` field
+/// indicating the file and location of the offending code. Use
+/// [ParseErrors::to_report] to get a pretty report of errors.
+#[derive(Debug, thiserror::Error)]
 #[error("{} parse error(s)", errors.len())]
 pub struct ParseErrors {
     /// One or more parse errors
-    #[related]
     pub errors: Vec<ParseError>,
-    /// Module source code that failed to parse
+    /// Map of all sources
     ///
-    /// [SourceTable] maps miette's spans back to individual files.
-    #[source_code]
-    pub(crate) source_code: SourceTable,
+    /// This will include the invalid module(s), as well as all valid ones.
+    ///
+    /// TODO make this public?
+    pub(crate) source_table: SourceTable,
+}
+
+impl ParseErrors {
+    /// Generate an [annotate_snippets] report of these errors
+    ///
+    /// This report can be used to render the errors prettily. See
+    /// [annotate_snippets::Renderer].
+    ///
+    /// ```
+    /// let errors = todo!();
+    /// let renderer = annotate_snippets::Renderer::styled();
+    /// eprintln!("{}", renderer.render(&errors.to_report()));
+    /// ```
+    pub fn to_report(&self) -> Vec<annotate_snippets::Group<'_>> {
+        self.errors
+            .iter()
+            .map(|error| {
+                let span = error.span;
+                let source = self.source_table.get(span.source_id);
+                Level::ERROR.primary_title(error.to_string()).element(
+                    Snippet::source(source.text())
+                        .path(source.name())
+                        .annotation(
+                            AnnotationKind::Primary
+                                .span(span.start_offset..span.end_offset),
+                        ),
+                )
+            })
+            .collect()
+    }
 }
 
 /// Error occurred while parsing source code or transforming it to PetitScript
@@ -115,11 +151,8 @@ pub struct ParseErrors {
 pub struct ParseError {
     /// What bad thing happen
     pub error: ParseErrorKind,
-    /// One or more spans related to the error
-    ///
-    /// In most cases this is just a single element pointing to the offending
-    /// span.
-    pub labels: Vec<LabeledSpan>,
+    /// Location of the offending code
+    pub span: Span,
 }
 
 // ===============
@@ -137,48 +170,11 @@ impl StdError for ParseError {
     }
 }
 
-impl Diagnostic for ParseError {
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.code()
-    }
-
-    fn severity(&self) -> Option<Severity> {
-        self.error.severity()
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.help()
-    }
-
-    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.url()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.error.source_code()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
-        // TODO spans are wrong here if source ID > 0
-        Some(Box::new(self.labels.iter().cloned()))
-    }
-
-    fn related<'a>(
-        &'a self,
-    ) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        self.error.related()
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error.diagnostic_source()
-    }
-}
-
 /// The categories of errors that can occuring during parsing
 ///
 /// This is contained by [ParseError], which carries the error info as well as
 /// source context.
-#[derive(Debug, Diagnostic, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseErrorKind {
     /// Imported an absolute path: `import ... from '/data/lib.js'`
     #[error("illegal import from absolute path '{}'", path.display())]
@@ -215,10 +211,8 @@ pub enum ParseErrorKind {
     Parse {
         // Omitting error code because I don't think it's useful
         message: String,
-        #[help]
         help: Option<String>,
         note: Option<String>,
-        severity: Severity,
     },
 
     /// I/O error while loading source code from a file
@@ -226,10 +220,6 @@ pub enum ParseErrorKind {
     /// See [SourceError].
     #[error(transparent)]
     Source(#[from] SourceError),
-
-    /// Tried to load too many modules in a single program
-    #[error(transparent)]
-    TooManyModules(#[from] TooManyModules),
 
     /// AST node type wasn't handled
     ///
@@ -251,7 +241,7 @@ pub enum ParseErrorKind {
 }
 
 /// Error while loading source code from a file
-#[derive(Debug, Diagnostic, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 #[error("reading source code from {}", self.path.display())]
 pub struct SourceError {
     /// Path to the file being loaded
@@ -260,14 +250,6 @@ pub struct SourceError {
     #[source]
     pub error: io::Error,
 }
-
-/// Tried to load too many modules in a single program
-#[derive(Debug, thiserror::Error)]
-#[error(
-    "too many modules; PetitScript program can contain up to {} modules",
-    SourceTable::MAX_SOURCES
-)]
-pub struct TooManyModules;
 
 /// Description of an unsupported feature
 ///
@@ -363,7 +345,6 @@ pub enum Unsupported {
 
 impl Display for Unsupported {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO single message for each variant, instead of 2
         let (name, help) = match self {
             Self::AnonymousFunction => (
                 "anonymous `function`",
@@ -429,7 +410,7 @@ impl Display for Unsupported {
             Self::Mutation => (
                 // TODO add link to docs explaining immutability
                 "`let`/`var`",
-                Some("mutable bindings are not supported; use `const` instead"),
+                Some("mutable bindings are not supported, use `const` instead"),
             ),
             Self::NamespaceImport => (
                 "`import *`",
@@ -566,13 +547,16 @@ impl RuntimeError {
     }
 }
 
-/// A runtime error paired with its stack trace. This is only for internal use,
-/// to pack the two together. It's much easier than including the stack trace
-/// on every variant of [RuntimeError]. We unpack this into [Error::Runtime]
-/// before returning it to the user, to remove an unnecessary layer of
-/// indirection.
+/// A runtime error paired with its stack trace
+///
+/// This is only for internal use, to pack the two together. It's much easier
+/// than including the stack trace on every variant of [RuntimeError]. We unpack
+/// this into [Error::Runtime] before returning it to the user, to remove an
+/// unnecessary layer of indirection.
 pub(crate) struct TracedError {
+    /// TODO
     pub error: RuntimeError,
+    /// TODO
     pub trace: StackTrace,
 }
 
@@ -661,8 +645,9 @@ pub struct ModuleNameError {
 pub struct StackTrace(Vec<StackTraceFrame>);
 
 impl StackTrace {
-    /// Get an iterator over the frames of this stack. The most recent call will
-    /// be _last_.
+    /// Get an iterator over the frames of this stack
+    ///
+    /// The most recent call will be _last_.
     pub fn iter(&self) -> impl Iterator<Item = &StackTraceFrame> {
         self.0.iter()
     }

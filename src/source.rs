@@ -1,10 +1,6 @@
 //! Utilities for interacting with source code
 
-use crate::{
-    ast::NodeId,
-    error::{SourceError, TooManyModules},
-};
-use miette::MietteError;
+use crate::{ast::NodeId, error::SourceError};
 use normalize_path::NormalizePath;
 use std::{
     collections::HashMap,
@@ -117,24 +113,18 @@ impl From<String> for Source {
 ///
 /// Sources get aliased by ID because each [Span] needs to point to its source,
 /// and each AST node needs a span.
-///
-/// This uses `u8` because these IDs get bitpacked into the offset of
-/// [miette::SourceSpan] during error reporting. This limits us to 256 sources
-/// per program, but that should be more than enough. PS programs are supposed
-/// to be small and simple.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
-pub struct SourceId(u8);
+pub struct SourceId(u16);
 
-/// TODO
+/// A table of [Source]s for a single program
+///
+/// The parser builds, uses, and returns this as a centralized store of all
+/// source code that produced a program. Each source (each file typically) is
+/// assigned an ID that can be used in [Span] throughout the AST.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SourceTable(HashMap<SourceId, Source>);
 
 impl SourceTable {
-    /// Maximum number of sources in the table
-    ///
-    /// This is the maximum possible value for [SourceId].
-    pub const MAX_SOURCES: usize = 256;
-
     /// Get the ID of the first source in the table
     ///
     /// ## Panics
@@ -162,15 +152,10 @@ impl SourceTable {
     ///
     /// Return an error if the table already has the max number of sources
     /// (256).
-    pub fn insert(
-        &mut self,
-        source: Source,
-    ) -> Result<SourceId, TooManyModules> {
-        // The ID is the index that the pushed element will get
-        let index = self.0.len();
-        let id = SourceId(u8::try_from(index).map_err(|_| TooManyModules)?);
+    pub fn insert(&mut self, source: Source) -> SourceId {
+        let id = SourceId(self.0.len() as u16);
         self.0.insert(id, source);
-        Ok(id)
+        id
     }
 
     /// Get an iterator over the sources
@@ -222,83 +207,6 @@ impl SourceTable {
     }
 }
 
-/// Provide source for for error presentation
-///
-/// Miette spans only track offset/length for each span, i.e. there's no field
-/// to track source *file*. Since we want to report errors across multiple
-/// files, this packs the source ID into the upper 8 bits of the span offset.
-/// That limits us to 256 source files and `2^56` bytes per file which is...
-/// totally fine.
-///
-/// This seems hacky (and it is), but miette has no support for multiple files:
-/// <https://github.com/zkat/miette/issues/193>
-impl miette::SourceCode for SourceTable {
-    fn read_span<'a>(
-        &'a self,
-        span: &miette::SourceSpan,
-        context_lines_before: usize,
-        context_lines_after: usize,
-    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, MietteError> {
-        // Source ID is encoded into the top 8 bits of the source span offset
-        let source_id = SourceId((span.offset() >> Span::SOURCE_ID_BITS) as u8);
-        let offset = span.offset() & !Span::SOURCE_ID_MASK;
-        let span = miette::SourceSpan::new(offset.into(), span.len());
-        let source = self.0.get(&source_id).ok_or(MietteError::OutOfBounds)?;
-
-        source
-            .text()
-            .read_span(&span, context_lines_before, context_lines_after)
-            .map(|contents| {
-                Box::new(NamedSpanContents {
-                    name: source.name(),
-                    contents,
-                }) as Box<dyn miette::SpanContents>
-            })
-    }
-}
-
-/// Wrapper for [miette::SpanContents] to attach a name
-///
-/// [miette::MietteSpanContents] accepts a name, but the utility function to
-/// build the rest of the fields for that struct is private within miette. This
-/// wrapper lets us call the [miette::SourceCode::read_span] impl for `&str`,
-/// then attach a name to the returned value.
-struct NamedSpanContents<'a> {
-    name: &'a str,
-    contents: Box<dyn 'a + miette::SpanContents<'a>>,
-}
-
-impl<'a> miette::SpanContents<'a> for NamedSpanContents<'a> {
-    fn name(&self) -> Option<&str> {
-        Some(self.name)
-    }
-
-    // Everything else is dispatched from the inner
-    fn data(&self) -> &'a [u8] {
-        self.contents.data()
-    }
-
-    fn span(&self) -> &miette::SourceSpan {
-        self.contents.span()
-    }
-
-    fn line(&self) -> usize {
-        self.contents.line()
-    }
-
-    fn column(&self) -> usize {
-        self.contents.column()
-    }
-
-    fn line_count(&self) -> usize {
-        self.contents.line_count()
-    }
-
-    fn language(&self) -> Option<&str> {
-        self.contents.language()
-    }
-}
-
 /// A range of source code, defined as byte offsets
 ///
 /// This is the raw mapping that we pass around within the compiler/interpreter.
@@ -306,8 +214,9 @@ impl<'a> miette::SpanContents<'a> for NamedSpanContents<'a> {
 ///
 /// The parser we use only provides byte offsets for its AST nodes, so we defer
 /// mapping bytes to line/column until it's actually needed.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Span {
+    // TODO shrink these to u32 - it cuts the struct size in half
     /// ID of the [Source] (typically a file) containing the code
     ///
     /// This is just an ID because we create thousands of spans, so we need
@@ -324,31 +233,18 @@ pub(crate) struct Span {
 }
 
 impl Span {
-    /// Bits to left-shift the source ID before packing it into the span offset
-    const SOURCE_ID_BITS: u32 = usize::BITS - u8::BITS;
-    /// Bitmask to extract the source ID from the span offset
-    const SOURCE_ID_MASK: usize = !0 << Self::SOURCE_ID_BITS;
-
-    /// Convert this span to a [miette::SourceSpan]
-    ///
-    /// See [SourceTable]'s `SourceCode` impl for an explanation of the source
-    /// ID encoding.
-    pub(crate) fn into_miette(self) -> miette::SourceSpan {
-        const MAX_OFFSET: usize = 1 << Span::SOURCE_ID_BITS;
-        let length = self.end_offset - self.start_offset;
-
-        // Encode the source ID into the top 8 bits of the start. We definitely
-        // don't need more than 24 bits (or 56 bits on x64 systems) for source
-        // len. This is just a safety check.
-        assert!(
-            self.start_offset < MAX_OFFSET,
-            "Source offset too large; must be < {MAX_OFFSET}. \
-            This file is too big!"
-        );
-        let start: usize = (usize::from(self.source_id.0)
-            << Self::SOURCE_ID_BITS)
-            | self.start_offset;
-        miette::SourceSpan::new(start.into(), length)
+    /// Construct a new span
+    #[cfg(test)]
+    pub fn new(
+        source_id: SourceId,
+        start_offset: usize,
+        end_offset: usize,
+    ) -> Self {
+        Self {
+            source_id,
+            start_offset,
+            end_offset,
+        }
     }
 }
 
@@ -388,8 +284,10 @@ impl Display for QualifiedSpan {
     }
 }
 
-/// A table of all spans for each node in the AST. The parser is responsible for
-/// generating this and ensuring every AST node has an entry.
+/// A table of all spans for each node in the AST
+///
+/// The parser is responsible for generating this and ensuring every AST node
+/// has an entry.
 #[derive(Debug, Default)]
 pub(crate) struct SpanTable(HashMap<NodeId, Span>);
 
@@ -408,56 +306,6 @@ impl SpanTable {
         assert!(
             inserted.is_none(),
             "AST node {id:?} already has an entry in the span table"
-        );
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use miette::SourceCode;
-
-    /// Test [Span] <=> [miette::SourceSpan] conversions
-    ///
-    /// We pack the [SourceId] into the upper bits of the miette span.
-    #[test]
-    fn miette_spans() {
-        let mut sources = SourceTable::default();
-        let id1 = sources.insert("const x = 1;".into()).unwrap();
-        let id2 = sources.insert("const y = 2;".into()).unwrap();
-
-        // PS -> miette: test bit packing
-        let miette_span1 = Span {
-            source_id: id1,
-            start_offset: 6,
-            end_offset: 7,
-        }
-        .into_miette();
-        assert_eq!(
-            miette_span1,
-            // ID is 0 so the offset is the same as the original
-            miette::SourceSpan::new(6.into(), 1)
-        );
-        let miette_span2 = Span {
-            source_id: id2,
-            start_offset: 6,
-            end_offset: 7,
-        }
-        .into_miette();
-        assert_eq!(
-            miette_span2,
-            // ID is 1
-            miette::SourceSpan::new(((1 << 56) | 6).into(), 1)
-        );
-
-        // Read source code back, it should dispatch to the correct source
-        assert_eq!(
-            sources.read_span(&miette_span1, 0, 0).unwrap().data(),
-            b"x"
-        );
-        assert_eq!(
-            sources.read_span(&miette_span2, 0, 0).unwrap().data(),
-            b"y"
         );
     }
 }

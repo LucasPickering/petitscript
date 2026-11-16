@@ -4,7 +4,7 @@
 //! initial parsing to the parent.
 
 use crate::{
-    NativeModuleName, OptionExt, Source,
+    NativeModuleName, Source,
     ast::{
         Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
         BinaryOperation, BinaryOperator, Binding, Block, Declaration,
@@ -22,8 +22,8 @@ use crate::{
     },
     error::{ParseError, ParseErrorKind, Unsupported},
     source::Span,
+    util::OptionExt,
 };
-use miette::LabeledSpan;
 use oxc_ast::ast::{self as oxc};
 use oxc_span::GetSpan;
 use std::{
@@ -96,14 +96,8 @@ impl ParseContext<'_> {
     ) -> Reg {
         // Map the span from oxc -> PS -> miette
         // The intermediate mapping is helpful to handle source ID encoding
-        let span = self.map_span(node.span()).into_miette();
-        // Every error gets a single primary label
-        let new_primary_with_span =
-            LabeledSpan::new_primary_with_span(None, span);
-        self.errors.push(ParseError {
-            error,
-            labels: vec![new_primary_with_span],
-        });
+        let span = self.map_span(node.span());
+        self.errors.push(ParseError { error, span });
         Reg
     }
 
@@ -397,10 +391,7 @@ impl Transform for oxc::ImportDeclaration<'_> {
                         })?;
 
                 // Load the module. Swap out the source ID in the context
-                let new_source_id =
-                    context.sources.insert(source).map_err(|error| {
-                        context.register_error(&self.source, error.into())
-                    })?;
+                let new_source_id = context.sources.insert(source);
                 let old_source_id =
                     mem::replace(&mut context.current_source_id, new_source_id);
                 // If this fails, its errors will be registered in the context

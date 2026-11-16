@@ -11,9 +11,9 @@ rust-version = {workspace = true}
 version = {workspace = true}
 
 [dependencies]
+annotate-snippets = {workspace = true}
 bytes = {version = "1.0.0", default-features = false, optional = true}
 indexmap = {version = "2.7.0"}
-miette = "7.6.0"
 normalize-path = "0.2.1"
 oxc_allocator = "0.156.0"
 oxc_ast = "0.156.0"
@@ -52,6 +52,7 @@ rust-version = "1.100" # Keep in sync w/ rust-toolchain.toml
 version = "0.1.0"
 
 [workspace.dependencies]
+annotate-snippets = "0.12.18"
 serde_json = {version = "1.0.140"}
 
 [workspace.lints.rust]

@@ -1,13 +1,14 @@
 //! Statement execution
 
 use crate::{
-    Exports, OptionExt,
+    Exports,
     ast::{
         Block, Declaration, ExportDeclaration, FunctionBody, If,
         ImportDeclaration, ImportModule, Module, Node, Statement, Variable,
     },
     error::{RuntimeError, TracedError},
     execute::{ThreadState, eval::Evaluate},
+    util::OptionExt,
     value::Value,
 };
 

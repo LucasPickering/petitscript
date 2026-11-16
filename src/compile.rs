@@ -97,8 +97,7 @@ struct CapturedAst {
 impl Compiler<()> {
     fn new(source: impl Into<Source>) -> Self {
         let mut sources = SourceTable::default();
-        // Error occurs if there are too many modules, but this is the first
-        sources.insert(source.into()).unwrap();
+        sources.insert(source.into());
         Self {
             sources,
             program: (),

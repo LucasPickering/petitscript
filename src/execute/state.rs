@@ -1,7 +1,7 @@
 //! Program state management
 
 use crate::{
-    OptionExt, Process, RuntimeError,
+    Process, RuntimeError,
     ast::{ArrayPatternElement, Binding, Node, NodeId},
     compile::Program,
     error::{StackTraceFrame, TracedError},
@@ -11,6 +11,7 @@ use crate::{
         scope::{GlobalEnvironment, Scope},
     },
     source::QualifiedSpan,
+    util::OptionExt,
     value::{Array, Object, Value},
 };
 use indexmap::{IndexMap, map::Entry};

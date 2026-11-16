@@ -159,6 +159,7 @@ impl Diagnostic for ParseError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        // TODO spans are wrong here if source ID > 0
         Some(Box::new(self.labels.iter().cloned()))
     }
 
@@ -179,21 +180,25 @@ impl Diagnostic for ParseError {
 /// source context.
 #[derive(Debug, Diagnostic, thiserror::Error)]
 pub enum ParseErrorKind {
+    /// Imported an absolute path: `import ... from '/data/lib.js'`
+    #[error("illegal import from absolute path '{}'", path.display())]
+    ImportAbsolute { path: PathBuf },
+
     /// Attempted to import a module with an unrecognized file extension
     #[error(
-        "Unsupported extension for imported module at path {path}. \
+        "unsupported extension for imported module at path {path}. \
         Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
         path = path.display()
     )]
-    InvalidExtension { path: PathBuf },
+    ImportInvalidExtension { path: PathBuf },
 
     /// Attempted a local module import from a non-file source
     ///
     /// Non-file sources (i.e. sources defined in-memory) cannot import other
     /// files, as they do not exist on disk. A local import (e.g. `import ...
     /// from './other.js'`) will result in this error.
-    #[error("Cannot import local module '{module}' from non-file source")]
-    InvalidLocalImport {
+    #[error("illegal import '{module}' from non-file source")]
+    ImportInvalidLocal {
         /// Name of the module being imported
         module: String,
     },
@@ -231,7 +236,7 @@ pub enum ParseErrorKind {
     /// This occurs when a node is downcast (using oxc's AST inheritance
     /// framework) but the downcast fails. It indicates a possible branch wasn't
     /// handled. **This is an internal error**.
-    #[error("[INTERNAL ERROR] Unhandled AST node type: {node}")]
+    #[error("[INTERNAL ERROR] unhandled AST node type: {node}")]
     Unhandled {
         /// Debug representation of the unhandled node
         node: String,

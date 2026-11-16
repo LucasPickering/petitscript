@@ -477,13 +477,15 @@ fn resolve_module(
     let path = Path::new(specifier);
 
     if path.is_absolute() {
-        todo!("error");
+        return Err(ParseErrorKind::ImportAbsolute {
+            path: path.to_owned(),
+        });
     }
 
     // The import is relative to the parent directory of this file
     let relative_to = parent_source
         .path()
-        .ok_or_else(|| ParseErrorKind::InvalidLocalImport {
+        .ok_or_else(|| ParseErrorKind::ImportInvalidLocal {
             module: specifier.to_owned(),
         })?
         .parent()
@@ -498,7 +500,7 @@ fn resolve_module(
     {
         Ok(path)
     } else {
-        Err(ParseErrorKind::InvalidExtension { path })
+        Err(ParseErrorKind::ImportInvalidExtension { path })
     }
 }
 

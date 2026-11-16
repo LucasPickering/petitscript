@@ -468,7 +468,7 @@ pub enum ObjectProperty {
     Spread(Node<Expression>),
 }
 
-/// TODO
+/// Invoke a function: `f(x)`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionCall {
@@ -476,6 +476,13 @@ pub struct FunctionCall {
     pub function: Box<Node<Expression>>,
     /// Values to pass to the function
     pub arguments: Box<[Node<Argument>]>,
+    /// Skip call on `null`/`undefined`
+    ///
+    /// This is enabled by the `f?.()` syntax. If `true` and `function`
+    /// evaluates to `null` or `undefined`, then the function call will be
+    /// skipped and the arguments will *not* be evaluated. If the value is
+    /// defined but any type other than a function, the call will still fail.
+    pub optional: bool,
 }
 
 /// One argument in a [FunctionCall]

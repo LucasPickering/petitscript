@@ -1662,16 +1662,13 @@ impl Transform for oxc::CallExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        // Like this: a.f?.()
-        if self.optional {
-            todo!("support optional functional calls")
-        }
-
         let arguments = self.arguments.transform_all(context);
         let function = self.callee.transform_node(context)?;
         Ok(FunctionCall {
             function: function.into(),
             arguments,
+            // Like this: a.f?.()
+            optional: self.optional,
         })
     }
 }

@@ -172,29 +172,35 @@ impl Evaluate for Node<FunctionDefinition> {
 impl Evaluate for Node<FunctionCall> {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, TracedError> {
         let function = self.function.eval(state)?;
-
-        // Collect arguments
-        let mut arguments = Vec::new();
-        for argument in &self.arguments {
-            match argument.data() {
-                Argument::Expression(expression) => {
-                    arguments.push(expression.eval(state)?);
-                }
-                Argument::Spread(expression) => {
-                    let array = expression
-                        .eval(state)?
-                        .try_into_array()
-                        .map_err(|error| {
-                            state.trace_error(error.into(), expression.id())
-                        })?;
-                    arguments.extend(array);
-                }
-            }
-        }
-
         match function {
             Value::Function(function) => {
+                // Collect arguments
+                let mut arguments = Vec::new();
+                for argument in &self.arguments {
+                    match argument.data() {
+                        Argument::Expression(expression) => {
+                            arguments.push(expression.eval(state)?);
+                        }
+                        Argument::Spread(expression) => {
+                            let array = expression
+                                .eval(state)?
+                                .try_into_array()
+                                .map_err(|error| {
+                                    state.trace_error(
+                                        error.into(),
+                                        expression.id(),
+                                    )
+                                })?;
+                            arguments.extend(array);
+                        }
+                    }
+                }
+
                 function.call(state, self.id().into(), arguments)
+            }
+            // f?.() syntax. Skip the call, do NOT eval arguments
+            Value::Undefined | Value::Null if self.optional => {
+                Ok(Value::Undefined)
             }
             _ => Err(ValueError::Type {
                 expected: ValueType::Function,

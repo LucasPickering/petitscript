@@ -188,6 +188,7 @@ impl FunctionCall {
                 })
                 .collect::<Vec<_>>()
                 .into(),
+            optional: false,
         }
     }
 

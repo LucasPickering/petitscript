@@ -10,9 +10,9 @@ pub use scope::{GlobalEnvironment, Prototype};
 #[cfg(feature = "serde")]
 use crate::error::ValueError;
 use crate::{
-    Error, Source,
+    Source,
     compile::Program,
-    error::RuntimeError,
+    error::{DuplicateAppData, RuntimeError, RuntimeErrorKind, UnknownAppData},
     execute::{
         exec::Execute,
         state::{CallSite, ThreadState},
@@ -79,32 +79,43 @@ impl Process {
     /// Get user-defined app data attached to the process
     ///
     /// App data is stored and fetched by type, meaning **there can only be one
-    /// piece of app data per type**. Return [Error::UnknownAppData] if there is
-    /// no app data of type `T`. See [set_app_data](Self::set_app_data).
-    pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
+    /// piece of app data per type**. See [set_app_data](Self::set_app_data) for
+    /// examples.
+    ///
+    /// ## Errors
+    ///
+    /// Return [UnknownAppData] if there is no app data of type `T`.
+    pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, UnknownAppData> {
         self.app_data.get()
     }
 
-    /// Attach arbitrary data of a statically known type to this process. This
-    /// data will be accessible to all subsequent executions of this process.
-    /// This makes it easy to pass data to native functions.
+    /// Attach arbitrary data of a statically known type to this process
+    ///
+    /// This data will be accessible to all subsequent executions of this
+    /// process. This makes it easy to pass data to native functions.
     ///
     /// App data is keyed by its type, meaning **only one instance of any given
     /// type can be stored.**
     ///
+    /// TODO example code
+    ///
     /// ## Errors
     ///
-    /// Return [Error::DuplicateAppData] if there is already app data of type
+    /// Return [DuplicateAppData] if there is already app data of type
     /// `T` registered.
     pub fn set_app_data<T: Any + Send + Sync>(
         &mut self,
         data: T,
-    ) -> Result<(), Error> {
+    ) -> Result<(), DuplicateAppData> {
         self.app_data.set(data)
     }
 
     /// Execute the loaded program and return its exported values
-    pub fn execute(&self) -> Result<Exports, Error> {
+    ///
+    /// ## Errors
+    ///
+    /// TODO
+    pub fn execute(&self) -> Result<Exports, RuntimeError> {
         let mut thread_state = self.create_thread();
         self.program.module().exec(&mut thread_state)?;
         // Exporting is available here because we're in the root scope
@@ -114,17 +125,19 @@ impl Process {
     /// Call a function that originated from this process
     ///
     /// TODO what happens if you pass it a function from another process?
+    ///
+    /// ## Errors
+    ///
+    /// TODO
     pub fn call(
         &self,
         function: &Function,
         arguments: Vec<Value>,
-    ) -> Result<Value, Error> {
+    ) -> Result<Value, RuntimeError> {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(Arc::clone(&self.globals), self, false);
-        function
-            .call(&mut thread_state, CallSite::Native, arguments)
-            .map_err(Error::from)
+        function.call(&mut thread_state, CallSite::Native, arguments)
     }
 
     /// Create a new thread to evaluate a module
@@ -136,10 +149,12 @@ impl Process {
     fn native_module(
         &self,
         name: &NativeModuleName,
-    ) -> Result<&Exports, RuntimeError> {
+    ) -> Result<&Exports, RuntimeErrorKind> {
         self.modules
             .get(name)
-            .ok_or_else(|| RuntimeError::UnknownModule { name: name.clone() })
+            .ok_or_else(|| RuntimeErrorKind::UnknownModule {
+                name: name.clone(),
+            })
     }
 }
 
@@ -275,21 +290,25 @@ struct AppData(
 );
 
 impl AppData {
-    fn get<T: Any + Send + Sync>(&self) -> Result<&T, Error> {
+    fn get<T: Any + Send + Sync>(&self) -> Result<&T, UnknownAppData> {
         // TODO return a ref from this instead once we eliminate the outer arc
-        let data = self.0.get(&TypeId::of::<T>()).ok_or_else(|| {
-            Error::UnknownAppData {
-                type_name: any::type_name::<T>(),
-            }
-        })?;
+        let data =
+            self.0
+                .get(&TypeId::of::<T>())
+                .ok_or_else(|| UnknownAppData {
+                    type_name: any::type_name::<T>(),
+                })?;
         // Downcast can never fail because the key and value are derived from
         // the same original type T
         Ok(data.downcast_ref().expect("Incorrect type for app data"))
     }
 
-    fn set<T: Any + Send + Sync>(&mut self, data: T) -> Result<(), Error> {
+    fn set<T: Any + Send + Sync>(
+        &mut self,
+        data: T,
+    ) -> Result<(), DuplicateAppData> {
         match self.0.entry(TypeId::of::<T>()) {
-            Entry::Occupied(_) => Err(Error::DuplicateAppData {
+            Entry::Occupied(_) => Err(DuplicateAppData {
                 type_name: any::type_name::<T>(),
             }),
             Entry::Vacant(entry) => {

@@ -2,7 +2,7 @@
 //! module, not exposed to users.
 
 use crate::{
-    Process, RuntimeError,
+    Process, RuntimeErrorKind,
     ast::Identifier,
     value::{
         FromPetitArgs, Function, IntoPetitResult, Value, ValueType,
@@ -79,11 +79,11 @@ impl Scope {
 
     /// Get the value of a binding. Return an error if the binding doesn't exist
     /// in scope.
-    pub fn get(&self, name: &str) -> Result<Value, RuntimeError> {
+    pub fn get(&self, name: &str) -> Result<Value, RuntimeErrorKind> {
         // Search up the chain until we find the name
         self.chain()
             .find_map(|environment| environment.get(name).cloned())
-            .ok_or_else(|| RuntimeError::Reference {
+            .ok_or_else(|| RuntimeErrorKind::Reference {
                 name: name.to_owned(),
             })
     }
@@ -109,7 +109,7 @@ impl Scope {
     pub fn captures(
         &self,
         identifiers: &[Identifier],
-    ) -> Result<Captures, RuntimeError> {
+    ) -> Result<Captures, RuntimeErrorKind> {
         // It's possible this is slow, because we constantly restruct the
         // iterator to go up the chain. It may be faster to flip it around and
         // walk the chain once, searching for each unfound name in the process
@@ -118,7 +118,7 @@ impl Scope {
             .map(|identifier| {
                 let name = identifier.as_str();
                 let value = self.get(name).map_err(|_| {
-                    RuntimeError::internal(format!(
+                    RuntimeErrorKind::internal(format!(
                         "Captured variable `{name}` not available in scope"
                     ))
                 })?;

@@ -6,19 +6,20 @@ mod parse;
 pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
-    Error, Source,
+    Source,
     ast::{Module, Node, Walk},
     compile::function::{CaptureFunctions, LabelFunctions},
+    error::ParseErrors,
     source::{SourceTable, SpanTable},
 };
 
 /// Parse some source code into an AST
-pub fn parse(source: impl Into<Source>) -> Result<Node<Module>, Error> {
+pub fn parse(source: impl Into<Source>) -> Result<Node<Module>, ParseErrors> {
     Ok(Compiler::new(source).parse()?.program.module)
 }
 
 /// Parse and compile source code into an executable [Program]
-pub fn compile(source: impl Into<Source>) -> Result<Program, Error> {
+pub fn compile(source: impl Into<Source>) -> Result<Program, ParseErrors> {
     let program = Compiler::new(source).parse()?.label().capture().end();
     Ok(program)
 }
@@ -105,7 +106,7 @@ impl Compiler<()> {
     }
 
     /// Parse source code into an AST
-    fn parse(mut self) -> Result<Compiler<ParsedAst>, Error> {
+    fn parse(mut self) -> Result<Compiler<ParsedAst>, ParseErrors> {
         let (module, spans) = parse::parse(&mut self.sources)?;
         Ok(Compiler {
             sources: self.sources,

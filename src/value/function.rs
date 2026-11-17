@@ -1,7 +1,7 @@
 use crate::{
     Process,
     ast::FunctionDefinition,
-    error::RuntimeError,
+    error::RuntimeErrorKind,
     value::{FromPetit, IntoPetit, Value},
 };
 use indexmap::IndexMap;
@@ -196,7 +196,7 @@ impl FromIterator<(String, Value)> for Captures {
 pub struct NativeFunction(
     #[expect(clippy::type_complexity)]
     Arc<
-        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeError>
+        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeErrorKind>
             + Send
             + Sync,
     >,
@@ -215,7 +215,7 @@ impl NativeFunction {
             // TODO add error context
             let args = Args::from_petit_args(args)?;
             let output = f(process, args).into_petit_result()?;
-            output.into_petit().map_err(RuntimeError::Value)
+            output.into_petit().map_err(RuntimeErrorKind::Value)
         };
         Self(Arc::new(function))
     }
@@ -225,7 +225,7 @@ impl NativeFunction {
         &self,
         process: &Process,
         arguments: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value, RuntimeErrorKind> {
         (self.0)(process, arguments)
     }
 }
@@ -252,7 +252,7 @@ impl PartialEq for NativeFunction {
 pub struct BoundFunction(
     #[expect(clippy::type_complexity)]
     Arc<
-        dyn Fn(&Process, Value, Vec<Value>) -> Result<Value, RuntimeError>
+        dyn Fn(&Process, Value, Vec<Value>) -> Result<Value, RuntimeErrorKind>
             + Send
             + Sync,
     >,
@@ -274,7 +274,7 @@ impl BoundFunction {
                 let this = This::from_petit(this.clone())?;
                 let args = Args::from_petit_args(args)?;
                 let output = f(process, this, args).into_petit_result()?;
-                output.into_petit().map_err(RuntimeError::Value)
+                output.into_petit().map_err(RuntimeErrorKind::Value)
             };
         Self(Arc::new(function))
     }
@@ -285,7 +285,7 @@ impl BoundFunction {
         process: &Process,
         receiver: Value,
         arguments: Vec<Value>,
-    ) -> Result<Value, RuntimeError> {
+    ) -> Result<Value, RuntimeErrorKind> {
         (self.0)(process, receiver, arguments)
     }
 }
@@ -312,7 +312,7 @@ pub struct Varargs(pub Vec<Value>);
 
 /// TODO
 pub trait FromPetitArgs: Sized {
-    fn from_petit_args(args: Vec<Value>) -> Result<Self, RuntimeError>;
+    fn from_petit_args(args: Vec<Value>) -> Result<Self, RuntimeErrorKind>;
 }
 
 /// A recursive macro to pull a static number of arguments out of the arg array,
@@ -354,7 +354,9 @@ macro_rules! impl_from_petit_args {
         impl<'a, $($arg_types,)*> FromPetitArgs for ($($arg_types,)*)
             where $($arg_types: FromPetit,)*
         {
-            fn from_petit_args(mut args: Vec<Value>) -> Result<Self, RuntimeError> {
+            fn from_petit_args(mut args: Vec<Value>) ->
+                Result<Self, RuntimeErrorKind>
+            {
                 Ok(call_fn!(&mut args, ($($arg_types,)*)))
             }
         }
@@ -362,21 +364,21 @@ macro_rules! impl_from_petit_args {
 }
 
 impl FromPetitArgs for () {
-    fn from_petit_args(_: Vec<Value>) -> Result<Self, RuntimeError> {
+    fn from_petit_args(_: Vec<Value>) -> Result<Self, RuntimeErrorKind> {
         Ok(())
     }
 }
 
 /// TODO
 impl FromPetitArgs for Varargs {
-    fn from_petit_args(values: Vec<Value>) -> Result<Self, RuntimeError> {
+    fn from_petit_args(values: Vec<Value>) -> Result<Self, RuntimeErrorKind> {
         Ok(Self(values))
     }
 }
 
 /// Special case implementation: a single argument doesn't need a tuple wrapper
 impl<T0: FromPetit> FromPetitArgs for T0 {
-    fn from_petit_args(mut args: Vec<Value>) -> Result<Self, RuntimeError> {
+    fn from_petit_args(mut args: Vec<Value>) -> Result<Self, RuntimeErrorKind> {
         let arg0 = get_arg(&mut args, 0)?;
         Ok(arg0)
     }
@@ -399,7 +401,7 @@ impl_from_petit_args!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
 fn get_arg<T: FromPetit>(
     args: &mut [Value],
     index: usize,
-) -> Result<T, RuntimeError> {
+) -> Result<T, RuntimeErrorKind> {
     let value = if index < args.len() {
         mem::take(&mut args[index])
     } else {
@@ -407,7 +409,7 @@ fn get_arg<T: FromPetit>(
         Value::Undefined
     };
     let converted = T::from_petit(value).map_err(|error| {
-        RuntimeError::from(error)
+        RuntimeErrorKind::from(error)
             .context(format!("Error converting argument {index}"))
     })?;
     Ok(converted)
@@ -416,17 +418,17 @@ fn get_arg<T: FromPetit>(
 /// TODO
 pub trait IntoPetitResult {
     /// TODO
-    fn into_petit_result(self) -> Result<Value, RuntimeError>;
+    fn into_petit_result(self) -> Result<Value, RuntimeErrorKind>;
 }
 
 impl<T: IntoPetit> IntoPetitResult for T {
-    fn into_petit_result(self) -> Result<Value, RuntimeError> {
-        self.into_petit().map_err(RuntimeError::from)
+    fn into_petit_result(self) -> Result<Value, RuntimeErrorKind> {
+        self.into_petit().map_err(RuntimeErrorKind::from)
     }
 }
 
-impl<T: IntoPetit, E: Into<RuntimeError>> IntoPetitResult for Result<T, E> {
-    fn into_petit_result(self) -> Result<Value, RuntimeError> {
+impl<T: IntoPetit, E: Into<RuntimeErrorKind>> IntoPetitResult for Result<T, E> {
+    fn into_petit_result(self) -> Result<Value, RuntimeErrorKind> {
         match self {
             Ok(value) => Ok(value.into_petit()?),
             Err(error) => Err(error.into()),

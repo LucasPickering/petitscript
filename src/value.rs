@@ -20,7 +20,7 @@ pub use object::Object;
 pub use string::PetitString;
 
 use crate::{
-    error::{RuntimeError, ValueError},
+    error::{RuntimeErrorKind, ValueError},
     value::macros::{
         ensure_type, impl_value_conversions, impl_value_from,
         impl_value_numeric_binary_op,
@@ -179,9 +179,9 @@ impl Value {
     }
 
     /// Parse a JSON string into a PetitScript value
-    pub fn from_json(json: &str) -> Result<Self, RuntimeError> {
+    pub fn from_json(json: &str) -> Result<Self, RuntimeErrorKind> {
         json::parse_json(json)
-            .map_err(|error| RuntimeError::JsonParse { error })
+            .map_err(|error| RuntimeErrorKind::JsonParse { error })
     }
 
     /// If this value is a string, get the inner string. Otherwise return a type
@@ -283,7 +283,7 @@ impl Value {
     pub(crate) fn get(
         &self,
         property: &Self,
-    ) -> Result<Option<Value>, RuntimeError> {
+    ) -> Result<Option<Value>, RuntimeErrorKind> {
         match (self, property) {
             (Self::Array(array), Self::Number(Number::Int(i))) => {
                 // If the index is positive and in the array, get the value
@@ -297,7 +297,7 @@ impl Value {
             (Self::Object(object), Self::String(key)) => {
                 Ok(object.get(key).cloned())
             }
-            (Self::Undefined | Self::Null, _) => Err(RuntimeError::Property {
+            (Self::Undefined | Self::Null, _) => Err(RuntimeErrorKind::Property {
                 value: self.clone(),
                 property: property.clone(),
             }),

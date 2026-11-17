@@ -6,7 +6,7 @@ use crate::{
         Block, Declaration, ExportDeclaration, FunctionBody, If,
         ImportDeclaration, ImportModule, Module, Node, Statement, Variable,
     },
-    error::{RuntimeError, TracedError},
+    error::{RuntimeError, RuntimeErrorKind},
     execute::{ThreadState, eval::Evaluate},
     util::OptionExt,
     value::Value,
@@ -25,7 +25,7 @@ pub trait Execute {
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,
-    ) -> Result<Self::Output<'process>, TracedError>;
+    ) -> Result<Self::Output<'process>, RuntimeError>;
 }
 
 impl<T, O> Execute for [T]
@@ -34,7 +34,7 @@ where
 {
     type Output<'process> = Option<O>;
 
-    fn exec(&self, state: &mut ThreadState) -> Result<Option<O>, TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<Option<O>, RuntimeError> {
         for statement in self {
             let output = statement.exec(state)?;
             if let Some(output) = output {
@@ -48,7 +48,7 @@ where
 impl Execute for Module {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
         self.statements.exec(state)?;
         Ok(())
     }
@@ -61,7 +61,7 @@ impl Execute for Node<Statement> {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Return>, TracedError> {
+    ) -> Result<Option<Return>, RuntimeError> {
         match &self.data() {
             Statement::Empty => Ok(None),
             Statement::Block(block) => {
@@ -107,7 +107,7 @@ impl Execute for Block {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Return>, TracedError> {
+    ) -> Result<Option<Return>, RuntimeError> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -120,13 +120,13 @@ impl Execute for Block {
 impl Execute for Node<ImportDeclaration> {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
         let mut exports = self.module.exec(state)?;
 
         if let Some(name) = &self.default {
             let value = exports.default.ok_or_else(|| {
                 state.trace_error(
-                    RuntimeError::UnknownImport { identifier: None },
+                    RuntimeErrorKind::UnknownImport { identifier: None },
                     name.id(),
                 )
             })?;
@@ -138,7 +138,7 @@ impl Execute for Node<ImportDeclaration> {
                 .swap_remove(named.imported.as_str())
                 .ok_or_else(|| {
                     state.trace_error(
-                        RuntimeError::UnknownImport {
+                        RuntimeErrorKind::UnknownImport {
                             identifier: Some(named.imported.to_string()),
                         },
                         named.id(),
@@ -157,7 +157,7 @@ impl Execute for Node<ImportModule> {
     /// Resolve a module name/path into its exports. For native modules this
     /// just grabs the exports from the registry. For paths, it will execute
     /// the external program
-    fn exec(&self, state: &mut ThreadState) -> Result<Exports, TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<Exports, RuntimeError> {
         match &self.data() {
             ImportModule::Native(name) => state
                 .process()
@@ -179,7 +179,7 @@ impl Execute for Node<ImportModule> {
 impl Execute for Node<ExportDeclaration> {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), TracedError> {
+    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
         match &self.data() {
             ExportDeclaration::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
@@ -205,7 +205,7 @@ impl Execute for If {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Option<Return>, TracedError> {
+    ) -> Result<Option<Return>, RuntimeError> {
         if self.condition.eval(state)?.to_bool() {
             self.body.exec(state)
         } else if let Some(statement) = &self.else_body {
@@ -223,7 +223,7 @@ impl Execute for Node<Declaration> {
     fn exec(
         &self,
         state: &mut ThreadState,
-    ) -> Result<Vec<String>, TracedError> {
+    ) -> Result<Vec<String>, RuntimeError> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -241,7 +241,7 @@ impl Execute for Variable {
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,
-    ) -> Result<Self::Output<'process>, TracedError> {
+    ) -> Result<Self::Output<'process>, RuntimeError> {
         let value = self
             .init
             .as_ref()
@@ -258,7 +258,7 @@ impl Execute for FunctionBody {
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,
-    ) -> Result<Self::Output<'process>, TracedError> {
+    ) -> Result<Self::Output<'process>, RuntimeError> {
         match self {
             Self::Expression(expression) => expression.eval(state),
             Self::Block(block) => match block.exec(state)? {

@@ -20,36 +20,34 @@ use winnow::error::ContextError;
 
 /// Any error that can occur within PetitScript
 ///
-/// TODO explain sub-errors: ParseError and RuntimeError are returned when we
-/// can be more specific.
-/// - [ParseError] TODO
-/// - [RuntimeError] TODO
+/// This is a catch-all container for all error types. It's never returned
+/// directly by any functions in the library. It's just a convenience for
+/// downstream code that wants to group different PetitScript-related errors
+/// together.
+///
+/// Each variant corresponds to another error type in this module, and this
+/// implements [From] for each variant. The two most common variants are:
+/// - [Error::Parse]: Error while parsing/compiling a program
+/// - [Error::Runtime]: Error while executing a program
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Attempted to register two values of the same type as app data
     ///
-    /// See [Process::app_data](crate::Process::app_data).
-    #[error("Multiple app data values of type `{type_name}` were registered")]
-    DuplicateAppData { type_name: &'static str },
+    /// See [DuplicateAppData].
+    #[error(transparent)]
+    DuplicateAppData(#[from] DuplicateAppData),
 
     /// Error(s) while parsing source code
     ///
     /// See [ParseErrors].
     #[error(transparent)]
-    Parse(ParseErrors),
+    Parse(#[from] ParseErrors),
 
     /// Error while executing a PetitScript program
     ///
-    /// All runtime errors have an attached source span, indicating the point in
-    /// the program where the error occurred.
-    #[error("{trace}{error}")]
-    Runtime {
-        /// Inner error
-        #[source]
-        error: RuntimeError,
-        /// A trace showing every function call leading up to the error
-        trace: StackTrace,
-    },
+    /// See [RuntimeError].
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
 
     /// Error loading a source
     ///
@@ -57,30 +55,15 @@ pub enum Error {
     #[error(transparent)]
     Source(#[from] SourceError),
 
-    /// Requested app data of a type that has not been set
+    /// User requested app data of a type that has not been set
     ///
-    /// See [Process::app_data](crate::Process::app_data).
-    #[error("No app data of type `{type_name}` is registered")]
-    UnknownAppData { type_name: &'static str },
+    /// See [UnknownAppData].
+    #[error(transparent)]
+    UnknownAppData(#[from] UnknownAppData),
 
     /// Error in value conversion
     #[error(transparent)]
     Value(#[from] ValueError),
-}
-
-impl From<ParseErrors> for Error {
-    fn from(errors: ParseErrors) -> Self {
-        Self::Parse(errors)
-    }
-}
-
-impl From<TracedError> for Error {
-    fn from(error: TracedError) -> Self {
-        Self::Runtime {
-            error: error.error,
-            trace: error.trace,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -114,7 +97,8 @@ impl ParseErrors {
     /// [annotate_snippets::Renderer].
     ///
     /// ```
-    /// let errors = todo!();
+    /// # use petitscript::Engine;
+    /// let errors = Engine::default().parse("let x = 3;").unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
     /// eprintln!("{}", renderer.render(&errors.to_report()));
     /// ```
@@ -147,6 +131,9 @@ impl ParseErrors {
 /// The first step will fail if the source code is not valid syntax. The second
 /// will fail if the code is not valid PetitScript. As PS is a small subset of
 /// JS, there are many syntactic constructs in JS that are not valid PS.
+///
+/// This is typically contained within [ParseErrors], which aggregates all the
+/// errors for a single parsing run.
 #[derive(Debug)]
 pub struct ParseError {
     /// What bad thing happen
@@ -448,9 +435,22 @@ impl Display for Unsupported {
     }
 }
 
-/// Any error that can occur during the execution of a program
+/// A runtime error paired with its stack trace
 #[derive(Debug, thiserror::Error)]
-pub enum RuntimeError {
+#[error("{trace}{error}")]
+pub struct RuntimeError {
+    /// What go wrong
+    pub error: RuntimeErrorKind,
+    /// Trace of function calls leading to the error
+    pub trace: StackTrace,
+}
+
+/// The categories of errors that can occuring while running a program
+///
+/// This is contained by [RuntimeError], which carries the error along with its
+/// stack trace.
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeErrorKind {
     /// Attempted to export the same name twice
     #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
@@ -524,7 +524,7 @@ pub enum RuntimeError {
     },
 }
 
-impl RuntimeError {
+impl RuntimeErrorKind {
     /// Wrap a custom error type
     pub fn other(error: impl 'static + StdError + Send + Sync) -> Self {
         Self::Other(error.into())
@@ -547,17 +547,68 @@ impl RuntimeError {
     }
 }
 
-/// A runtime error paired with its stack trace
+/// A list of source locations representing the function call stack
 ///
-/// This is only for internal use, to pack the two together. It's much easier
-/// than including the stack trace on every variant of [RuntimeError]. We unpack
-/// this into [Error::Runtime] before returning it to the user, to remove an
-/// unnecessary layer of indirection.
-pub(crate) struct TracedError {
+/// This captures the call stack at a particular moment in time, typically when
+/// an error occurs. The most recent call is _last_ on this stack.
+#[derive(Debug, Default)]
+pub struct StackTrace(
+    /// Invariant: this list is never empty
+    Vec<StackTraceFrame>,
+);
+
+impl StackTrace {
+    /// Get the last (most recent) frame on the stack
+    pub fn last(&self) -> &StackTraceFrame {
+        self.0.last().expect("Stack trace cannot be empty")
+    }
+
+    /// Get an iterator over the frames of this stack
+    ///
+    /// The most recent call will be _last_.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &StackTraceFrame> {
+        self.0.iter()
+    }
+}
+
+impl Display for StackTrace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Error (most recent call last)")?;
+        for frame in &self.0 {
+            writeln!(f, "  {frame}")?;
+        }
+        Ok(())
+    }
+}
+
+impl IntoIterator for StackTrace {
+    type Item = StackTraceFrame;
+    type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl FromIterator<StackTraceFrame> for StackTrace {
+    fn from_iter<T: IntoIterator<Item = StackTraceFrame>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+/// One frame in a stack trace
+#[derive(Debug)]
+pub struct StackTraceFrame {
     /// TODO
-    pub error: RuntimeError,
+    pub span: QualifiedSpan,
     /// TODO
-    pub trace: StackTrace,
+    pub function_name: String,
+}
+
+impl Display for StackTraceFrame {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "in {} at {}", self.function_name, self.span)
+    }
 }
 
 /// An error that can occur while converting to/from [Value]
@@ -637,58 +688,20 @@ pub struct ModuleNameError {
     pub name: String,
 }
 
-/// A list of source locations representing the function call stack
+/// User requested app data of a type that has not been set
 ///
-/// This captures the call stack at a particular moment in time, typically when
-/// an error occurs. The most recent call is _last_ on this stack.
-#[derive(Debug, Default)]
-pub struct StackTrace(Vec<StackTraceFrame>);
-
-impl StackTrace {
-    /// Get an iterator over the frames of this stack
-    ///
-    /// The most recent call will be _last_.
-    pub fn iter(&self) -> impl Iterator<Item = &StackTraceFrame> {
-        self.0.iter()
-    }
+/// See [Process::app_data](crate::Process::app_data).
+#[derive(Debug, thiserror::Error)]
+#[error("no app data of type `{type_name}` is registered")]
+pub struct UnknownAppData {
+    pub type_name: &'static str,
 }
 
-impl Display for StackTrace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error (most recent call last)")?;
-        for frame in &self.0 {
-            writeln!(f, "  {frame}")?;
-        }
-        Ok(())
-    }
-}
-
-impl IntoIterator for StackTrace {
-    type Item = StackTraceFrame;
-    type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl FromIterator<StackTraceFrame> for StackTrace {
-    fn from_iter<T: IntoIterator<Item = StackTraceFrame>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
-    }
-}
-
-/// One frame in a stack trace
-#[derive(Debug)]
-pub struct StackTraceFrame {
-    /// TODO
-    pub span: QualifiedSpan,
-    /// TODO
-    pub function_name: String,
-}
-
-impl Display for StackTraceFrame {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "in {} at {}", self.function_name, self.span)
-    }
+/// Attempted to register two values of the same type as app data
+///
+/// See [Process::app_data](crate::Process::app_data).
+#[derive(Debug, thiserror::Error)]
+#[error("multiple app data values of type `{type_name}` were registered")]
+pub struct DuplicateAppData {
+    pub type_name: &'static str,
 }

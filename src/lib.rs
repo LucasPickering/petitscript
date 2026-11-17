@@ -1,8 +1,11 @@
 //! PetitScript is a **minimal** JavaScript subset designed for embeddability
 //!
-//! PS is intended as sidecar language for extensible scripting attached to
-//! Rust programs. It serves a similar role as [Lua](https://www.lua.org/),
-//! [Rhai](https://docs.rs/rhai/latest/rhai/), and others.
+//! PetitScript is intended as sidecar language for extensible scripting
+//! attached to Rust programs. It serves a related role to [Lua](https://www.lua.org/),
+//! [Rhai](https://docs.rs/rhai/latest/rhai/), and others. **However**,
+//! PetitScript is more specifically designed for app configuration. The
+//! [immutable semantics](TODO) are meant to force declarative code that is
+//! easy to read and reason about. TODO link to Slumber?
 //!
 //! The primary advantage of PS over other scripting languages is the
 //! familiarity of its syntax and semantics. Most people already know
@@ -35,15 +38,18 @@
 //! Here's a simple example of compiling and executing some PetitScript code:
 //!
 //! ```
-//! use petitscript::Engine;
+//! use petitscript::{Error, Engine};
 //!
-//! let engine = Engine::new();
-//! // TODO reevaluate the naming of everything:
-//! // - Process is kinda clunky/confusing
-//! // - execute() doesn't sound like it should return exports
-//! let process = engine.compile("export default 4;").unwrap();
-//! let exports = process.execute().unwrap();
-//! assert_eq!(exports.default, Some(4.into()));
+//! fn main() -> Result<(), Error> {
+//!     let engine = Engine::new();
+//!     // TODO reevaluate the naming of everything:
+//!     // - Process is kinda clunky/confusing
+//!     // - execute() doesn't sound like it should return exports
+//!     let process = engine.compile("export default 4;")?;
+//!     let exports = process.execute()?;
+//!     assert_eq!(exports.default, Some(4.into()));
+//!     Ok(())
+//! }
 //! ```
 //!
 //! ## Examples
@@ -82,7 +88,7 @@ pub use crate::{
 use crate::{
     ast::{Module, Node},
     compile::Program,
-    error::RuntimeError,
+    error::{ParseErrors, RuntimeErrorKind},
     execute::GlobalEnvironment,
     stdlib::stdlib,
 };
@@ -153,25 +159,40 @@ impl Engine {
     /// This is only useful if you want to introspect the compiled program. If
     /// you're just executing code, you should call [Engine::compile] to get
     /// the compiled process in a single step.
+    ///
+    /// ## Errors
+    ///
+    /// Return an error if the program is syntactically invalid.
     pub fn parse(
         &self,
         source: impl Into<Source>,
-    ) -> Result<Node<Module>, Error> {
+    ) -> Result<Node<Module>, ParseErrors> {
         compile::parse(source)
     }
 
     /// Parse and compile some source code into an executable [Process]
-    pub fn compile(&self, source: impl Into<Source>) -> Result<Process, Error> {
+    ///
+    /// ## Errors
+    ///
+    /// Return an error if the program is syntactically invalid. PetitScript has
+    /// no static checks beyond imports and parsing, so [ParseErrors] is the
+    /// only possible error.
+    pub fn compile(
+        &self,
+        source: impl Into<Source>,
+    ) -> Result<Process, ParseErrors> {
         let program = compile::compile(source)?;
         Ok(self.spawn(program))
     }
 
-    /// Compile a prebuilt AST into an executable [Process]. Helpful for tests
-    /// and other environments where an AST is built programatically rather
-    /// than by parsing source code.
-    pub fn compile_ast(&self, module: Node<Module>) -> Result<Process, Error> {
+    /// Compile a pre-parsed AST into an executable [Process]
+    ///
+    /// This is helpful for tests and other environments where an AST is built
+    /// programatically rather than by parsing source code. This is infallible
+    /// because parsing is the only fallible part of the compilation pipeline.
+    pub fn compile_ast(&self, module: Node<Module>) -> Process {
         let program = compile::compile_ast(module);
-        Ok(self.spawn(program))
+        self.spawn(program)
     }
 
     /// Create a new process to execute a compiled program

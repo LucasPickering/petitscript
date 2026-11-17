@@ -1,10 +1,10 @@
 //! Program state management
 
 use crate::{
-    Process, RuntimeError,
+    Process, RuntimeErrorKind,
     ast::{ArrayPatternElement, Binding, Node, NodeId},
     compile::Program,
-    error::{StackTraceFrame, TracedError},
+    error::{StackTraceFrame, RuntimeError},
     execute::{
         Exports,
         eval::Evaluate,
@@ -55,11 +55,11 @@ impl<'process> ThreadState<'process> {
     }
 
     /// Set a named export value
-    pub fn export(&mut self, name: String) -> Result<(), RuntimeError> {
+    pub fn export(&mut self, name: String) -> Result<(), RuntimeErrorKind> {
         let value = self.scope().get(&name)?;
         let exports = self.exports_mut()?;
         match exports.named.entry(name) {
-            Entry::Occupied(entry) => Err(RuntimeError::AlreadyExported {
+            Entry::Occupied(entry) => Err(RuntimeErrorKind::AlreadyExported {
                 name: entry.key().clone(),
             }),
             Entry::Vacant(entry) => {
@@ -70,10 +70,10 @@ impl<'process> ThreadState<'process> {
     }
 
     /// Set the default export value
-    pub fn export_default(&mut self, value: Value) -> Result<(), RuntimeError> {
+    pub fn export_default(&mut self, value: Value) -> Result<(), RuntimeErrorKind> {
         let exports = self.exports_mut()?;
         if exports.default.is_some() {
-            return Err(RuntimeError::AlreadyExported {
+            return Err(RuntimeErrorKind::AlreadyExported {
                 name: "(default)".into(),
             });
         }
@@ -86,15 +86,15 @@ impl<'process> ThreadState<'process> {
         self.exports
     }
 
-    fn exports_mut(&mut self) -> Result<&mut Exports, RuntimeError> {
+    fn exports_mut(&mut self) -> Result<&mut Exports, RuntimeErrorKind> {
         if self.scope().is_root() {
             // If exports aren't defined, it means we were invoked from a
             // function entrypoint. Therefore we're not in the root scope and
             // exports aren't allowed
-            self.exports.as_mut().ok_or(RuntimeError::IllegalExport)
+            self.exports.as_mut().ok_or(RuntimeErrorKind::IllegalExport)
         } else {
             // We're not at the root of the source file - no exports allowed!
-            Err(RuntimeError::IllegalExport)
+            Err(RuntimeErrorKind::IllegalExport)
         }
     }
 
@@ -102,9 +102,9 @@ impl<'process> ThreadState<'process> {
     /// as the most recent location in the trace.
     pub fn trace_error(
         &self,
-        error: RuntimeError,
+        error: RuntimeErrorKind,
         current: impl Into<CallSite>,
-    ) -> TracedError {
+    ) -> RuntimeError {
         let current = current.into();
         let program = self.program();
         let trace = self
@@ -130,7 +130,7 @@ impl<'process> ThreadState<'process> {
                 }
             })
             .collect();
-        TracedError { error, trace }
+        RuntimeError { error, trace }
     }
 
     /// TODO
@@ -188,7 +188,7 @@ impl<'process> ThreadState<'process> {
         &mut self,
         binding: &Node<Binding>,
         value: Value,
-    ) -> Result<Vec<String>, TracedError> {
+    ) -> Result<Vec<String>, RuntimeError> {
         match binding.data() {
             Binding::Identifier(identifier) => {
                 let name = identifier.as_str().to_owned();

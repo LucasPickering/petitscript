@@ -5,7 +5,7 @@ mod object;
 mod string;
 
 use crate::{
-    error::RuntimeError,
+    error::RuntimeErrorKind,
     execute::GlobalEnvironment,
     value::{function::Varargs, Number, Object, Value, ValueType},
     Process,
@@ -90,6 +90,6 @@ fn json_parse(
     _: &Process,
     input: String,
     // TODO support `reviver` arg
-) -> Result<Value, RuntimeError> {
+) -> Result<Value, RuntimeErrorKind> {
     Value::from_json(&input)
 }

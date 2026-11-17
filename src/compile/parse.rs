@@ -129,9 +129,8 @@ impl ParseContext<'_> {
     fn map_span(&self, span: oxc_span::Span) -> Span {
         Span {
             source_id: self.current_source_id,
-            // Assuming this will never run on a <32-bit platform
-            start_offset: span.start as usize,
-            end_offset: span.end as usize,
+            start_offset: span.start,
+            end_offset: span.end,
         }
     }
 

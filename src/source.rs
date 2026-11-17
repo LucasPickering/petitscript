@@ -169,7 +169,6 @@ impl SourceTable {
 /// TODO more
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Span {
-    // TODO shrink these to u32 - it cuts the struct size in half
     /// ID of the [Source] (typically a file) containing the code
     ///
     /// This is just an ID because we create thousands of spans, so we need
@@ -178,11 +177,11 @@ pub struct Span {
     /// Byte offset for the beginning of this span (inclusive)
     ///
     /// Always <= `end_span`.
-    pub start_offset: usize,
+    pub start_offset: u32,
     /// Byte offset for the end of this span (inclusive)
     ///
     /// Always >= `start_span`.
-    pub end_offset: usize,
+    pub end_offset: u32,
 }
 
 impl Span {
@@ -190,8 +189,8 @@ impl Span {
     #[cfg(test)]
     pub fn new(
         source_id: SourceId,
-        start_offset: usize,
-        end_offset: usize,
+        start_offset: u32,
+        end_offset: u32,
     ) -> Self {
         Self {
             source_id,

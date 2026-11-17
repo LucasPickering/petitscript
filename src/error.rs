@@ -111,10 +111,10 @@ impl ParseErrors {
                 Level::ERROR.primary_title(error.to_string()).element(
                     Snippet::source(source.text())
                         .path(source.name())
-                        .annotation(
-                            AnnotationKind::Primary
-                                .span(span.start_offset..span.end_offset),
-                        ),
+                        .annotation(AnnotationKind::Primary.span(
+                            (span.start_offset as usize)
+                                ..(span.end_offset as usize),
+                        )),
                 )
             })
             .collect()
@@ -477,10 +477,10 @@ impl RuntimeError {
                 let source = self.source_table.get(span.source_id);
                 Snippet::source(source.text())
                     .path(source.name())
-                    .annotation(
-                        AnnotationKind::Primary
-                            .span(span.start_offset..span.end_offset),
-                    )
+                    .annotation(AnnotationKind::Primary.span(
+                        (span.start_offset as usize)
+                            ..(span.end_offset as usize),
+                    ))
             }))
     }
 }

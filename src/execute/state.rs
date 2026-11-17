@@ -101,7 +101,10 @@ impl<'process> ThreadState<'process> {
     }
 
     /// Attach a stack trace to the given error, including the given call site
-    /// as the most recent location in the trace.
+    /// as the most recent location in the trace
+    ///
+    /// Typically, `current` is a [NodeId] indicating the nearest AST node to
+    /// the call/error.
     pub fn trace_error(
         &self,
         error: RuntimeErrorKind,

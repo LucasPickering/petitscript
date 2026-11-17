@@ -30,12 +30,12 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-/// An identifier that uniquely identifies an AST node **within the AST**. These
-/// IDs are not globally unique, just within a single AST.
+/// An identifier that uniquely identifies an AST node **within the AST**
+///
+/// These IDs are not globally unique, just within a single AST.
 #[derive(Copy, Clone, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-// TODO can we reuse oxc's NodeId instead?
 pub(crate) struct NodeId(u32);
 
 impl NodeId {

@@ -466,7 +466,7 @@ impl RuntimeError {
     /// let process = engine.compile("f()").unwrap();
     /// let error = process.execute().unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
-    /// eprintln!("{}", renderer.render(&[errors.to_report]()));
+    /// eprintln!("{}", renderer.render(&[error.to_report()]));
     /// ```
     pub fn to_report(&self) -> annotate_snippets::Group<'_> {
         Level::ERROR

@@ -8,11 +8,110 @@
 //! eliminated by the parser, and many other components are simplified from the
 //! formal ECMAScript AST definitions.
 //!
+//! ## Node IDs
+//!
+//! Each AST node gets a unique ID, which is used to associate it with metadata
+//! stored outside the AST (e.g. source spans). These IDs are stored inline in
+//! each node struct, in a field called `id`. They can be accessed generically
+//! via the [Node] trait. There are a lot of ways to do this and they all have
+//! tradeoffs. Some considered alternatives:
+//!
+//! - Store the metadata inline in the AST. Replace each ID with the actual
+//!   metadata. This eliminates the indirection of having a separate metadata
+//!   table, but restricts you to a single metadata type.
+//! - Generic inline metadata. The same solution as above, but add a generic
+//!   param to each node type to define what metadata to store. This adds a lot
+//!   of clutter and requires mapping between metadata types for cases like
+//!   comparing parsed ASTs to generated ones in tests.
+//! - Use a wrapper type that stores the ID, instead of putting it directly in
+//!   the AST types. This removes repetition in the AST definition, but leads to
+//!   lots of cluttered type signatures in code that handles AST types. It also
+//!   creates ambiguity around which types should be used where (e.g.
+//!   `Expression` vs `Node<Expression>`?).
+//! - Use the memory address of each node as its implicit ID. This subverts the
+//!   protection of the borrow checker and completely breaks as soon as you move
+//!   an AST node (which is very common during construction and parsing).
+//! - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
+//!   This adds a lot of complexity and is challenging to then store the AST and
+//!   the encapsulating arena together because they are self-referential.
+//! - Use structural keys, such as a traversal path pointing to each node in the
+//!   tree. This is a recipe for disaster though, because any changes to the
+//!   tree's structure during compilation will completely destroy the keys.
+//!
+//! Overall, storing IDs inline and metadata separately adds flexibility to
+//! cover the two main use cases:
+//! - ASTs parsed from source code
+//! - ASTs generated programatically
+//!
 //! ## Collection Types
 //!
 //! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
 //! allocate more memory than needed.
+//!
+//! ## Building ASTs
+//!
+//! In addition to being constructed via parsing, ASTs can also be constructed
+//! manually. This is useful for building assertions in test cases, but can
+//! also be used to generate PetitScript code programatically.
+//!
+//! All AST fields are public so you can construct them fully by hand, but then
+//! you have to manually assign node IDs. Instead, you can use the methods
+//! defined on the node types to create them more easily. There are also 3
+//! traits that make converting between node types easier:
+//! - [IntoNode]: Convert from a node kind to its parent node (e.g.
+//!   [ExpressionKind] -> [Expression])
+//! - [IntoExpression]: Convert to [Expression] (e.g. [Identifier] ->
+//!   [Expression])
+//! - [IntoStatement]: Convert to [Statement] (e.g. [Declaration] ->
+//!   [Statement])
+//!
+//! ```rust
+//! use petitscript::{
+//!     Engine, Exports,
+//!     ast::{
+//!         BinaryOperator, Declaration, Expression, FunctionBody,
+//!         FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
+//!         IntoExpression, IntoStatement, Module,
+//!     },
+//! };
+//! let module = Module::new([
+//!     Declaration::new("x", 3).export(),
+//!     FunctionDefinition::new(
+//!         // TODO creating a param should be more concise
+//!         [FunctionParameter::identifier("h")],
+//!         FunctionBody::block([Expression::binary(
+//!             BinaryOperator::Mul,
+//!             Identifier::from("x"),
+//!             2,
+//!         )
+//!         .return_()]),
+//!     )
+//!     .declare("f")
+//!     .into_stmt(),
+//!     FunctionCall::new(Identifier::from("f"), [Identifier::from("x")])
+//!         .into_expr()
+//!         .export_default(),
+//! ]);
+//!
+//! // Use the Display impl to convert to source code
+//! assert_eq!(
+//!     module.to_string(),
+//!     "\
+//! export const x = 3;
+//! const f = (n) => {
+//!  return n * 2;
+//! }
+//! export default f(x);
+//! "
+//! );
+//!
+//! // You can also run the code directly:
+//! let engine = Engine::new();
+//! let process = engine.compile_ast(module);
+//! let exports = process.execute().unwrap();
+//! assert_eq!(exports, Exports::new(Some(6), [("x", 3)]));
+//! ```
 
 mod build;
 mod display;
@@ -30,165 +129,49 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-/// An identifier that uniquely identifies an AST node **within the AST**
-///
-/// These IDs are not globally unique, just within a single AST.
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
-pub(crate) struct NodeId(u32);
-
-impl NodeId {
-    pub fn new(id: u32) -> Self {
-        Self(id)
-    }
-}
-
-impl Debug for NodeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // The wrapper provides no debugging value, just clutter
-        self.0.fmt(f)
-    }
-}
-
-/// A wrapper type for an AST node
-///
-/// This wrapper holds a unique ID for each node, which uniquely identifies that
-/// node within the AST. These IDs are used to track metadata, such as source
-/// spans, for each node. The IDs are currently not exposed; the wrapper is
-/// intended to be as transparent as possible.
-///
-/// ## Why?
-///
-/// There are a lot of ways to do this and they all have tradeoffs. Some
-/// considered alternatives:
-///
-/// - Store the metadata inline in the AST. Replace each ID with the actual
-///   metadata. This eliminates the indirection of having a separate metadata
-///   table, but restricts you to a single metadata type.
-/// - Generic inline metadata. The same solution as above, but add a generic
-///   param to each node type to define what metadata to store. This adds a lot
-///   of clutter and requires mapping between metadata types for cases like
-///   comparing parsed ASTs to generated ones in tests.
-/// - Store the ID directly in each node type instead of using a wrapper type.
-///   This declutters a lot of usage cases, but requires the repetition of
-///   adding each node field, and also adds complexity around enums. It forces
-///   you to either add the ID field to every variant of every enum, or
-///   normalize enums so that each variant contains a single unique struct. Both
-///   end up adding more clutter than they save.
-/// - Use the memory address of each node as its implicit ID. This subverts the
-///   protection of the borrow checker and completely breaks as soon as you move
-///   an AST node (which is very common during construction and parsing).
-/// - Store AST nodes in a bump-allocated arena to ensure addresses are stable.
-///   This adds a lot of complexity and is challenging to then store the AST and
-///   the encapsulating arena together because they are self-referential.
-/// - Use structural keys, such as a traversal path pointing to each node in the
-///   tree. This is a recipe for disaster though, because any changes to the
-///   tree's structure during compilation will completely destroy the keys.
-///
-/// Overall, storing metadata separately adds flexibility to cover the two main
-/// use cases:
-/// - ASTs parsed from source code
-/// - ASTs generated programatically
-#[derive(Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Node<T> {
-    id: NodeId,
-    node: T,
-}
-
-impl<T> Node<T> {
-    pub(crate) fn new(id: NodeId, node: T) -> Self {
-        Self { id, node }
-    }
-
-    pub(crate) fn id(&self) -> NodeId {
-        self.id
-    }
-
-    /// Move the contained node value out
-    pub fn into_data(self) -> T {
-        self.node
-    }
-
-    /// Get a reference to the contained node value
-    pub fn data(&self) -> &T {
-        &self.node
-    }
-
-    /// Get a mutable reference to the contained node value
-    pub fn data_mut(&mut self) -> &mut T {
-        &mut self.node
-    }
-}
-
-/// Some parsed statements can be empty, producing optional nodes
-impl<T> Node<Option<T>> {
-    /// Flip `Node<Option<T>>` into `Option<Node<T>>`
-    pub fn transpose(self) -> Option<Node<T>> {
-        match self.node {
-            Some(node) => Some(Node { id: self.id, node }),
-            None => None,
-        }
-    }
-}
-
-impl<T: Debug> Debug for Node<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // The wrapper adds a lot of noise in test output without much value
-        self.node.fmt(f)
-    }
-}
-
-impl<T> Deref for Node<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.node
-    }
-}
-
-impl<T> DerefMut for Node<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.node
-    }
-}
-
-/// Compare equality of node *contents* only. Comparing AST nodes is typically
-/// only useful for tests. Skipping the ID in the comparison makes it much
-/// easier to compare parsed ASTs to generated ones because the IDs will likely
-/// be allocated in a different order.
-impl<T: PartialEq> PartialEq for Node<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.node == other.node
-    }
-}
-
 /// The root AST node for a single source file. This is the outcome of parsing a
 /// file, and may contain nested modules from local imports.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Module {
-    pub statements: Box<[Node<Statement>]>,
+    pub id: NodeId,
+    pub statements: Box<[Statement]>,
 }
 
+impl Node for Module {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// TODO
+pub type Statement = KindedNode<StatementKind>;
+
+/// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Statement {
+pub enum StatementKind {
+    /// TODO
     Empty,
-    Block(Node<Block>),
-    Expression(Node<Expression>),
+    /// TODO
+    Block(Block),
+    /// TODO
+    Expression(Expression),
     /// `const` declaration
-    Declaration(Node<Declaration>),
+    Declaration(Declaration),
 
     // Control flow
     // Loops aren't supported at all because they aren't very useful without
     // mutation. I may add them at some point, but I'm starting minimal.
-    If(Node<If>),
-    Return(Option<Node<Expression>>),
+    /// TODO
+    If(If),
+    /// TODO
+    Return(Option<Expression>),
 
-    Import(Node<ImportDeclaration>),
-    Export(Node<ExportDeclaration>),
+    /// TODO
+    Import(ImportDeclaration),
+    /// TODO
+    Export(ExportDeclaration),
 }
 
 /// A collection of statements, delineated by `{ }`. This declares a new lexical
@@ -196,7 +179,14 @@ pub enum Statement {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Block {
-    pub statements: Box<[Node<Statement>]>,
+    pub id: NodeId,
+    pub statements: Box<[Statement]>,
+}
+
+impl Node for Block {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// A single `const` declaration with one or more declared variables: `const x =
@@ -204,20 +194,34 @@ pub struct Block {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Declaration {
-    pub variables: Box<[Node<Variable>]>,
+    pub id: NodeId,
+    pub variables: Box<[Variable]>,
+}
+
+impl Node for Declaration {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// A single declared variable in a declaration or function parameter
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Variable {
+    pub id: NodeId,
     /// Identifier(s) being bound
-    pub binding: Node<Binding>,
+    pub binding: Binding,
     /// Expression to bind to
     ///
     /// `None` for declarations without initializers, such as (most) function
     /// parameters.
-    pub init: Option<Box<Node<Expression>>>,
+    pub init: Option<Box<Expression>>,
+}
+
+impl Node for Variable {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// The parameters, body, and captures that constitute a user (i.e *not* native)
@@ -226,12 +230,13 @@ pub struct Variable {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionDefinition {
+    pub id: NodeId,
     /// A label for this function, to be passed onto the function value
     ///
     /// This is **not necessarily** the name the function is bound to; that is
     /// defined in the parent [Declaration].
-    pub name: Option<Node<Identifier>>,
-    pub parameters: Box<[Node<FunctionParameter>]>,
+    pub name: Option<Identifier>,
+    pub parameters: Box<[FunctionParameter]>,
     // `Node` not necessary because both variants of the body contain it
     pub body: FunctionBody,
     /// A list of all the identifiers this function captures from its parent
@@ -243,23 +248,47 @@ pub struct FunctionDefinition {
     pub captures: Box<[Identifier]>,
 }
 
+impl Node for FunctionDefinition {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
 /// The body of a function definition, which can be either a block or a bare
 /// expression.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
-    Expression(Box<Node<Expression>>),
+    Expression(Box<Expression>),
     /// A standard function body. Accessible through either syntax
-    Block(Node<Block>),
+    Block(Block),
+}
+
+impl Node for FunctionBody {
+    fn id(&self) -> NodeId {
+        // Transparent impl is ok because the body has no syntax outside its
+        // child
+        match self {
+            FunctionBody::Expression(expression) => expression.id(),
+            FunctionBody::Block(block) => block.id(),
+        }
+    }
 }
 
 /// One parameter in a function definition
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionParameter {
-    pub variable: Node<Variable>,
+    pub id: NodeId,
+    pub variable: Variable,
     pub varargs: bool,
+}
+
+impl Node for FunctionParameter {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// A conditional that executes executes its body only if the condition is
@@ -277,10 +306,17 @@ pub struct FunctionParameter {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct If {
-    pub condition: Node<Expression>,
-    pub body: Box<Node<Statement>>,
+    pub id: NodeId,
+    pub condition: Expression,
+    pub body: Box<Statement>,
     /// Optional `else` block. For `else if` blocks, this will be a nested `if`
-    pub else_body: Option<Box<Node<Statement>>>,
+    pub else_body: Option<Box<Statement>>,
+}
+
+impl Node for If {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// `import exportDefault, { export1, export2 as ex2 } from "module-name"`
@@ -291,12 +327,19 @@ pub struct If {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportDeclaration {
+    pub id: NodeId,
     /// `exportDefault`
-    pub default: Option<Node<Identifier>>,
+    pub default: Option<IdentifierNode>,
     /// `{ export1, export2 as ex2 }`
-    pub named: Box<[Node<ImportNamed>]>,
+    pub named: Box<[ImportNamed]>,
     /// `"module-name"`
-    pub module: Node<ImportModule>,
+    pub module: ImportModule,
+}
+
+impl Node for ImportDeclaration {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// One identifier in a named import clause. In this import:
@@ -309,57 +352,74 @@ pub struct ImportDeclaration {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportNamed {
+    pub id: NodeId,
     /// External name being imported
-    pub imported: Node<Identifier>,
+    pub imported: IdentifierNode,
     /// Local name bound to the imported value
     ///
     /// If the import is not renamed, this will match `imported`.
-    pub local: Node<Identifier>,
+    pub local: IdentifierNode,
+}
+
+impl Node for ImportNamed {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// Source for an imported module, i.e. the string after `from`
+pub type ImportModule = KindedNode<ImportModuleKind>;
+
+/// Kind for [ImportModule]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ImportModule {
+pub enum ImportModuleKind {
     /// A native module provided by the engine with a static name, like
     /// `import helpers from 'helpers'`
     Native(NativeModuleName),
-    /// Another PetitScript file, e.g. `import helpers from './helpers'`. The
-    /// imported file will be parsed during the parse of the parent, so we
+    /// Another PetitScript file, e.g. `import helpers from './helpers'`
+    ///
+    /// The imported file will be parsed during the parse of the parent, so we
     /// end up with a separate AST to be executed.
-    Local(Node<Module>),
+    Local(Module),
 }
+
+/// TODO
+pub type ExportDeclaration = KindedNode<ExportDeclarationKind>;
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ExportDeclaration {
+pub enum ExportDeclarationKind {
     /// `export const x = 3;`
-    Declaration(Node<Declaration>),
+    Declaration(Declaration),
     /// `export default 3;`
-    DefaultExpression(Node<Expression>),
+    DefaultExpression(Expression),
 }
+
+/// TODO
+pub type Expression = KindedNode<ExpressionKind>;
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Expression {
+pub enum ExpressionKind {
     /// Parenthetical grouping
-    Parenthesized(Box<Node<Expression>>),
+    Parenthesized(Box<Expression>),
     /// Primitive and complex type literals
-    Literal(Node<Literal>),
+    Literal(Literal),
     /// String template
-    Template(Node<TemplateLiteral>),
+    Template(TemplateLiteral),
     /// Reference to an identifier
     ///
     /// `x` in `x + 1`.
-    Identifier(Node<Identifier>),
+    Identifier(IdentifierNode),
     /// Function call
-    Call(Node<FunctionCall>),
+    Call(FunctionCall),
     /// The static or dynamic property accessors: `.` or `[]`
-    Property(Node<PropertyAccess>),
+    Property(PropertyAccess),
     /// Optional chaining operator: `?.`
-    OptionalProperty(Node<OptionalPropertyAccess>),
+    OptionalProperty(OptionalPropertyAccess),
     /// Function definition
     ///
     /// This is accessible via both function syntaxes:
@@ -368,15 +428,15 @@ pub enum Expression {
     ///
     /// The two different syntaxes are combined during parsing, for simplicity.
     /// PS support the `this` keyword, so the two are equivalent at runtime.
-    Function(Node<FunctionDefinition>),
+    Function(FunctionDefinition),
     /// Operation with one operand
-    Unary(Node<UnaryOperation>),
+    Unary(UnaryOperation),
     /// Operation with two operands
-    Binary(Node<BinaryOperation>),
+    Binary(BinaryOperation),
     /// Operation with three operands
     ///
     /// This is just the `?:` operator
-    Ternary(Node<TernaryConditional>),
+    Ternary(TernaryConditional),
 }
 
 /// TODO
@@ -401,28 +461,38 @@ pub enum Literal {
     String(String),
     // TODO remove the nodes on these? are they needed?
     /// TODO
-    Array(Node<ArrayLiteral>),
+    Array(ArrayLiteral),
     /// TODO
-    Object(Node<ObjectLiteral>),
+    Object(ObjectLiteral),
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemplateLiteral {
+    pub id: NodeId,
     /// A set of contiguous chunks that comprise the template. These will be
     /// alternating in variant, e.g. `[Lit, Expr, Lit]` or `[Expr, Lit, Expr]`
-    pub chunks: Box<[Node<TemplateChunk>]>,
+    pub chunks: Box<[TemplateChunk]>,
 }
+
+impl Node for TemplateLiteral {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// TODO
+pub type TemplateChunk = KindedNode<TemplateChunkKind>;
 
 /// One piece in a template. Either a static string or an expression
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum TemplateChunk {
+pub enum TemplateChunkKind {
     /// This doesn't need a `Node` because we never refer to the literal chunks
     /// of a template on their own
     Literal(String),
-    Expression(Node<Expression>),
+    Expression(Expression),
 }
 
 /// TODO
@@ -432,50 +502,72 @@ pub enum TemplateChunk {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArrayLiteral {
-    pub elements: Box<[Node<ArrayElement>]>,
+    pub id: NodeId,
+    pub elements: Box<[ArrayElement]>,
 }
+
+impl Node for ArrayLiteral {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// TODO
+pub type ArrayElement = KindedNode<ArrayElementKind>;
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ArrayElement {
-    Expression(Node<Expression>),
-    Spread(Node<Expression>),
+pub enum ArrayElementKind {
+    /// TODO
+    Expression(Expression),
+    /// TODO
+    Spread(Expression),
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectLiteral {
-    pub properties: Box<[Node<ObjectProperty>]>,
+    pub id: NodeId,
+    pub properties: Box<[ObjectProperty]>,
 }
+
+impl Node for ObjectLiteral {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// TODO
+pub type ObjectProperty = KindedNode<ObjectPropertyKind>;
 
 /// One property in an object literal
 ///
 /// Objects don't support methods, getters, or setters
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ObjectProperty {
-    // TODO eliminate separate variant for the shorthand?
+pub enum ObjectPropertyKind {
     /// Normal key:value mapping
     ///
     /// `{ key: value }`, `{ key }`, or `{ ["key"]: value }`
     Property {
-        property: Node<PropertyName>,
-        expression: Node<Expression>,
+        property: PropertyName,
+        expression: Expression,
     },
     /// Spread: `{ ...other }`
-    Spread(Node<Expression>),
+    Spread(Expression),
 }
 
 /// Invoke a function: `f(x)`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FunctionCall {
+    pub id: NodeId,
     /// Expression evaluating to the function to invoke
-    pub function: Box<Node<Expression>>,
+    pub function: Box<Expression>,
     /// Values to pass to the function
-    pub arguments: Box<[Node<Argument>]>,
+    pub arguments: Box<[Argument]>,
     /// Skip call on `null`/`undefined`
     ///
     /// This is enabled by the `f?.()` syntax. If `true` and `function`
@@ -485,45 +577,72 @@ pub struct FunctionCall {
     pub optional: bool,
 }
 
+impl Node for FunctionCall {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
 /// One argument in a [FunctionCall]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Argument {
     /// Regular passed argument: `f(1)`
-    Expression(Box<Node<Expression>>),
+    Expression(Box<Expression>),
     /// Spread expression: `f(...[1, 2, 3])`
     ///
     /// If the passed expression evaluates to an array, it will be passed
     /// as multiple arguments. Otherwise, error!
-    Spread(Box<Node<Expression>>),
+    Spread(Box<Expression>),
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropertyAccess {
+    pub id: NodeId,
     /// TODO
-    pub object: Box<Node<Expression>>,
+    pub object: Box<Expression>,
     /// TODO
-    pub property: Node<PropertyName>,
+    pub property: PropertyName,
+}
+
+impl Node for PropertyAccess {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OptionalPropertyAccess {
+    pub id: NodeId,
     /// TODO
-    pub object: Box<Node<Expression>>,
+    pub object: Box<Expression>,
     /// TODO
-    pub property: Node<PropertyName>,
+    pub property: PropertyName,
+}
+
+impl Node for OptionalPropertyAccess {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UnaryOperation {
+    pub id: NodeId,
     pub operator: UnaryOperator,
-    pub expression: Box<Node<Expression>>,
+    pub expression: Box<Expression>,
+}
+
+impl Node for UnaryOperation {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// TODO
@@ -544,9 +663,16 @@ pub enum UnaryOperator {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BinaryOperation {
+    pub id: NodeId,
     pub operator: BinaryOperator,
-    pub lhs: Box<Node<Expression>>,
-    pub rhs: Box<Node<Expression>>,
+    pub lhs: Box<Expression>,
+    pub rhs: Box<Expression>,
+}
+
+impl Node for BinaryOperation {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// TODO
@@ -592,9 +718,16 @@ pub enum BinaryOperator {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TernaryConditional {
-    pub condition: Box<Node<Expression>>,
-    pub true_expression: Box<Node<Expression>>,
-    pub false_expression: Box<Node<Expression>>,
+    pub id: NodeId,
+    pub condition: Box<Expression>,
+    pub true_expression: Box<Expression>,
+    pub false_expression: Box<Expression>,
+}
+
+impl Node for TernaryConditional {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// Name of an object property
@@ -603,42 +736,46 @@ pub struct TernaryConditional {
 /// - Object literal: `const o = { a: 1 };`
 /// - Object pattern: `const { a } = { a: 1 };`
 /// - Property access: `o.a` or `o["a"]`
-///
-/// This could be in an object literal, object pattern, or property access.
+pub type PropertyName = KindedNode<PropertyNameKind>;
+
+/// Type of a [PropertyName]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum PropertyName {
+pub enum PropertyNameKind {
     /// Normal key: `{ key: value }`
-    Literal(Node<Identifier>),
+    Identifier(IdentifierNode),
     /// Computed key: `{ ["key"]: value }`
-    Expression(Box<Node<Expression>>),
+    Expression(Box<Expression>),
 }
+
+/// TODO
+pub type Binding = KindedNode<BindingKind>;
 
 /// TODO
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Binding {
+pub enum BindingKind {
     /// `const x = 3`
-    Identifier(Node<Identifier>),
+    Identifier(IdentifierNode),
     /// An object pattern: `const { a, b, c } = object`
     Object {
-        properties: Box<[Node<ObjectPatternElement>]>,
+        properties: Box<[ObjectPatternElement]>,
         /// `const { ...x } = object`
         ///
         /// This can only appear once, at the end of the pattern.
-        rest: Option<Box<Node<Binding>>>,
+        rest: Option<Box<Binding>>,
     },
     /// An array pattern: `const [a, b, c] = array`
     Array {
-        elements: Box<[Node<ArrayPatternElement>]>,
+        elements: Box<[ArrayPatternElement]>,
         /// `const [...x] = array`
         ///
         /// This can only appear once, at the end of the pattern.
-        rest: Option<Box<Node<Binding>>>,
+        rest: Option<Box<Binding>>,
     },
 }
 
-/// A specific bound field in a [Binding::Object]
+/// A specific bound field in a [BindingKind::Object]
 ///
 /// - `const { x } = object`
 /// - `const { x: x2 } = object`
@@ -646,30 +783,151 @@ pub enum Binding {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectPatternElement {
+    pub id: NodeId,
     /// Key extracted from the object
-    pub key: Node<PropertyName>,
+    pub key: PropertyName,
     /// Name to bind the value to
-    pub binding: Node<Binding>,
+    pub binding: Binding,
     /// Optional default expression for properties not in the object
-    pub init: Option<Node<Expression>>,
+    pub init: Option<Expression>,
 }
 
-/// One element in a [Binding::Array]
+impl Node for ObjectPatternElement {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// TODO
+pub type ArrayPatternElement = KindedNode<ArrayPatternElementKind>;
+
+/// One element in a [BindingKind::Array]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ArrayPatternElement {
+pub enum ArrayPatternElementKind {
     /// A specific bound field
     ///
     /// - `const [x] = array`
     /// - `const [x = 3] = array`
     Identifier {
         /// Name to bind the value to
-        binding: Node<Binding>,
+        binding: Binding,
         /// Optional default expression for elements not in the array
-        init: Option<Node<Expression>>,
+        init: Option<Expression>,
     },
     /// Skip this field while binding
     ///
     /// `const [a,, c] = [1, 2, 3]`
+    ///
+    /// TODO replace this with underscore binding
     Skip,
+}
+
+/// An [Identifier] with a [NodeId]
+///
+/// Use this for identifiers that exist in the source code.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct IdentifierNode {
+    pub id: NodeId,
+    pub identifier: Identifier,
+}
+
+impl Deref for IdentifierNode {
+    type Target = Identifier;
+
+    fn deref(&self) -> &Self::Target {
+        &self.identifier
+    }
+}
+
+impl DerefMut for IdentifierNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.identifier
+    }
+}
+
+impl Node for IdentifierNode {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// An identifier that uniquely identifies an AST node **within that AST**
+///
+/// These IDs are not globally unique, just within a single AST.
+#[derive(Copy, Clone, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+pub struct NodeId(
+    /// `None` for [Self::ANY], which is used just for progamatically created
+    /// ASTs. Those will compare `true` to any other ID, which is helpful
+    /// for test assertions. These IDs *cannot* be used as keys in a span
+    /// table. The `Hash` implementation will panic!
+    Option<u32>,
+);
+
+impl NodeId {
+    /// The node ID that will match *any* other node ID
+    ///
+    /// Use this for programatically constructed ASTs that will be used in
+    /// equality comparisons (e.g. in tests). These IDs *cannot* be used as
+    /// map keys!
+    const ANY: NodeId = NodeId(None);
+
+    pub fn new(id: u32) -> Self {
+        Self(Some(id))
+    }
+}
+
+impl Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // The wrapper provides no debugging value, just clutter
+        self.0.fmt(f)
+    }
+}
+
+impl Hash for NodeId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // ANY IDs are meant for manually built ASTs, not parsed ones. Since the
+        // IDs aren't unique, they can't be used as map keys.
+        match self.0 {
+            Some(id) => id.hash(state),
+            None => {
+                panic!("Cannot hash NodeID::ANY; it should not be used in maps")
+            }
+        }
+    }
+}
+
+impl PartialEq for NodeId {
+    fn eq(&self, other: &Self) -> bool {
+        // If the ID is None, that mean's it's ANY, i.e. can't be
+        match (self.0, other.0) {
+            (_, None) | (None, _) => true,
+            (Some(a), Some(b)) => a == b,
+        }
+    }
+}
+
+/// TODO
+pub trait Node {
+    /// TODO
+    fn id(&self) -> NodeId;
+}
+
+/// TODO
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct KindedNode<T> {
+    /// TODO
+    pub id: NodeId,
+    /// TODO
+    pub kind: T,
+}
+
+impl<K> Node for KindedNode<K> {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }

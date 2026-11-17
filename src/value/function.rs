@@ -1,6 +1,6 @@
 use crate::{
     Process,
-    ast::FunctionDefinition,
+    ast::{FunctionDefinition, Identifier},
     error::RuntimeErrorKind,
     value::{FromPetit, IntoPetit, Value},
 };
@@ -140,7 +140,7 @@ impl Function {
     pub fn name(&self) -> Option<&str> {
         match self {
             Self::User { definition, .. } => {
-                definition.name.as_ref().map(|name| name.as_str())
+                definition.name.as_ref().map(Identifier::as_str)
             }
             Self::Native { name, .. } | Self::Bound { name, .. } => Some(name),
         }

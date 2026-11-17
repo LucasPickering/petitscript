@@ -6,15 +6,18 @@
 use crate::{
     NativeModuleName, Source,
     ast::{
-        Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
-        BinaryOperation, BinaryOperator, Binding, Block, Declaration,
-        ExportDeclaration, Expression, FunctionBody, FunctionCall,
-        FunctionDefinition, FunctionParameter, Identifier, If,
-        ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
-        NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-        TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-        UnaryOperator, Variable,
+        Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
+        ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
+        BinaryOperator, Binding, BindingKind, Block, Declaration,
+        ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
+        FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
+        Identifier, IdentifierNode, If, ImportDeclaration, ImportModule,
+        ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
+        ObjectLiteral, ObjectPatternElement, ObjectProperty,
+        ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
+        PropertyName, PropertyNameKind, Statement, StatementKind,
+        TemplateChunk, TemplateChunkKind, TemplateLiteral, TernaryConditional,
+        UnaryOperation, UnaryOperator, Variable,
     },
     compile::{
         SUPPORTED_EXTENSIONS,
@@ -46,9 +49,12 @@ use std::{
 pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
-) -> Node<Module> {
+) -> Module {
     let statements = program.body.transform_all(context);
-    Module { statements }.into_node(context, program.span())
+    Module {
+        id: context.id(&program),
+        statements,
+    }
 }
 
 /// Helper for returning an unsupported error
@@ -101,12 +107,27 @@ impl ParseContext<'_> {
         Reg
     }
 
-    /// Generate a new node ID for a new AST node
+    /// Generate a new node ID for a transformed AST node
     ///
-    /// This ID will be unique within the entire AST, including sub-modules.
-    /// This will also insert the node's source span into the span table.
-    fn node_id(&mut self, span: oxc_span::Span) -> NodeId {
-        self.node_id_inner(self.map_span(span))
+    /// This will convert the given oxc node's span to [Span], then insert it
+    /// into the table. Use this for all transformed nodes.
+    fn id(&mut self, node: &impl GetSpan) -> NodeId {
+        self.node_id_inner(self.map_span(node.span()))
+    }
+
+    /// Generate a new node ID for a node overlapping an *already transformed
+    /// node*
+    ///
+    /// Use this for nodes that syntactically overlap a node that's already
+    /// been transformed, e.g. a [Binding] wrapping an [IdentifierNode]. The
+    /// new node ID will be inserted into the span map with the same span as
+    /// the given node.
+    fn id_from(&mut self, node: &impl Node) -> NodeId {
+        let span = self
+            .spans
+            .get(node.id())
+            .expect("TODO error! node should already be in the map");
+        self.node_id_inner(span)
     }
 
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
@@ -132,21 +153,6 @@ trait Transform {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg>;
-
-    /// Transform the content of an AST node and wrap it in a [Node]
-    ///
-    /// This will generate the needed node ID and attach it to the generated
-    /// node.
-    fn transform_node(
-        &self,
-        context: &mut ParseContext,
-    ) -> Result<Node<Self::Output>, Reg>
-    where
-        Self: GetSpan,
-    {
-        self.transform(context)
-            .map(|node| Node::new(context.node_id(self.span()), node))
-    }
 }
 
 /// Transform a collection of nodes
@@ -158,21 +164,15 @@ trait TransformAll<T: Transform> {
     /// transformation to collect as many errors as possible, rather than
     /// failing immediately. Any error will cause the top-level transformation
     /// to fail, but the intermediate transformations will continue.
-    fn transform_all(
-        &self,
-        context: &mut ParseContext,
-    ) -> Box<[Node<T::Output>]>;
+    fn transform_all(&self, context: &mut ParseContext) -> Box<[T::Output]>;
 }
 
 /// Transform oxc-provided vecs
 impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
-    fn transform_all(
-        &self,
-        context: &mut ParseContext,
-    ) -> Box<[Node<T::Output>]> {
+    fn transform_all(&self, context: &mut ParseContext) -> Box<[T::Output]> {
         self.iter()
             // Errors are already registered, so just skip em
-            .filter_map(|value| value.transform_node(context).ok())
+            .filter_map(|value| value.transform(context).ok())
             .collect()
     }
 }
@@ -184,12 +184,9 @@ impl<T: GetSpan + Transform> TransformAll<T> for oxc_allocator::Vec<'_, T> {
 /// item needs to support both `T` and `&T`. I think it would work if `GetSpan`
 /// had a blanket impl on `&T`.
 impl<T: GetSpan + Transform> TransformAll<T> for Vec<T> {
-    fn transform_all(
-        &self,
-        context: &mut ParseContext,
-    ) -> Box<[Node<T::Output>]> {
+    fn transform_all(&self, context: &mut ParseContext) -> Box<[T::Output]> {
         self.iter()
-            .filter_map(|value| value.transform_node(context).ok())
+            .filter_map(|value| value.transform(context).ok())
             .collect()
     }
 }
@@ -201,59 +198,55 @@ impl Transform for oxc::Statement<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        match self {
+        let kind = match self {
             // Imports/exports
-            Self::ImportDeclaration(import_declaration) => import_declaration
-                .transform_node(context)
-                .map(Statement::Import),
-            // export const a = 5;
-            Self::ExportDeclaration(export_declaration) => {
-                Ok(export_declaration
-                    .transform_node(context)?
-                    .transpose()
-                    // Filter out type-only exports
-                    .map(Statement::Export)
-                    .unwrap_or(Statement::Empty))
+            Self::ImportDeclaration(import_declaration) => {
+                StatementKind::Import(import_declaration.transform(context)?)
             }
+            // export const a = 5;
+            Self::ExportDeclaration(export_declaration) => export_declaration
+                .transform(context)?
+                // Filter out type-only exports
+                .map(StatementKind::Export)
+                .unwrap_or(StatementKind::Empty),
+
             // export default c;
             Self::ExportDefaultDeclaration(export_default_declaration) => {
-                Ok(export_default_declaration
+                export_default_declaration
                     .declaration
-                    .transform_node(context)?
-                    .transpose()
+                    .transform(context)?
                     // Filter out type-only exports
-                    .map(Statement::Export)
-                    .unwrap_or(Statement::Empty))
+                    .map(StatementKind::Export)
+                    .unwrap_or(StatementKind::Empty)
             }
 
             // Declarations
             Self::VariableDeclaration(variable_declaration) => {
-                variable_declaration
-                    .transform_node(context)
-                    .map(Statement::Declaration)
+                StatementKind::Declaration(
+                    variable_declaration.transform(context)?,
+                )
             }
-            Self::FunctionDeclaration(function) => Ok(function
-                .transform_node(context)?
-                .transpose()
-                .map(Statement::Declaration)
-                .unwrap_or(Statement::Empty)),
+
+            Self::FunctionDeclaration(function) => function
+                .transform(context)?
+                .map(StatementKind::Declaration)
+                .unwrap_or(StatementKind::Empty),
 
             // Generic
-            Self::EmptyStatement(_) => Ok(Statement::Empty),
-            Self::ExpressionStatement(expr_stmt) => expr_stmt
-                .expression
-                .transform_node(context)
-                .map(Statement::Expression),
+            Self::EmptyStatement(_) => StatementKind::Empty,
+            Self::ExpressionStatement(expr_stmt) => StatementKind::Expression(
+                expr_stmt.expression.transform(context)?,
+            ),
             Self::BlockStatement(block_stmt) => {
-                block_stmt.transform_node(context).map(Statement::Block)
+                StatementKind::Block(block_stmt.transform(context)?)
             }
 
             // Control flow
             Self::IfStatement(if_stmt) => {
-                if_stmt.transform_node(context).map(Statement::If)
+                StatementKind::If(if_stmt.transform(context)?)
             }
             Self::ReturnStatement(return_statement) => {
-                return_statement.transform(context)
+                return_statement.transform(context)?
             }
 
             // TypeScript - ignore things that don't affect runtime semantics
@@ -265,7 +258,7 @@ impl Transform for oxc::Statement<'_> {
             | Self::TSInterfaceDeclaration(_)
             | Self::TSNamespaceDeclaration(_)
             | Self::TSNamespaceExportDeclaration(_)
-            | Self::TSTypeAliasDeclaration(_) => Ok(Statement::Empty),
+            | Self::TSTypeAliasDeclaration(_) => StatementKind::Empty,
 
             // Unsupported
             Self::ExportFromDeclaration(_) => {
@@ -316,7 +309,11 @@ impl Transform for oxc::Statement<'_> {
                     Unsupported::ExportNamedDeclaration
                 );
             }
-        }
+        };
+        Ok(Statement {
+            id: context.id(self),
+            kind,
+        })
     }
 }
 
@@ -332,8 +329,8 @@ impl Transform for oxc::ImportDeclaration<'_> {
 
         // There can only be zero or one default per import statement, plus any
         // number of named imports
-        let mut default: Option<Node<Identifier>> = None;
-        let mut named: Vec<Node<ImportNamed>> = vec![];
+        let mut default: Option<IdentifierNode> = None;
+        let mut named: Vec<ImportNamed> = vec![];
         let Some(specifiers) = &self.specifiers else {
             // None for `import 'source'`
             unsupported!(context, self, Unsupported::BareImport);
@@ -352,9 +349,9 @@ impl Transform for oxc::ImportDeclaration<'_> {
                 // import { a } from 'source'
                 //          ^
                 oxc::ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
-                    let import_named = specifier.transform_node(context)?;
+                    let import_named = specifier.transform(context)?;
                     // Filter out type imports, which will be None
-                    if let Some(import_named) = import_named.transpose() {
+                    if let Some(import_named) = import_named {
                         named.push(import_named);
                     }
                 }
@@ -363,7 +360,7 @@ impl Transform for oxc::ImportDeclaration<'_> {
                 oxc::ImportDeclarationSpecifier::ImportDefaultSpecifier(
                     specifier,
                 ) => {
-                    let identifier = specifier.local.transform_node(context)?;
+                    let identifier = specifier.local.transform(context)?;
                     // TODO handle error if there's already a default import
                     default.replace(identifier);
                 }
@@ -372,11 +369,11 @@ impl Transform for oxc::ImportDeclaration<'_> {
 
         let source_text = self.source.value.as_str().expect("TODO").to_string();
 
-        let module = match NativeModuleName::try_from(source_text) {
+        let source_kind = match NativeModuleName::try_from(source_text) {
             // If it's a valid native module name, treat it as such. Otherwise
             // treat it as a path. A path is always going to have a character
             // like . or / that will make it an invalid module name
-            Ok(name) => ImportModule::Native(name),
+            Ok(name) => ImportModuleKind::Native(name),
             Err(error) => {
                 // We're importing a file path. Resolve it to an absolute path
                 let module_name = error.name;
@@ -400,16 +397,20 @@ impl Transform for oxc::ImportDeclaration<'_> {
                 let module = parse_module(context);
                 context.current_source_id = old_source_id;
 
-                ImportModule::Local(module)
+                ImportModuleKind::Local(module)
             }
-        }
-        .into_node(context, self.source.span());
+        };
+        let module = ImportModule {
+            id: context.id(&self.source),
+            kind: source_kind,
+        };
 
         match (default, named.as_slice()) {
             // This branch should be impossible because an import without
             // specifiers leads to an AST node that would be rejected above
             (None, &[]) => unreachable!("no imports specified"),
             (default, _) => Ok(ImportDeclaration {
+                id: context.id(self),
                 default,
                 named: named.into(),
                 module,
@@ -440,12 +441,17 @@ impl Transform for oxc::ImportSpecifier<'_> {
                         Unsupported::ImportStringIdentifier
                     );
                 };
-                let imported_span = self.imported.span();
-                let imported =
-                    transform_ident(imported).into_node(context, imported_span);
-                let local = self.local.transform_node(context)?;
+                let imported = IdentifierNode {
+                    id: context.id(&self.imported),
+                    identifier: transform_ident(imported),
+                };
+                let local = self.local.transform(context)?;
 
-                Ok(Some(ImportNamed { imported, local }))
+                Ok(Some(ImportNamed {
+                    id: context.id(self),
+                    imported,
+                    local,
+                }))
             }
             oxc::ImportOrExportKind::Type => Ok(None),
         }
@@ -504,8 +510,11 @@ impl Transform for oxc::ExportDeclaration<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let declaration = self.declaration.transform_node(context)?;
-        Ok(declaration.transpose().map(ExportDeclaration::Declaration))
+        let declaration = self.declaration.transform(context)?;
+        Ok(declaration.map(|declaration| ExportDeclaration {
+            id: context.id(self),
+            kind: ExportDeclarationKind::Declaration(declaration),
+        }))
     }
 }
 
@@ -530,8 +539,11 @@ impl Transform for oxc::ExportDefaultDeclarationKind<'_> {
             // Everything else is an expression
             _ => {
                 let expression =
-                    as_expression!(context, self).transform_node(context)?;
-                Ok(Some(ExportDeclaration::DefaultExpression(expression)))
+                    as_expression!(context, self).transform(context)?;
+                Ok(Some(ExportDeclaration {
+                    id: context.id(self),
+                    kind: ExportDeclarationKind::DefaultExpression(expression),
+                }))
             }
         }
     }
@@ -576,7 +588,10 @@ impl Transform for oxc::BlockStatement<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         let statements = self.body.transform_all(context);
-        Ok(Block { statements })
+        Ok(Block {
+            id: context.id(self),
+            statements,
+        })
     }
 }
 
@@ -587,16 +602,17 @@ impl Transform for oxc::IfStatement<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let condition = self.test.transform_node(context)?;
+        let condition = self.test.transform(context)?;
         // This body is NOT optional
-        let body = self.consequent.transform_node(context)?;
+        let body = self.consequent.transform(context)?;
         // This body IS optional
         let else_body = if let Some(alternate) = &self.alternate {
-            Some(alternate.transform_node(context)?)
+            Some(alternate.transform(context)?)
         } else {
             None
         };
         Ok(If {
+            id: context.id(self),
             condition,
             body: body.into(),
             else_body: else_body.map(Box::new),
@@ -605,18 +621,18 @@ impl Transform for oxc::IfStatement<'_> {
 }
 
 impl Transform for oxc::ReturnStatement<'_> {
-    type Output = Statement;
+    type Output = StatementKind;
 
     fn transform(
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         let expression = if let Some(argument) = &self.argument {
-            Some(argument.transform_node(context)?)
+            Some(argument.transform(context)?)
         } else {
             None
         };
-        Ok(Statement::Return(expression))
+        Ok(StatementKind::Return(expression))
     }
 }
 
@@ -630,7 +646,10 @@ impl Transform for oxc::VariableDeclaration<'_> {
         match self.kind {
             oxc::VariableDeclarationKind::Const => {
                 let variables = self.declarations.transform_all(context);
-                Ok(Declaration { variables })
+                Ok(Declaration {
+                    id: context.id(self),
+                    variables,
+                })
             }
             oxc::VariableDeclarationKind::Var
             | oxc::VariableDeclarationKind::Let => {
@@ -653,14 +672,18 @@ impl Transform for oxc::VariableDeclarator<'_> {
     ) -> Result<Self::Output, Reg> {
         // Can't have an assignment binding here because the right side of the
         // = is stored in self.init
-        let binding = BindingOnly(&self.id).transform_node(context)?;
+        let binding = BindingOnly(&self.id).transform(context)?;
 
         let init = if let Some(init) = &self.init {
-            Some(Box::new(init.transform_node(context)?))
+            Some(Box::new(init.transform(context)?))
         } else {
             None
         };
-        Ok(Variable { binding, init })
+        Ok(Variable {
+            id: context.id(self),
+            binding,
+            init,
+        })
     }
 }
 
@@ -676,18 +699,18 @@ impl Transform for oxc::BindingPattern<'_> {
     ///
     /// Not all use cases support the init expression. For those that don't,
     /// wrap the node in [BindingOnly] before calling `transform()`.
-    type Output = (Node<Binding>, Option<Node<Expression>>);
+    type Output = (Binding, Option<Expression>);
 
     fn transform(
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        match self {
+        let (kind, init) = match self {
             Self::BindingIdentifier(binding_identifier) => {
-                let binding = binding_identifier
-                    .transform_node(context)?
-                    .wrap(context, Binding::Identifier);
-                Ok((binding, None))
+                let binding = BindingKind::Identifier(
+                    binding_identifier.transform(context)?,
+                );
+                (binding, None)
             }
             Self::ArrayPattern(array_pattern) => {
                 // Map to an intermediate type so we can call transform_all().
@@ -709,16 +732,10 @@ impl Transform for oxc::BindingPattern<'_> {
                 let elements = elements.transform_all(context);
                 let rest = array_pattern.rest.as_ref().try_map(|rest| {
                     // = isn't supported here, because it defaults to []
-                    BindingOnly(&rest.argument)
-                        .transform_node(context)
-                        .map(Box::new)
+                    BindingOnly(&rest.argument).transform(context).map(Box::new)
                 })?;
 
-                Ok((
-                    Binding::Array { elements, rest }
-                        .into_node(context, array_pattern.span()),
-                    None,
-                ))
+                (BindingKind::Array { elements, rest }, None)
             }
             Self::ObjectPattern(object_pattern) => {
                 let properties =
@@ -726,15 +743,9 @@ impl Transform for oxc::BindingPattern<'_> {
                 // ...rest always goes at the end
                 let rest = object_pattern.rest.as_ref().try_map(|rest| {
                     // = isn't supported here, because it defaults to []
-                    BindingOnly(&rest.argument)
-                        .transform_node(context)
-                        .map(Box::new)
+                    BindingOnly(&rest.argument).transform(context).map(Box::new)
                 })?;
-                Ok((
-                    Binding::Object { properties, rest }
-                        .into_node(context, object_pattern.span()),
-                    None,
-                ))
+                (BindingKind::Object { properties, rest }, None)
             }
             // Pattern with an initializer expression, like `{x = 3}`. As far
             // as I can tell, this is only possible for a nested binding within
@@ -742,13 +753,19 @@ impl Transform for oxc::BindingPattern<'_> {
             // different constructs to track the right side of the `=`.
             Self::AssignmentPattern(assignment_pattern) => {
                 // Recursion!
-                let binding = BindingOnly(&assignment_pattern.left)
-                    .transform_node(context)?;
-                let expression =
-                    assignment_pattern.right.transform_node(context)?;
-                Ok((binding, Some(expression)))
+                let binding =
+                    BindingOnly(&assignment_pattern.left).transform(context)?;
+                let expression = assignment_pattern.right.transform(context)?;
+                return Ok((binding, Some(expression)));
             }
-        }
+        };
+        Ok((
+            Binding {
+                id: context.id(self),
+                kind,
+            },
+            init,
+        ))
     }
 }
 
@@ -782,7 +799,7 @@ impl Transform for BindingOnly<'_> {
             // as usual
             _ => {
                 match self.0.transform(context)? {
-                    (binding, None) => Ok(binding.into_data()),
+                    (binding, None) => Ok(binding),
                     // Expression is illegal!!
                     (_, Some(_)) => Err(context.register_error(
                         self.0,
@@ -824,42 +841,64 @@ impl Transform for ArrayPatternBinding<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        match self {
+        let kind = match self {
             Self::Bound(binding_pattern) => {
                 let (binding, init) = binding_pattern.transform(context)?;
-                Ok(ArrayPatternElement::Identifier { binding, init })
+                ArrayPatternElementKind::Identifier { binding, init }
             }
-            Self::Skip(_) => Ok(ArrayPatternElement::Skip),
-        }
+            Self::Skip(_) => ArrayPatternElementKind::Skip,
+        };
+        Ok(ArrayPatternElement {
+            id: context.id(self),
+            kind,
+        })
     }
 }
 
 /// TODO explain difference from IdentifierName/IdentifierReference
 impl Transform for oxc::BindingIdentifier<'_> {
-    type Output = Identifier;
+    type Output = IdentifierNode;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
-        Ok(transform_ident(self.name))
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        Ok(IdentifierNode {
+            id: context.id(self),
+            identifier: transform_ident(self.name),
+        })
     }
 }
 
 /// PS doesn't differentiate between identifier declarations and references, so
 /// this just maps to [Identifier]
 impl Transform for oxc::IdentifierName<'_> {
-    type Output = Identifier;
+    type Output = IdentifierNode;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
-        Ok(transform_ident(self.name))
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        Ok(IdentifierNode {
+            id: context.id(self),
+            identifier: transform_ident(self.name),
+        })
     }
 }
 
 /// PS doesn't differentiate between identifier declarations and references, so
 /// this just maps to [Identifier]
 impl Transform for oxc::IdentifierReference<'_> {
-    type Output = Identifier;
+    type Output = IdentifierNode;
 
-    fn transform(&self, _: &mut ParseContext) -> Result<Self::Output, Reg> {
-        Ok(transform_ident(self.name))
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        Ok(IdentifierNode {
+            id: context.id(self),
+            identifier: transform_ident(self.name),
+        })
     }
 }
 
@@ -882,11 +921,16 @@ impl Transform for oxc::BindingProperty<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let key = self.key.transform_node(context)?;
+        let key = self.key.transform(context)?;
         // Value binding and init expression both come from this transformation
         let (binding, init) = self.value.transform(context)?;
 
-        Ok(ObjectPatternElement { key, binding, init })
+        Ok(ObjectPatternElement {
+            id: context.id(self),
+            key,
+            binding,
+            init,
+        })
     }
 }
 
@@ -919,7 +963,7 @@ impl Transform for oxc::Function<'_> {
         let Some(identifier) = &self.id else {
             unsupported!(context, self, Unsupported::AnonymousFunction);
         };
-        let identifier = identifier.transform_node(context)?;
+        let identifier = identifier.transform(context)?;
 
         // Functions without a body are just type declarations, so ignore them
         let Some(body) = &self.body else {
@@ -931,19 +975,26 @@ impl Transform for oxc::Function<'_> {
         // Declare the function as a variable. There is no separate function
         // declaration in the PS AST, for simplicity
         let function = FunctionDefinition {
-            name: Some(identifier.clone()),
+            id: context.id(self),
+            name: Some(identifier.identifier.clone()),
             parameters,
             body,
             captures: [].into(), // Captures are populated post-parse
-        }
-        .into_node(context, self.span());
+        };
         let variable = Variable {
-            binding: identifier.wrap(context, Binding::Identifier),
-            init: Some(function.wrap(context, Expression::Function).into()),
-        }
-        .into_node(context, self.span());
+            id: context.id(self),
+            binding: Binding {
+                id: context.id_from(&identifier),
+                kind: BindingKind::Identifier(identifier),
+            },
+            init: Some(Box::new(Expression {
+                id: context.id_from(&function),
+                kind: ExpressionKind::Function(function),
+            })),
+        };
 
         Ok(Some(Declaration {
+            id: context.id(self),
             variables: Box::new([variable]),
         }))
     }
@@ -967,12 +1018,13 @@ impl Transform for oxc::ArrowFunctionExpression<'_> {
             }
             // bare expression
             _ => {
-                let expression = as_expression!(context, &self.body)
-                    .transform_node(context)?;
+                let expression =
+                    as_expression!(context, &self.body).transform(context)?;
                 FunctionBody::Expression(Box::new(expression))
             }
         };
         Ok(FunctionDefinition {
+            id: context.id(self),
             name: None,
             parameters,
             body,
@@ -992,15 +1044,15 @@ impl Transform for oxc::FunctionBody<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         // directives are ignored
-        let block = Block {
+        Ok(FunctionBody::Block(Block {
+            id: context.id(self),
             statements: self.statements.transform_all(context),
-        };
-        Ok(FunctionBody::Block(block.into_node(context, self.span())))
+        }))
     }
 }
 
 impl Transform for oxc::FormalParameters<'_> {
-    type Output = Box<[Node<FunctionParameter>]>;
+    type Output = Box<[FunctionParameter]>;
 
     fn transform(
         &self,
@@ -1009,23 +1061,22 @@ impl Transform for oxc::FormalParameters<'_> {
         let mut parameters: Vec<_> = self
             .items
             .iter()
-            .map(|parameter| parameter.transform_node(context))
+            .map(|parameter| parameter.transform(context))
             .collect::<Result<_, _>>()?;
         // Add the rest param in separately
         if let Some(rest) = &self.rest {
             // = isn't allowed here because the default is always []
             let binding =
-                BindingOnly(&rest.rest.argument).transform_node(context)?;
-            parameters.push(
-                FunctionParameter {
-                    variable: binding.wrap(context, |binding| Variable {
-                        binding,
-                        init: None,
-                    }),
-                    varargs: true,
-                }
-                .into_node(context, rest.span()),
-            );
+                BindingOnly(&rest.rest.argument).transform(context)?;
+            parameters.push(FunctionParameter {
+                id: context.id(&**rest),
+                variable: Variable {
+                    id: context.id_from(&binding),
+                    binding,
+                    init: None,
+                },
+                varargs: true,
+            });
         }
         Ok(parameters.into())
     }
@@ -1043,16 +1094,21 @@ impl Transform for oxc::FormalParameter<'_> {
 
         // Can't have an assignment binding here because the right side of the
         // = is stored in self.init
-        let binding = BindingOnly(&self.pattern).transform_node(context)?;
+        let binding = BindingOnly(&self.pattern).transform(context)?;
 
         let init = if let Some(initializer) = &self.initializer {
-            Some(Box::new(initializer.transform_node(context)?))
+            Some(Box::new(initializer.transform(context)?))
         } else {
             None
         };
+        let variable = Variable {
+            id: context.id(self),
+            binding,
+            init,
+        };
         Ok(FunctionParameter {
-            variable: Variable { binding, init }
-                .into_node(context, self.span()),
+            id: context.id_from(&variable),
+            variable,
             varargs: false,
         })
     }
@@ -1065,103 +1121,96 @@ impl Transform for oxc::Expression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        match self {
+        let kind = match self {
             Self::NullLiteral(literal) => {
-                literal.transform_node(context).map(Expression::Literal)
+                ExpressionKind::Literal(literal.transform(context)?)
             }
             Self::BooleanLiteral(literal) => {
-                literal.transform_node(context).map(Expression::Literal)
+                ExpressionKind::Literal(literal.transform(context)?)
             }
             Self::NumericLiteral(literal) => {
-                literal.transform_node(context).map(Expression::Literal)
+                ExpressionKind::Literal(literal.transform(context)?)
             }
             Self::BigIntLiteral(_) => {
                 unsupported!(context, self, Unsupported::BigIntLiteral);
             }
             Self::StringLiteral(literal) => {
-                literal.transform_node(context).map(Expression::Literal)
+                ExpressionKind::Literal(literal.transform(context)?)
             }
             Self::RegExpLiteral(_) => {
                 unsupported!(context, self, Unsupported::RegExp);
             }
             Self::TemplateLiteral(template) => {
-                template.transform_node(context).map(Expression::Template)
+                ExpressionKind::Template(template.transform(context)?)
             }
             Self::Identifier(reference) => {
                 if reference.is_undefined() {
                     // undefined is an identifier, not a literal, in ES
-                    Ok(Literal::Undefined.into())
+                    ExpressionKind::Literal(Literal::Undefined)
                 } else {
-                    reference
-                        .transform_node(context)
-                        .map(Expression::Identifier)
+                    ExpressionKind::Identifier(reference.transform(context)?)
                 }
             }
             Self::ArrayExpression(array_expression) => {
                 // Span needs to wrap both the Array and the outer Literal
-                let array = array_expression.transform_node(context)?;
-                Ok(Expression::Literal(
-                    Literal::Array(array)
-                        .into_node(context, array_expression.span()),
-                ))
+                let array = array_expression.transform(context)?;
+                ExpressionKind::Literal(Literal::Array(array))
             }
             Self::ObjectExpression(object_expression) => {
                 // Span needs to wrap both the Object and the outer Literal
-                let object = object_expression.transform_node(context)?;
-                Ok(Expression::Literal(
-                    Literal::Object(object)
-                        .into_node(context, object_expression.span()),
-                ))
+                let object = object_expression.transform(context)?;
+                ExpressionKind::Literal(Literal::Object(object))
             }
             Self::ParenthesizedExpression(parenthesized) => {
-                parenthesized.expression.transform(context)
+                // Needs no extra wrap, so we can return immediately
+                return parenthesized.expression.transform(context);
             }
             Self::ComputedMemberExpression(expression) => {
-                expression.transform_node(context).map(Expression::Property)
+                ExpressionKind::Property(expression.transform(context)?)
             }
             Self::StaticMemberExpression(expression) => {
-                expression.transform_node(context).map(Expression::Property)
+                ExpressionKind::Property(expression.transform(context)?)
             }
             Self::ChainExpression(chain_expression) => {
-                chain_expression.transform(context)
+                return chain_expression.transform(context);
             }
-            Self::CallExpression(call_expression) => call_expression
-                .transform_node(context)
-                .map(Expression::Call),
-            Self::UnaryExpression(unary_expression) => unary_expression
-                .transform_node(context)
-                .map(Expression::Unary),
-            Self::BinaryExpression(binary_expression) => binary_expression
-                .transform_node(context)
-                .map(Expression::Binary),
+            Self::CallExpression(call_expression) => {
+                ExpressionKind::Call(call_expression.transform(context)?)
+            }
+            Self::UnaryExpression(unary_expression) => {
+                ExpressionKind::Unary(unary_expression.transform(context)?)
+            }
+            Self::BinaryExpression(binary_expression) => {
+                ExpressionKind::Binary(binary_expression.transform(context)?)
+            }
             // Logical binary operators are in a separate type
-            Self::LogicalExpression(logical_expression) => logical_expression
-                .transform_node(context)
-                .map(Expression::Binary),
+            Self::LogicalExpression(logical_expression) => {
+                ExpressionKind::Binary(logical_expression.transform(context)?)
+            }
             Self::ConditionalExpression(conditional_expression) => {
-                conditional_expression
-                    .transform_node(context)
-                    .map(Expression::Ternary)
+                ExpressionKind::Ternary(
+                    conditional_expression.transform(context)?,
+                )
             }
             Self::ArrowFunctionExpression(arrow_expr) => {
-                arrow_expr.transform_node(context).map(Expression::Function)
+                ExpressionKind::Function(arrow_expr.transform(context)?)
             }
 
             // TypeScript stuff - ignore the types and transform transparently
             Self::TSAsExpression(expression) => {
-                expression.expression.transform(context)
+                return expression.expression.transform(context);
             }
             Self::TSInstantiationExpression(expression) => {
-                expression.expression.transform(context)
+                return expression.expression.transform(context);
             }
             Self::TSNonNullExpression(expression) => {
-                expression.expression.transform(context)
+                return expression.expression.transform(context);
             }
             Self::TSSatisfiesExpression(expression) => {
-                expression.expression.transform(context)
+                return expression.expression.transform(context);
             }
             Self::TSTypeAssertion(assertion) => {
-                assertion.expression.transform(context)
+                return assertion.expression.transform(context);
             }
 
             // Unsupported
@@ -1210,7 +1259,12 @@ impl Transform for oxc::Expression<'_> {
             Self::V8IntrinsicExpression(_) => {
                 unsupported!(context, self, Unsupported::V8Intrinstic);
             }
-        }
+        };
+
+        Ok(Expression {
+            id: context.id(self),
+            kind,
+        })
     }
 }
 
@@ -1275,7 +1329,7 @@ impl Transform for oxc::TemplateLiteral<'_> {
         // chunks) separately. We're responsible for piecing them back together
         // in order. Collect them all into one sequence, then sort by their
         // source position
-        let mut chunks: Vec<(Node<TemplateChunk>, oxc_span::Span)> = self
+        let mut chunks: Vec<(TemplateChunk, oxc_span::Span)> = self
             .quasis
             .iter()
             .map(|quasi| {
@@ -1283,8 +1337,10 @@ impl Transform for oxc::TemplateLiteral<'_> {
                 let literal = quasi.value.raw;
                 let span = quasi.span;
                 (
-                    TemplateChunk::Literal(literal.into_string())
-                        .into_node(context, span),
+                    TemplateChunk {
+                        id: context.id(quasi),
+                        kind: TemplateChunkKind::Literal(literal.into_string()),
+                    },
                     span,
                 )
             })
@@ -1295,16 +1351,19 @@ impl Transform for oxc::TemplateLiteral<'_> {
                 .iter()
                 .map(GetSpan::span)
                 .zip(self.expressions.transform_all(context))
-                .map(|(span, chunk)| {
+                .map(|(span, expression)| {
                     (
-                        TemplateChunk::Expression(chunk)
-                            .into_node(context, span),
+                        TemplateChunk {
+                            id: context.id_from(&expression),
+                            kind: TemplateChunkKind::Expression(expression),
+                        },
                         span,
                     )
                 }),
         );
         chunks.sort_by_key(|(_, range)| range.start);
         Ok(TemplateLiteral {
+            id: context.id(self),
             chunks: chunks
                 .into_iter()
                 .map(|(chunk, _)| chunk)
@@ -1327,8 +1386,11 @@ impl Transform for oxc::ArrayExpression<'_> {
             .map(|element| match element {
                 oxc::ArrayExpressionElement::SpreadElement(spread_element) => {
                     let expression =
-                        spread_element.argument.transform_node(context)?;
-                    Ok(expression.wrap(context, ArrayElement::Spread))
+                        spread_element.argument.transform(context)?;
+                    Ok(ArrayElement {
+                        id: context.id_from(&expression),
+                        kind: ArrayElementKind::Spread(expression),
+                    })
                 }
                 oxc::ArrayExpressionElement::Elision(elision) => {
                     unsupported!(
@@ -1338,13 +1400,19 @@ impl Transform for oxc::ArrayExpression<'_> {
                     );
                 }
                 _ => {
-                    let expression = as_expression!(context, element)
-                        .transform_node(context)?;
-                    Ok(expression.wrap(context, ArrayElement::Expression))
+                    let expression =
+                        as_expression!(context, element).transform(context)?;
+                    Ok(ArrayElement {
+                        id: context.id_from(&expression),
+                        kind: ArrayElementKind::Expression(expression),
+                    })
                 }
             })
             .collect::<Result<_, _>>()?;
-        Ok(ArrayLiteral { elements })
+        Ok(ArrayLiteral {
+            id: context.id(self),
+            elements,
+        })
     }
 }
 
@@ -1356,7 +1424,10 @@ impl Transform for oxc::ObjectExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         let properties = self.properties.transform_all(context);
-        Ok(ObjectLiteral { properties })
+        Ok(ObjectLiteral {
+            id: context.id(self),
+            properties,
+        })
     }
 }
 
@@ -1370,8 +1441,11 @@ impl Transform for oxc::ObjectPropertyKind<'_> {
         match self {
             Self::ObjectProperty(property) => property.transform(context),
             Self::SpreadProperty(element) => {
-                let expression = element.argument.transform_node(context)?;
-                Ok(ObjectProperty::Spread(expression))
+                let expression = element.argument.transform(context)?;
+                Ok(ObjectProperty {
+                    id: context.id(self),
+                    kind: ObjectPropertyKind::Spread(expression),
+                })
             }
         }
     }
@@ -1396,11 +1470,14 @@ impl Transform for oxc::ObjectProperty<'_> {
             oxc::PropertyKind::Init => {
                 // Spread elements can't appear here, they're handled above in
                 // oxc::ObjectPropertyKind
-                let property = self.key.transform_node(context)?;
-                let expression = self.value.transform_node(context)?;
-                Ok(ObjectProperty::Property {
-                    property,
-                    expression,
+                let property = self.key.transform(context)?;
+                let expression = self.value.transform(context)?;
+                Ok(ObjectProperty {
+                    id: context.id(self),
+                    kind: ObjectPropertyKind::Property {
+                        property,
+                        expression,
+                    },
                 })
             }
         }
@@ -1414,20 +1491,24 @@ impl Transform for oxc::PropertyKey<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        match self {
+        let kind = match self {
             Self::StaticIdentifier(ident) => {
-                let identifier = ident.transform_node(context)?;
-                Ok(PropertyName::Literal(identifier))
+                let identifier = ident.transform(context)?;
+                PropertyNameKind::Identifier(identifier)
             }
             Self::PrivateIdentifier(_) => {
                 unsupported!(context, self, Unsupported::Private);
             }
             _ => {
                 let expression =
-                    as_expression!(context, self).transform_node(context)?;
-                Ok(PropertyName::Expression(Box::new(expression)))
+                    as_expression!(context, self).transform(context)?;
+                PropertyNameKind::Expression(Box::new(expression))
             }
-        }
+        };
+        Ok(PropertyName {
+            id: context.id(self),
+            kind,
+        })
     }
 }
 
@@ -1438,12 +1519,15 @@ impl Transform for oxc::ComputedMemberExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let object = self.object.transform_node(context)?;
-        let property = self.expression.transform_node(context)?;
+        let object = self.object.transform(context)?;
+        let property = self.expression.transform(context)?;
         Ok(PropertyAccess {
+            id: context.id(self),
             object: object.into(),
-            property: property
-                .wrap(context, |prop| PropertyName::Expression(Box::new(prop))),
+            property: PropertyName {
+                id: context.id_from(&property),
+                kind: PropertyNameKind::Expression(Box::new(property)),
+            },
         })
     }
 }
@@ -1455,12 +1539,16 @@ impl Transform for oxc::StaticMemberExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let object = self.object.transform_node(context)?;
-        let property = self.property.transform_node(context)?;
+        let object = self.object.transform(context)?;
+        let property = self.property.transform(context)?;
 
         Ok(PropertyAccess {
+            id: context.id(self),
             object: object.into(),
-            property: property.wrap(context, PropertyName::Literal),
+            property: PropertyName {
+                id: context.id_from(&property),
+                kind: PropertyNameKind::Identifier(property),
+            },
         })
     }
 }
@@ -1480,24 +1568,29 @@ impl Transform for oxc::ChainExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let from_property_access =
-            |context, property_access: PropertyAccess| -> Expression {
-                Expression::OptionalProperty(
-                    OptionalPropertyAccess {
-                        object: property_access.object,
-                        property: property_access.property,
-                    }
-                    .into_node(context, self.span()),
-                )
+        let from_property_access = |context: &mut ParseContext,
+                                    property_access: PropertyAccess|
+         -> Expression {
+            let access = OptionalPropertyAccess {
+                id: property_access.id,
+                object: property_access.object,
+                property: property_access.property,
             };
+            Expression {
+                id: context.id_from(&access),
+                kind: ExpressionKind::OptionalProperty(access),
+            }
+        };
 
         match &self.expression {
             oxc::ChainElement::CallExpression(call_expression) => {
                 // CallExpression transformer handles the conditional case
                 // itself, so we can just forward that
-                call_expression
-                    .transform_node(context)
-                    .map(Expression::Call)
+                let call = call_expression.transform(context)?;
+                Ok(Expression {
+                    id: context.id_from(&call),
+                    kind: ExpressionKind::Call(call),
+                })
             }
             oxc::ChainElement::ComputedMemberExpression(
                 computed_member_expression,
@@ -1548,8 +1641,9 @@ impl Transform for oxc::UnaryExpression<'_> {
                 unsupported!(context, self, Unsupported::Bitwise);
             }
         };
-        let expression = self.argument.transform_node(context)?;
+        let expression = self.argument.transform(context)?;
         Ok(UnaryOperation {
+            id: context.id(self),
             operator,
             expression: expression.into(),
         })
@@ -1598,9 +1692,10 @@ impl Transform for oxc::BinaryExpression<'_> {
                 unsupported!(context, self, Unsupported::Bitwise);
             }
         };
-        let lhs = self.left.transform_node(context)?;
-        let rhs = self.right.transform_node(context)?;
+        let lhs = self.left.transform(context)?;
+        let rhs = self.right.transform(context)?;
         Ok(BinaryOperation {
+            id: context.id(self),
             operator,
             lhs: lhs.into(),
             rhs: rhs.into(),
@@ -1620,9 +1715,10 @@ impl Transform for oxc::LogicalExpression<'_> {
             oxc::LogicalOperator::And => BinaryOperator::LogicalAnd,
             oxc::LogicalOperator::Coalesce => BinaryOperator::NullishCoalesce,
         };
-        let lhs = self.left.transform_node(context)?;
-        let rhs = self.right.transform_node(context)?;
+        let lhs = self.left.transform(context)?;
+        let rhs = self.right.transform(context)?;
         Ok(BinaryOperation {
+            id: context.id(self),
             operator,
             lhs: lhs.into(),
             rhs: rhs.into(),
@@ -1637,10 +1733,11 @@ impl Transform for oxc::ConditionalExpression<'_> {
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let condition = self.test.transform_node(context)?;
-        let true_expression = self.consequent.transform_node(context)?;
-        let false_expression = self.alternate.transform_node(context)?;
+        let condition = self.test.transform(context)?;
+        let true_expression = self.consequent.transform(context)?;
+        let false_expression = self.alternate.transform(context)?;
         Ok(TernaryConditional {
+            id: context.id(self),
             condition: condition.into(),
             true_expression: true_expression.into(),
             false_expression: false_expression.into(),
@@ -1656,8 +1753,9 @@ impl Transform for oxc::CallExpression<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         let arguments = self.arguments.transform_all(context);
-        let function = self.callee.transform_node(context)?;
+        let function = self.callee.transform(context)?;
         Ok(FunctionCall {
+            id: context.id(self),
             function: function.into(),
             arguments,
             // Like this: a.f?.()
@@ -1676,11 +1774,11 @@ impl Transform for oxc::Argument<'_> {
         match self {
             Self::SpreadElement(spread_element) => spread_element
                 .argument
-                .transform_node(context)
+                .transform(context)
                 .map(|expression| Argument::Spread(Box::new(expression))),
             // All other variants are inherited from Expression
             _ => as_expression!(context, self)
-                .transform_node(context)
+                .transform(context)
                 .map(|expression| Argument::Expression(Box::new(expression))),
         }
     }
@@ -1697,62 +1795,6 @@ fn transform_ident(ident: oxc::Ident<'_>) -> Identifier {
         .as_str()
         .parse()
         .expect("Valid ES identifier not accepted by PetitScript")
-}
-
-impl<T> Node<T> {
-    /// Wrap this node in an additional node that shares the same source span
-    ///
-    /// Use this when applying a wrapper to a node type that doesn't change the
-    /// span of the source code. The wrapped node will get a new ID, but that
-    /// ID will point to the same source code as the given node.
-    ///
-    /// ## Example
-    ///
-    /// In this code:
-    ///
-    /// ```norust
-    /// const x = 3;
-    /// ```
-    ///
-    /// An [Identifier] node will point to `x`, then that node will be wrapped
-    /// in a [Binding]. Both nodes refer to the same source code. You could wrap
-    /// the `Identifier` node like so:
-    ///
-    /// ```notest
-    /// let binding = identifier.wrap(context, Binding::Identifier);
-    /// ```
-    fn wrap<U>(
-        self,
-        context: &mut ParseContext,
-        f: impl FnOnce(Node<T>) -> U,
-    ) -> Node<U> {
-        let new_id = context.node_id_inner(
-            context
-                .spans
-                .get(self.id())
-                .expect("Node must be in span table"),
-        );
-        Node::new(new_id, f(self))
-    }
-}
-
-/// Helper for attach an ID to an AST node
-trait IntoNode: Sized {
-    fn into_node(
-        self,
-        context: &mut ParseContext,
-        span: oxc_span::Span,
-    ) -> Node<Self>;
-}
-
-impl<T> IntoNode for T {
-    fn into_node(
-        self,
-        context: &mut ParseContext,
-        span: oxc_span::Span,
-    ) -> Node<Self> {
-        Node::new(context.node_id(span), self)
-    }
 }
 
 /// Indicator that an error has been registered via [ParseContext::error]

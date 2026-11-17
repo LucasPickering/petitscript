@@ -3,8 +3,9 @@
 use crate::{
     Exports,
     ast::{
-        Block, Declaration, ExportDeclaration, FunctionBody, If,
-        ImportDeclaration, ImportModule, Module, Node, Statement, Variable,
+        Block, Declaration, ExportDeclaration, ExportDeclarationKind,
+        FunctionBody, If, ImportDeclaration, ImportModule, ImportModuleKind,
+        Module, Node, Statement, StatementKind, Variable,
     },
     error::{RuntimeError, RuntimeErrorKind},
     execute::{ThreadState, eval::Evaluate},
@@ -12,10 +13,8 @@ use crate::{
     value::Value,
 };
 
-// TODO normalize whether we use Node<T> or just T on all impls
-
 /// TODO
-pub trait Execute {
+pub trait Execute: Node {
     type Output<'process>;
 
     /// TODO. Errors are returned wrapped with the source span of the AST node
@@ -28,33 +27,16 @@ pub trait Execute {
     ) -> Result<Self::Output<'process>, RuntimeError>;
 }
 
-impl<T, O> Execute for [T]
-where
-    T: for<'process> Execute<Output<'process> = Option<O>>,
-{
-    type Output<'process> = Option<O>;
-
-    fn exec(&self, state: &mut ThreadState) -> Result<Option<O>, RuntimeError> {
-        for statement in self {
-            let output = statement.exec(state)?;
-            if let Some(output) = output {
-                return Ok(Some(output));
-            }
-        }
-        Ok(None)
-    }
-}
-
 impl Execute for Module {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
-        self.statements.exec(state)?;
+        exec_all(state, &self.statements)?;
         Ok(())
     }
 }
 
-impl Execute for Node<Statement> {
+impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
     type Output<'process> = Option<Return>;
 
@@ -62,25 +44,25 @@ impl Execute for Node<Statement> {
         &self,
         state: &mut ThreadState,
     ) -> Result<Option<Return>, RuntimeError> {
-        match &self.data() {
-            Statement::Empty => Ok(None),
-            Statement::Block(block) => {
+        match &self.kind {
+            StatementKind::Empty => Ok(None),
+            StatementKind::Block(block) => {
                 // A block gets a new lexical scope
-                state.with_subscope(|state| block.statements.exec(state))
+                state.with_subscope(|state| exec_all(state, &block.statements))
             }
-            Statement::Expression(expression) => {
+            StatementKind::Expression(expression) => {
                 // Expression may have side effects, so evaluate it and throw
                 // away the outcome
                 expression.eval(state)?;
                 Ok(None)
             }
-            Statement::Declaration(declaration) => {
+            StatementKind::Declaration(declaration) => {
                 declaration.exec(state)?;
                 Ok(None)
             }
 
-            Statement::If(if_statement) => if_statement.exec(state),
-            Statement::Return(expression) => {
+            StatementKind::If(if_statement) => if_statement.exec(state),
+            StatementKind::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
                     Some(expression.eval(state)?)
                 } else {
@@ -89,11 +71,11 @@ impl Execute for Node<Statement> {
                 Ok(Some(Return(return_value)))
             }
 
-            Statement::Import(import) => {
+            StatementKind::Import(import) => {
                 import.exec(state)?;
                 Ok(None)
             }
-            Statement::Export(export) => {
+            StatementKind::Export(export) => {
                 export.exec(state)?;
                 Ok(None)
             }
@@ -117,7 +99,7 @@ impl Execute for Block {
     }
 }
 
-impl Execute for Node<ImportDeclaration> {
+impl Execute for ImportDeclaration {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
@@ -151,22 +133,22 @@ impl Execute for Node<ImportDeclaration> {
     }
 }
 
-impl Execute for Node<ImportModule> {
+impl Execute for ImportModule {
     type Output<'process> = Exports;
 
     /// Resolve a module name/path into its exports. For native modules this
     /// just grabs the exports from the registry. For paths, it will execute
     /// the external program
     fn exec(&self, state: &mut ThreadState) -> Result<Exports, RuntimeError> {
-        match &self.data() {
-            ImportModule::Native(name) => state
+        match &self.kind {
+            ImportModuleKind::Native(name) => state
                 .process()
                 .native_module(name)
                 // The clone is not strictly necessary, but the consuming logic
                 // gets a lot more complicated if we don't
                 .cloned()
                 .map_err(|error| state.trace_error(error, self.id())),
-            ImportModule::Local(ast) => {
+            ImportModuleKind::Local(ast) => {
                 let mut thread_state = state.process().create_thread();
                 ast.exec(&mut thread_state)?;
                 let exports = thread_state.into_exports().unwrap();
@@ -176,12 +158,12 @@ impl Execute for Node<ImportModule> {
     }
 }
 
-impl Execute for Node<ExportDeclaration> {
+impl Execute for ExportDeclaration {
     type Output<'process> = ();
 
     fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
-        match &self.data() {
-            ExportDeclaration::Declaration(declaration) => {
+        match &self.kind {
+            ExportDeclarationKind::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
                     state.export(name).map_err(|error| {
                         state.trace_error(error, declaration.id())
@@ -189,7 +171,7 @@ impl Execute for Node<ExportDeclaration> {
                 }
                 Ok(())
             }
-            ExportDeclaration::DefaultExpression(expression) => {
+            ExportDeclarationKind::DefaultExpression(expression) => {
                 let value = expression.eval(state)?;
                 state
                     .export_default(value)
@@ -216,7 +198,7 @@ impl Execute for If {
     }
 }
 
-impl Execute for Node<Declaration> {
+impl Execute for Declaration {
     /// Return the list of declared names
     type Output<'process> = Vec<String>;
 
@@ -273,3 +255,17 @@ impl Execute for FunctionBody {
 #[derive(Debug)]
 #[must_use]
 pub struct Return(Option<Value>);
+
+/// Execute all nodes in a sequence, in order
+fn exec_all(
+    state: &mut ThreadState,
+    statements: &[Statement],
+) -> Result<Option<Return>, RuntimeError> {
+    for statement in statements {
+        let output = statement.exec(state)?;
+        if let Some(output) = output {
+            return Ok(Some(output));
+        }
+    }
+    Ok(None)
+}

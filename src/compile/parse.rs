@@ -9,7 +9,7 @@ mod transform;
 
 use crate::{
     Source,
-    ast::{Module, Node},
+    ast::Module,
     error::{ParseError, ParseErrorKind, ParseErrors},
     source::{SourceId, SourceTable, Span, SpanTable},
 };
@@ -30,7 +30,7 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 /// parsed module, this returns a debug table of source spans for each AST node.
 pub fn parse(
     sources: &mut SourceTable,
-) -> Result<(Node<Module>, SpanTable), ParseErrors> {
+) -> Result<(Module, SpanTable), ParseErrors> {
     let source_id = sources.root_id();
     let mut spans = SpanTable::default();
     let mut context = ParseContext {
@@ -61,7 +61,7 @@ pub fn parse(
 /// This is called recursively within a parse tree, once per PS module. Each
 /// module corresponds to a single source, so this will add a new source to the
 /// given source table.
-fn parse_module(context: &mut ParseContext) -> Node<Module> {
+fn parse_module(context: &mut ParseContext) -> Module {
     let source = context.current_source();
     // TODO don't clone
     let source_code = source.text().to_owned();
@@ -172,8 +172,8 @@ mod tests {
         let source = r"const s = 'test\nnewline';";
         let module = parse_test(source).unwrap();
         assert_eq!(
-            module.data(),
-            &Module::new([Declaration::new("s", "test\nnewline").into()])
+            module,
+            Module::new([Declaration::new("s", "test\nnewline")])
         );
     }
 
@@ -191,8 +191,8 @@ mod tests {
         let source = "const s = 'test \\\nno newline';";
         let module = parse_test(source).unwrap();
         assert_eq!(
-            module.data(),
-            &Module::new([Declaration::new("s", "test no newline").into()])
+            module,
+            Module::new([Declaration::new("s", "test no newline")])
         );
     }
 
@@ -241,7 +241,7 @@ mod tests {
         assert_eq!(span_async, Span::new(source_id, 59, 198));
     }
 
-    fn parse_test(source: &'static str) -> Result<Node<Module>, ParseErrors> {
+    fn parse_test(source: &'static str) -> Result<Module, ParseErrors> {
         let mut source_table = SourceTable::default();
         source_table.insert(source.into());
         parse(&mut source_table).map(|(module, _)| module)

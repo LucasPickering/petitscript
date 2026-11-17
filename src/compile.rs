@@ -7,14 +7,14 @@ pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
     Source,
-    ast::{Module, Node, Walk},
+    ast::{Module, Walk},
     compile::function::{CaptureFunctions, LabelFunctions},
     error::ParseErrors,
     source::{SourceTable, SpanTable},
 };
 
 /// Parse some source code into an AST
-pub fn parse(source: impl Into<Source>) -> Result<Node<Module>, ParseErrors> {
+pub fn parse(source: impl Into<Source>) -> Result<Module, ParseErrors> {
     Ok(Compiler::new(source).parse()?.program.module)
 }
 
@@ -27,8 +27,9 @@ pub fn compile(source: impl Into<Source>) -> Result<Program, ParseErrors> {
 /// Compile a prebuilt AST into an executable [Program]
 ///
 /// Helpful for tests and other environments where an AST is built
-/// programatically rather than by parsing source code.
-pub fn compile_ast(module: Node<Module>) -> Program {
+/// programatically rather than by parsing source code. Compilation is
+/// infallible.
+pub fn compile_ast(module: Module) -> Program {
     Compiler {
         program: ParsedAst {
             module,
@@ -45,7 +46,7 @@ pub fn compile_ast(module: Node<Module>) -> Program {
 #[derive(Debug)]
 pub struct Program {
     sources: SourceTable,
-    module: Node<Module>,
+    module: Module,
     /// A debug table of source spans for each node. This will help us produce
     /// good error messages at runtime
     spans: SpanTable,
@@ -79,19 +80,19 @@ struct Compiler<T> {
 
 /// AST that has been parsed, but had no transformations applied
 struct ParsedAst {
-    module: Node<Module>,
+    module: Module,
     spans: SpanTable,
 }
 
 /// AST after function labelling
 struct LabelledAst {
-    module: Node<Module>,
+    module: Module,
     spans: SpanTable,
 }
 
 /// AST after function capture
 struct CapturedAst {
-    module: Node<Module>,
+    module: Module,
     spans: SpanTable,
 }
 

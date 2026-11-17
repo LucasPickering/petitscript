@@ -2,22 +2,21 @@
 
 use crate::{
     ast::{
-        Argument, ArrayElement, ArrayLiteral, BinaryOperation, BinaryOperator,
-        Expression, FunctionCall, FunctionDefinition, FunctionParameter,
-        Literal, Node, ObjectLiteral, ObjectProperty, OptionalPropertyAccess,
-        PropertyAccess, PropertyName, TemplateChunk, TemplateLiteral,
+        Argument, ArrayElementKind, ArrayLiteral, BinaryOperation,
+        BinaryOperator, Expression, ExpressionKind, FunctionCall,
+        FunctionDefinition, FunctionParameter, Literal, Node, ObjectLiteral,
+        ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
+        PropertyName, PropertyNameKind, TemplateChunkKind, TemplateLiteral,
         UnaryOperation, UnaryOperator,
     },
-    error::{RuntimeErrorKind, RuntimeError, ValueError},
+    error::{RuntimeError, RuntimeErrorKind, ValueError},
     execute::{ThreadState, exec::Execute, state::CallSite},
     value::{Array, Number, Object, Value, ValueType, function::Function},
 };
 use std::{borrow::Cow, sync::Arc};
 
-// TODO normalize whether we use Node<T> or just T on all impls
-
 /// Evaluate an expression into a value
-pub trait Evaluate {
+pub trait Evaluate: Node {
     /// Evaluate an AST node into a runtime [Value]. Errors are returned wrapped
     /// with the source span of the AST node from which the error originated.
     /// We use `Traced<RuntimeError,Span>` instead of `Error::Runtime` because
@@ -28,21 +27,32 @@ pub trait Evaluate {
 impl Evaluate for Expression {
     /// Evaluate an expression
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
-        match self {
-            Self::Parenthesized(expression) => expression.eval(state),
-            Self::Literal(literal) => literal.eval(state),
-            Self::Template(template_literal) => template_literal.eval(state),
-            Self::Identifier(identifier) => state
+        match &self.kind {
+            ExpressionKind::Parenthesized(expression) => expression.eval(state),
+            ExpressionKind::Literal(literal) => match literal {
+                Literal::Null => Ok(Value::Null),
+                Literal::Undefined => Ok(Value::Undefined),
+                Literal::Boolean(b) => Ok(Value::Boolean(*b)),
+                Literal::String(s) => Ok(Value::String(s.as_str().into())),
+                Literal::Float(f) => Ok(Value::Number(Number::Float(*f))),
+                Literal::Int(i) => Ok(Value::Number(Number::Int(*i))),
+                Literal::Array(array_literal) => array_literal.eval(state),
+                Literal::Object(object_literal) => object_literal.eval(state),
+            },
+            ExpressionKind::Template(template_literal) => {
+                template_literal.eval(state)
+            }
+            ExpressionKind::Identifier(identifier) => state
                 .scope()
                 .get(identifier.as_str())
-                .map_err(|error| state.trace_error(error, identifier.id())),
-            Self::Function(function) => function.eval(state),
-            Self::Call(call) => call.eval(state),
-            Self::Property(access) => access.eval(state),
-            Self::OptionalProperty(access) => access.eval(state),
-            Self::Unary(unary) => unary.eval(state),
-            Self::Binary(binary) => binary.eval(state),
-            Self::Ternary(conditional) => {
+                .map_err(|error| state.trace_error(error, self.id())),
+            ExpressionKind::Function(function) => function.eval(state),
+            ExpressionKind::Call(call) => call.eval(state),
+            ExpressionKind::Property(access) => access.eval(state),
+            ExpressionKind::OptionalProperty(access) => access.eval(state),
+            ExpressionKind::Unary(unary) => unary.eval(state),
+            ExpressionKind::Binary(binary) => binary.eval(state),
+            ExpressionKind::Ternary(conditional) => {
                 if conditional.condition.eval(state)?.to_bool() {
                     conditional.true_expression.eval(state)
                 } else {
@@ -53,32 +63,17 @@ impl Evaluate for Expression {
     }
 }
 
-impl Evaluate for Literal {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
-        match self {
-            Self::Null => Ok(Value::Null),
-            Self::Undefined => Ok(Value::Undefined),
-            Self::Boolean(b) => Ok(Value::Boolean(*b)),
-            Self::String(s) => Ok(Value::String(s.as_str().into())),
-            Self::Float(f) => Ok(Value::Number(Number::Float(*f))),
-            Self::Int(i) => Ok(Value::Number(Number::Int(*i))),
-            Self::Array(array_literal) => array_literal.eval(state),
-            Self::Object(object_literal) => object_literal.eval(state),
-        }
-    }
-}
-
 impl Evaluate for ArrayLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let mut array = Array::default();
         for element in &self.elements {
-            match &element.data() {
+            match &element.kind {
                 // These are optimized to avoid allocations where possible
-                ArrayElement::Expression(expression) => {
+                ArrayElementKind::Expression(expression) => {
                     let value = expression.eval(state)?;
                     array = array.push(value);
                 }
-                ArrayElement::Spread(expression) => {
+                ArrayElementKind::Spread(expression) => {
                     let new = expression
                         .eval(state)?
                         .try_into_array()
@@ -97,8 +92,8 @@ impl Evaluate for ObjectLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let mut object = Object::default();
         for property in &self.properties {
-            match &property.data() {
-                ObjectProperty::Property {
+            match &property.kind {
+                ObjectPropertyKind::Property {
                     property,
                     expression,
                 } => {
@@ -108,7 +103,7 @@ impl Evaluate for ObjectLiteral {
                     let value = expression.eval(state)?;
                     object = object.insert(name, value);
                 }
-                ObjectProperty::Spread(expression) => {
+                ObjectPropertyKind::Spread(expression) => {
                     let new = expression
                         .eval(state)?
                         .try_into_object()
@@ -125,12 +120,14 @@ impl Evaluate for ObjectLiteral {
 
 impl Evaluate for PropertyName {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
-        match self {
+        match &self.kind {
             // {field: "value"}
             // Shorthand syntax unpacks to {field: field} in parsing
-            PropertyName::Literal(identifier) => Ok(identifier.as_str().into()),
+            PropertyNameKind::Identifier(identifier) => {
+                Ok(identifier.as_str().into())
+            }
             // {["field"]: "value"}
-            PropertyName::Expression(expression) => expression.eval(state),
+            PropertyNameKind::Expression(expression) => expression.eval(state),
         }
     }
 }
@@ -139,11 +136,11 @@ impl Evaluate for TemplateLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         self.chunks
             .iter()
-            .map(|chunk| match &chunk.data() {
-                TemplateChunk::Literal(literal) => {
+            .map(|chunk| match &chunk.kind {
+                TemplateChunkKind::Literal(literal) => {
                     Ok(Cow::Borrowed(literal.as_str()))
                 }
-                TemplateChunk::Expression(expression) => {
+                TemplateChunkKind::Expression(expression) => {
                     // Convert to a string using coercion semantics.
                     // Make sure *not* to convert with the Display impl
                     Ok(Cow::Owned(String::from(
@@ -156,20 +153,20 @@ impl Evaluate for TemplateLiteral {
     }
 }
 
-impl Evaluate for Node<FunctionDefinition> {
+impl Evaluate for FunctionDefinition {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let scope = state.scope();
         let captures = scope
             .captures(&self.captures)
             .map_err(|error| state.trace_error(error, self.id()))?;
 
-        Ok(Function::user(Arc::new(self.data().clone()), captures).into())
+        Ok(Function::user(Arc::new(self.clone()), captures).into())
     }
 }
 
-/// This is implemented on `Node<FunctionCall>` so we can access our own node
+/// This is implemented on `FunctionCall` so we can access our own node
 /// ID to add to the call stack
-impl Evaluate for Node<FunctionCall> {
+impl Evaluate for FunctionCall {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let function = self.function.eval(state)?;
         match function {
@@ -177,7 +174,7 @@ impl Evaluate for Node<FunctionCall> {
                 // Collect arguments
                 let mut arguments = Vec::new();
                 for argument in &self.arguments {
-                    match argument.data() {
+                    match argument {
                         Argument::Expression(expression) => {
                             arguments.push(expression.eval(state)?);
                         }
@@ -212,7 +209,7 @@ impl Evaluate for Node<FunctionCall> {
 }
 
 /// Property access: `.` or `[...]`
-impl Evaluate for Node<PropertyAccess> {
+impl Evaluate for PropertyAccess {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let target = self.object.eval(state)?;
         let property = self.property.eval(state)?;
@@ -222,7 +219,7 @@ impl Evaluate for Node<PropertyAccess> {
 }
 
 /// Optional object/array property access: `?.` or `?.[...]`
-impl Evaluate for Node<OptionalPropertyAccess> {
+impl Evaluate for OptionalPropertyAccess {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         match self.object.eval(state)? {
             // Do NOT evaluate the property expression if the target is
@@ -358,7 +355,7 @@ impl Function {
     /// Bind argument values to parameters in the current scope
     fn bind_arguments(
         state: &mut ThreadState,
-        parameters: &[Node<FunctionParameter>],
+        parameters: &[FunctionParameter],
         arguments: Vec<Value>,
     ) -> Result<(), RuntimeError> {
         // Each parameter will be added to the scope for the next param,

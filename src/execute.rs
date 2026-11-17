@@ -170,9 +170,20 @@ pub struct Exports {
 }
 
 impl Exports {
-    /// Create a new empty set of exports
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a set of exports with an optional default and a set of named
+    /// values
+    pub fn new(
+        default: Option<impl Into<Value>>,
+        named: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
+    ) -> Self {
+        let named = named
+            .into_iter()
+            .map(|(name, value)| (name.into(), value.into()))
+            .collect();
+        Self {
+            default: default.map(Into::into),
+            named,
+        }
     }
 
     /// Export a some values as named exports. This allows the exports to be
@@ -188,14 +199,7 @@ impl Exports {
         K: Into<String>,
         V: Into<Value>,
     {
-        let named = exports
-            .into_iter()
-            .map(|(name, value)| (name.into(), value.into()))
-            .collect();
-        Self {
-            named,
-            default: None,
-        }
+        Self::new(None::<Value>, exports)
     }
 
     /// TODO
@@ -230,14 +234,10 @@ impl Exports {
     /// // unpack the args
     /// module.export_fn("args0", |_, ()| Value::Null);
     /// module.export_fn("args1", |_, (arg,): (Value,)| arg);
-    /// module.export_fn(
-    ///     "args2",
-    ///     |_, (arg0, arg1)| -> [Value; 2] { [arg0, arg1] },
-    /// );
+    /// module.export_fn("args2", |_, (arg0, arg1)| -> [Value; 2] { [arg0, arg1] });
     ///
     /// // You can restrict the arg and return type:
     /// module.export_fn("add", |_, (a, b): (Number, Number)| a + b);
-    ///
     ///
     /// // You can return errors:
     /// module.export_fn(
@@ -248,7 +248,7 @@ impl Exports {
     ///         } else {
     ///             Err(ValueError::Other("error!".into()))
     ///         }
-    ///     }
+    ///     },
     /// );
     /// ```
     pub fn export_fn<F, Args, Out>(

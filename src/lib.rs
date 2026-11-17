@@ -4,8 +4,8 @@
 //! attached to Rust programs. It serves a related role to [Lua](https://www.lua.org/),
 //! [Rhai](https://docs.rs/rhai/latest/rhai/), and others. **However**,
 //! PetitScript is more specifically designed for app configuration. The
-//! [immutable semantics](TODO) are meant to force declarative code that is
-//! easy to read and reason about. TODO link to Slumber?
+//! [immutable semantics](#immutable-semantics) are meant to force declarative
+//! code that is easy to read and reason about. TODO link to Slumber?
 //!
 //! The primary advantage of PS over other scripting languages is the
 //! familiarity of its syntax and semantics. Most people already know
@@ -16,7 +16,7 @@
 //!
 //! TODO how intro this list?
 //! - Easily define native functions callable from PS code
-//! - Introspect PS programs via the [abstract syntax tree](ast)
+//! - Introspect and create programs via the minimal [abstract syntax tree](ast)
 //! - Freely clone and share PS values across threads
 //! - [Serde](crate::serde) integration
 //!
@@ -58,6 +58,10 @@
 //! - TODO Local modules
 //! - TODO Compile and inspect AST
 //! - TODO value provenance (source span tracking)
+//!
+//! ## Immutable Semantics
+//!
+//! TODO
 
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
@@ -86,7 +90,7 @@ pub use crate::{
 };
 
 use crate::{
-    ast::{Module, Node},
+    ast::Module,
     compile::Program,
     error::{ParseErrors, RuntimeErrorKind},
     execute::GlobalEnvironment,
@@ -166,7 +170,7 @@ impl Engine {
     pub fn parse(
         &self,
         source: impl Into<Source>,
-    ) -> Result<Node<Module>, ParseErrors> {
+    ) -> Result<Module, ParseErrors> {
         compile::parse(source)
     }
 
@@ -190,7 +194,7 @@ impl Engine {
     /// This is helpful for tests and other environments where an AST is built
     /// programatically rather than by parsing source code. This is infallible
     /// because parsing is the only fallible part of the compilation pipeline.
-    pub fn compile_ast(&self, module: Node<Module>) -> Process {
+    pub fn compile_ast(&self, module: Module) -> Process {
         let program = compile::compile_ast(module);
         self.spawn(program)
     }

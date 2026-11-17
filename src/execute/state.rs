@@ -2,7 +2,7 @@
 
 use crate::{
     Process, RuntimeErrorKind,
-    ast::{ArrayPatternElement, Binding, Node, NodeId},
+    ast::{ArrayPatternElementKind, Binding, BindingKind, Node, NodeId},
     compile::Program,
     error::{RuntimeError, StackTraceFrame},
     execute::{
@@ -108,7 +108,7 @@ impl<'process> ThreadState<'process> {
     pub fn trace_error(
         &self,
         error: RuntimeErrorKind,
-        current: impl Into<CallSite>,
+        current: impl Into<CallSite>, // TODO take a &Node instead?
     ) -> RuntimeError {
         let current = current.into();
         let program = self.program();
@@ -200,16 +200,16 @@ impl<'process> ThreadState<'process> {
     /// - `const { [f()]: a } = o;`
     pub(crate) fn bind(
         &mut self,
-        binding: &Node<Binding>,
+        binding: &Binding,
         value: Value,
     ) -> Result<Vec<String>, RuntimeError> {
-        match binding.data() {
-            Binding::Identifier(identifier) => {
+        match &binding.kind {
+            BindingKind::Identifier(identifier) => {
                 let name = identifier.as_str().to_owned();
                 self.scope_mut().declare(name.clone(), value);
                 Ok(vec![name])
             }
-            Binding::Object { properties, rest } => {
+            BindingKind::Object { properties, rest } => {
                 // Value must be an object. Copy its properties to another map
                 // so we can drain them as we bind them. (neede
                 // for ... bindings)
@@ -243,7 +243,7 @@ impl<'process> ThreadState<'process> {
 
                 Ok(names)
             }
-            Binding::Array { elements, rest } => {
+            BindingKind::Array { elements, rest } => {
                 // Value must be an array. Copy its elements to another array
                 // so we can drain them as we bind them. (needed for ...
                 // bindings)
@@ -255,8 +255,11 @@ impl<'process> ThreadState<'process> {
                 let mut names = vec![];
 
                 for element in elements {
-                    match element.data() {
-                        ArrayPatternElement::Identifier { binding, init } => {
+                    match &element.kind {
+                        ArrayPatternElementKind::Identifier {
+                            binding,
+                            init,
+                        } => {
                             // Calculate the bound value:
                             // element value -> init expression -> undefined
                             let value = values
@@ -268,7 +271,7 @@ impl<'process> ThreadState<'process> {
                                 .unwrap_or(Value::Undefined);
                             names.extend(self.bind(binding, value)?);
                         }
-                        ArrayPatternElement::Skip => {
+                        ArrayPatternElementKind::Skip => {
                             values.pop_front(); // Skip this element
                         }
                     }

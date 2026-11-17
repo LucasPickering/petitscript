@@ -1,12 +1,14 @@
 use crate::ast::{
-    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    Binding, Block, Declaration, ExportDeclaration, Expression, FunctionBody,
-    FunctionCall, FunctionDefinition, FunctionParameter, Identifier, If,
-    ImportDeclaration, ImportModule, ImportNamed, Literal, Module, Node,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, Statement,
-    TemplateChunk, TemplateLiteral, TernaryConditional, UnaryOperation,
-    Variable,
+    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
+    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation, Binding,
+    BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
+    Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
+    FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
+    ImportModuleKind, ImportNamed, Literal, Module, ObjectLiteral,
+    ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+    TemplateLiteral, TernaryConditional, UnaryOperation, Variable,
 };
 use std::ops::DerefMut;
 
@@ -35,15 +37,17 @@ impl Walk for Module {
 impl Walk for Statement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_statement(self);
-        match self {
-            Self::Declaration(declaration) => declaration.walk(visitor),
-            Self::Expression(expression) => expression.walk(visitor),
-            Self::Block(block) => block.statements.walk(visitor),
-            Self::If(if_statement) => if_statement.walk(visitor),
-            Self::Return(expression) => expression.walk(visitor),
-            Self::Import(import) => import.walk(visitor),
-            Self::Export(export) => export.walk(visitor),
-            Self::Empty => {}
+        match &mut self.kind {
+            StatementKind::Declaration(declaration) => {
+                declaration.walk(visitor);
+            }
+            StatementKind::Expression(expression) => expression.walk(visitor),
+            StatementKind::Block(block) => block.statements.walk(visitor),
+            StatementKind::If(if_statement) => if_statement.walk(visitor),
+            StatementKind::Return(expression) => expression.walk(visitor),
+            StatementKind::Import(import) => import.walk(visitor),
+            StatementKind::Export(export) => export.walk(visitor),
+            StatementKind::Empty => {}
         }
         visitor.exit_statement(self);
     }
@@ -68,21 +72,23 @@ impl Walk for Declaration {
 impl Walk for Expression {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_expression(self);
-        match self {
-            Self::Parenthesized(expression) => expression.walk(visitor),
-            Self::Literal(literal) => literal.walk(visitor),
-            Self::Template(template) => template.walk(visitor),
-            Self::Identifier(identifier) => visitor.visit_identifier(
-                identifier.data_mut(),
-                IdentifierPosition::Reference,
-            ),
-            Self::Call(call) => call.walk(visitor),
-            Self::Property(property) => property.walk(visitor),
-            Self::OptionalProperty(property) => property.walk(visitor),
-            Self::Function(function) => function.walk(visitor),
-            Self::Unary(unary) => unary.walk(visitor),
-            Self::Binary(binary) => binary.walk(visitor),
-            Self::Ternary(ternary) => ternary.walk(visitor),
+        match &mut self.kind {
+            ExpressionKind::Parenthesized(expression) => {
+                expression.walk(visitor);
+            }
+            ExpressionKind::Literal(literal) => literal.walk(visitor),
+            ExpressionKind::Template(template) => template.walk(visitor),
+            ExpressionKind::Identifier(identifier) => visitor
+                .visit_identifier(identifier, IdentifierPosition::Reference),
+            ExpressionKind::Call(call) => call.walk(visitor),
+            ExpressionKind::Property(property) => property.walk(visitor),
+            ExpressionKind::OptionalProperty(property) => {
+                property.walk(visitor);
+            }
+            ExpressionKind::Function(function) => function.walk(visitor),
+            ExpressionKind::Unary(unary) => unary.walk(visitor),
+            ExpressionKind::Binary(binary) => binary.walk(visitor),
+            ExpressionKind::Ternary(ternary) => ternary.walk(visitor),
         }
         visitor.exit_expression(self);
     }
@@ -100,14 +106,14 @@ impl Walk for Variable {
 impl Walk for Binding {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_binding(self);
-        match self {
-            Self::Identifier(identifier) => visitor
+        match &mut self.kind {
+            BindingKind::Identifier(identifier) => visitor
                 .visit_identifier(identifier, IdentifierPosition::Declaration),
-            Self::Object { properties, rest } => {
+            BindingKind::Object { properties, rest } => {
                 properties.walk(visitor);
                 rest.walk(visitor);
             }
-            Self::Array { elements, rest } => {
+            BindingKind::Array { elements, rest } => {
                 elements.walk(visitor);
                 rest.walk(visitor);
             }
@@ -119,12 +125,12 @@ impl Walk for Binding {
 impl Walk for ArrayPatternElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_array_pattern_element(self);
-        match self {
-            Self::Identifier { binding, init } => {
+        match &mut self.kind {
+            ArrayPatternElementKind::Identifier { binding, init } => {
                 binding.walk(visitor);
                 init.walk(visitor);
             }
-            Self::Skip => {}
+            ArrayPatternElementKind::Skip => {}
         }
         visitor.exit_array_pattern_element(self);
     }
@@ -181,10 +187,12 @@ impl Walk for FunctionParameter {
 impl Walk for PropertyName {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_property_name(self);
-        match self {
-            Self::Literal(identifier) => visitor
+        match &mut self.kind {
+            PropertyNameKind::Identifier(identifier) => visitor
                 .visit_identifier(identifier, IdentifierPosition::Property),
-            Self::Expression(expression) => expression.walk(visitor),
+            PropertyNameKind::Expression(expression) => {
+                expression.walk(visitor);
+            }
         }
         visitor.exit_property_name(self);
     }
@@ -236,9 +244,11 @@ impl Walk for TemplateLiteral {
 impl Walk for TemplateChunk {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_template_chunk(self);
-        match self {
-            TemplateChunk::Literal(_) => {} // Nothing to walk here
-            TemplateChunk::Expression(expression) => expression.walk(visitor),
+        match &mut self.kind {
+            TemplateChunkKind::Literal(_) => {} // Nothing to walk here
+            TemplateChunkKind::Expression(expression) => {
+                expression.walk(visitor);
+            }
         }
         visitor.exit_template_chunk(self);
     }
@@ -255,8 +265,9 @@ impl Walk for ArrayLiteral {
 impl Walk for ArrayElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_array_element(self);
-        match self {
-            Self::Expression(expression) | Self::Spread(expression) => {
+        match &mut self.kind {
+            ArrayElementKind::Expression(expression)
+            | ArrayElementKind::Spread(expression) => {
                 expression.walk(visitor);
             }
         }
@@ -275,15 +286,15 @@ impl Walk for ObjectLiteral {
 impl Walk for ObjectProperty {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_object_property(self);
-        match self {
-            Self::Property {
+        match &mut self.kind {
+            ObjectPropertyKind::Property {
                 property,
                 expression,
             } => {
                 property.walk(visitor);
                 expression.walk(visitor);
             }
-            Self::Spread(expression) => expression.walk(visitor),
+            ObjectPropertyKind::Spread(expression) => expression.walk(visitor),
         }
         visitor.exit_object_property(self);
     }
@@ -338,13 +349,13 @@ impl Walk for ImportNamed {
 impl Walk for ImportModule {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import_module(self);
-        match self {
-            ImportModule::Native(_) => {
+        match &mut self.kind {
+            ImportModuleKind::Native(_) => {
                 // Nothing to do here. We could add a visit_module_name but
                 // I don't think it would have any value
             }
             // woo baby a whole nested module!!
-            ImportModule::Local(module) => module.walk(visitor),
+            ImportModuleKind::Local(module) => module.walk(visitor),
         }
         visitor.exit_import_module(self);
     }
@@ -353,9 +364,13 @@ impl Walk for ImportModule {
 impl Walk for ExportDeclaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_export(self);
-        match self {
-            Self::Declaration(declaration) => declaration.walk(visitor),
-            Self::DefaultExpression(expression) => expression.walk(visitor),
+        match &mut self.kind {
+            ExportDeclarationKind::Declaration(declaration) => {
+                declaration.walk(visitor);
+            }
+            ExportDeclarationKind::DefaultExpression(expression) => {
+                expression.walk(visitor);
+            }
         }
         visitor.exit_export(self);
     }
@@ -391,12 +406,6 @@ impl Walk for TernaryConditional {
 impl<T: Walk> Walk for Box<T> {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         self.deref_mut().walk(visitor);
-    }
-}
-
-impl<T: Walk> Walk for Node<T> {
-    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        self.data_mut().walk(visitor);
     }
 }
 

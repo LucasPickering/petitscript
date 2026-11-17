@@ -1,8 +1,9 @@
 //! Compiler steps related to functions
 
 use crate::ast::{
-    AstVisitor, Binding, Block, Expression, FunctionDefinition, Identifier,
-    IdentifierPosition, Node, ObjectProperty, PropertyName, Variable,
+    AstVisitor, Binding, BindingKind, Block, Expression, ExpressionKind,
+    FunctionDefinition, Identifier, IdentifierPosition, ObjectProperty,
+    ObjectPropertyKind, PropertyName, PropertyNameKind, Variable,
 };
 use indexmap::IndexSet;
 
@@ -19,10 +20,10 @@ pub struct LabelFunctions;
 
 impl LabelFunctions {
     /// If the expression is a function, set is name to the given identifier
-    fn set_name(identifier: &Node<Identifier>, expression: &mut Expression) {
+    fn set_name(identifier: &Identifier, expression: &mut Expression) {
         // It's possible the function already has a name, if defined via the
         // `function f() {...}` syntax
-        if let Expression::Function(definition) = expression
+        if let ExpressionKind::Function(definition) = &mut expression.kind
             && definition.name.is_none()
         {
             definition.name = Some(identifier.clone());
@@ -35,10 +36,14 @@ impl AstVisitor for LabelFunctions {
         // Look for `const f = () => {}` or `(f = () => {}) => {}`
         // The second case is rare, but it's easier to support it than to not
         if let Variable {
-            binding,
+            id: _,
+            binding:
+                Binding {
+                    id: _,
+                    kind: BindingKind::Identifier(identifier),
+                },
             init: Some(init),
         } = variable
-            && let Binding::Identifier(identifier) = &**binding
         {
             Self::set_name(identifier, init);
         }
@@ -46,11 +51,14 @@ impl AstVisitor for LabelFunctions {
 
     fn enter_object_property(&mut self, property: &mut ObjectProperty) {
         // Look for `{f: () => {}}`
-        if let ObjectProperty::Property {
-            property,
+        if let ObjectPropertyKind::Property {
+            property:
+                PropertyName {
+                    id: _,
+                    kind: PropertyNameKind::Identifier(identifier),
+                },
             expression,
-        } = property
-            && let PropertyName::Literal(identifier) = &**property
+        } = &mut property.kind
         {
             Self::set_name(identifier, expression);
         }
@@ -201,8 +209,8 @@ mod tests {
     use crate::{
         ast::{
             Declaration, FunctionBody, FunctionCall, FunctionParameter,
-            ImportDeclaration, IntoExpression, IntoNode, IntoStatement, Module,
-            ObjectLiteral, Statement,
+            ImportDeclaration, IntoExpression, IntoStatement, Module,
+            ObjectLiteral,
         },
         compile::{CapturedAst, Compiler, LabelledAst},
     };
@@ -228,46 +236,32 @@ mod tests {
         .program;
         let expected_statement_1 = Declaration::new(
             "f",
-            FunctionDefinition::new(vec![], FunctionBody::empty())
-                .with_name("f"),
-        )
-        .into();
+            FunctionDefinition::new([], FunctionBody::empty()).with_name("f"),
+        );
         let expected_statement_2 = Declaration::new(
             "o",
-            ObjectLiteral::new(vec![(
+            ObjectLiteral::new([(
                 "g",
                 FunctionDefinition::new([], FunctionBody::empty())
-                    .with_name("g")
-                    .into_expr(),
+                    .with_name("g"),
             )]),
-        )
-        .into();
+        );
         let expected_statement_3 = Declaration::new(
             "param",
             FunctionDefinition::new(
-                [FunctionParameter {
-                    variable: Variable::identifier(
-                        "h",
-                        Some(
-                            FunctionDefinition::new([], FunctionBody::empty())
-                                // This name was labelled!
-                                .with_name("h")
-                                .into_expr(),
-                        ),
-                    )
-                    .s(),
-                    varargs: false,
-                }],
+                [FunctionParameter::identifier("h").with_init(
+                    FunctionDefinition::new([], FunctionBody::empty())
+                        // This name was labelled!
+                        .with_name("h"),
+                )],
                 FunctionBody::empty(),
             )
-            .with_name("param")
-            .into_expr(),
-        )
-        .into();
+            .with_name("param"),
+        );
 
         assert_eq!(
-            module.data(),
-            &Module::new(vec![
+            module,
+            Module::new([
                 expected_statement_1,
                 expected_statement_2,
                 expected_statement_3
@@ -302,23 +296,15 @@ mod tests {
         .program;
 
         assert_eq!(
-            module.data(),
-            &Module::new(vec![
-                ImportDeclaration::native(
-                    None::<Identifier>,
-                    vec!["add"],
-                    "math"
-                )
-                .into_stmt(),
+            module,
+            Module::new([
+                ImportDeclaration::native(None::<Identifier>, ["add"], "math")
+                    .into_stmt(),
                 FunctionDefinition::new(
-                    vec![FunctionParameter::identifier("e")],
-                    FunctionBody::block(vec![Statement::Expression(
-                        FunctionCall::new(
-                            Expression::reference("console").property("log"),
-                            vec![Expression::reference("e")]
-                        )
-                        .into_expr()
-                        .s()
+                    [FunctionParameter::identifier("e")],
+                    FunctionBody::block([FunctionCall::new(
+                        Expression::reference("console").property("log"),
+                        [Expression::reference("e")]
                     )])
                 )
                 .with_name("log")
@@ -326,40 +312,33 @@ mod tests {
                 .into_stmt(),
                 Declaration::new("x", 2).into_stmt(),
                 FunctionDefinition::new(
-                    vec![],
-                    FunctionBody::block(vec![
+                    [],
+                    FunctionBody::block([
                         Declaration::new("y", 3).into_stmt(),
                         FunctionDefinition::new(
-                            vec![FunctionParameter::identifier("z")],
-                            FunctionBody::block(vec![Statement::Expression(
-                                FunctionCall::named(
-                                    "log",
-                                    vec![
-                                        FunctionCall::named(
-                                            "add",
-                                            vec![
-                                                Expression::reference("x"),
-                                                Expression::reference("y"),
-                                                Expression::reference("z"),
-                                            ],
-                                        )
-                                        .into_expr()
-                                    ]
-                                )
-                                .into_expr()
-                                .s()
+                            [FunctionParameter::identifier("z")],
+                            FunctionBody::block([FunctionCall::named(
+                                "log",
+                                [FunctionCall::named(
+                                    "add",
+                                    [
+                                        Expression::reference("x"),
+                                        Expression::reference("y"),
+                                        Expression::reference("z"),
+                                    ],
+                                )]
                             )]),
                         )
                         // `console` isn't captured because it isn't declared
                         // in any parent scope
-                        .with_captures(vec!["log", "add", "x", "y"])
+                        .with_captures(["log", "add", "x", "y"])
                         .into_expr()
                         .return_()
                     ]),
                 )
                 .with_name("f")
-                .with_captures(vec!["log", "add", "x"])
-                .declare("f",)
+                .with_captures(["log", "add", "x"])
+                .declare("f")
                 .into_stmt()
             ])
         );

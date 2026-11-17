@@ -1,14 +1,18 @@
 //! Generate source code from AST nodes
 
 use crate::ast::{
-    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement, BinaryOperation,
-    BinaryOperator, Binding, Block, Declaration, ExportDeclaration, Expression,
+    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
+    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
+    BinaryOperator, Binding, BindingKind, Block, Declaration,
+    ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
     FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    Identifier, If, ImportDeclaration, ImportModule, ImportNamed, Literal,
-    Module, NativeModuleName, Node, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    Statement, TemplateChunk, TemplateLiteral, TernaryConditional,
-    UnaryOperation, UnaryOperator, Variable,
+    Identifier, IdentifierNode, If, ImportDeclaration, ImportModule,
+    ImportModuleKind, ImportNamed, Literal, Module, NativeModuleName,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+    TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
+    Variable,
 };
 use std::{borrow::Cow, fmt};
 
@@ -50,6 +54,7 @@ impl<'a, 'f> Indenter<'a, 'f> {
     }
 }
 
+/// TODO
 trait DisplayIndent {
     /// TODO
     ///
@@ -66,21 +71,21 @@ impl DisplayIndent for Module {
 
 impl DisplayIndent for Statement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Empty => ";".fmt(ind),
-            Self::Block(block) => block.fmt(ind),
-            Self::Expression(expression) => (expression, ";").fmt(ind),
-            Self::Declaration(declaration) => declaration.fmt(ind),
-            Self::If(if_) => if_.fmt(ind),
-            Self::Return(expression) => {
+        match &self.kind {
+            StatementKind::Empty => ";".fmt(ind),
+            StatementKind::Block(block) => block.fmt(ind),
+            StatementKind::Expression(expression) => (expression, ";").fmt(ind),
+            StatementKind::Declaration(declaration) => declaration.fmt(ind),
+            StatementKind::If(if_) => if_.fmt(ind),
+            StatementKind::Return(expression) => {
                 if let Some(expression) = expression {
                     ("return ", expression, ";").fmt(ind)
                 } else {
                     "return;".fmt(ind)
                 }
             }
-            Self::Import(import) => import.fmt(ind),
-            Self::Export(export) => export.fmt(ind),
+            StatementKind::Import(import) => import.fmt(ind),
+            StatementKind::Export(export) => export.fmt(ind),
         }?;
         // Statements include their own trailing newline
         Newline.fmt(ind)
@@ -132,15 +137,13 @@ impl DisplayIndent for FunctionBody {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match self {
             Self::Expression(expression) => {
-                // unstable: if-let chains
-                if let Expression::Literal(literal) = expression.data() {
-                    if let Literal::Object(object_literal) = literal.data() {
-                        // If the body is just an object literal, we need to
-                        // wrap it in parens so it doesn't look like a block
-                        ("(", object_literal, ")").fmt(ind)
-                    } else {
-                        expression.fmt(ind)
-                    }
+                if let ExpressionKind::Literal(Literal::Object(
+                    object_literal,
+                )) = &expression.kind
+                {
+                    // If the body is just an object literal, we need to wrap it
+                    // in parens so it doesn't look like a block
+                    ("(", object_literal, ")").fmt(ind)
                 } else {
                     expression.fmt(ind)
                 }
@@ -187,18 +190,22 @@ impl DisplayIndent for ImportNamed {
 
 impl DisplayIndent for ImportModule {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            ImportModule::Native(name) => ("'", name.as_str(), "'").fmt(ind),
-            ImportModule::Local(path) => ("'", path, "'").fmt(ind),
+        match &self.kind {
+            ImportModuleKind::Native(name) => {
+                ("'", name.as_str(), "'").fmt(ind)
+            }
+            ImportModuleKind::Local(path) => ("'", path, "'").fmt(ind),
         }
     }
 }
 
 impl DisplayIndent for ExportDeclaration {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Declaration(declaration) => ("export ", declaration).fmt(ind),
-            Self::DefaultExpression(expression) => {
+        match &self.kind {
+            ExportDeclarationKind::Declaration(declaration) => {
+                ("export ", declaration).fmt(ind)
+            }
+            ExportDeclarationKind::DefaultExpression(expression) => {
                 ("export default ", expression, ";").fmt(ind)
             }
         }
@@ -207,19 +214,27 @@ impl DisplayIndent for ExportDeclaration {
 
 impl DisplayIndent for Expression {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Parenthesized(expression) => ("(", expression, ")").fmt(ind),
-            Self::Literal(literal) => literal.fmt(ind),
-            Self::Template(template) => template.fmt(ind),
-            Self::Identifier(identifier) => identifier.fmt(ind),
-            Self::Call(call) => call.fmt(ind),
-            Self::Property(property) => property.fmt(ind),
-            Self::OptionalProperty(property) => property.fmt(ind),
-            Self::Function(function) => function.fmt(ind),
-            Self::Unary(operation) => operation.fmt(ind),
-            Self::Binary(operation) => operation.fmt(ind),
-            Self::Ternary(operation) => operation.fmt(ind),
+        match &self.kind {
+            ExpressionKind::Parenthesized(expression) => {
+                ("(", expression, ")").fmt(ind)
+            }
+            ExpressionKind::Literal(literal) => literal.fmt(ind),
+            ExpressionKind::Template(template) => template.fmt(ind),
+            ExpressionKind::Identifier(identifier) => identifier.fmt(ind),
+            ExpressionKind::Call(call) => call.fmt(ind),
+            ExpressionKind::Property(property) => property.fmt(ind),
+            ExpressionKind::OptionalProperty(property) => property.fmt(ind),
+            ExpressionKind::Function(function) => function.fmt(ind),
+            ExpressionKind::Unary(operation) => operation.fmt(ind),
+            ExpressionKind::Binary(operation) => operation.fmt(ind),
+            ExpressionKind::Ternary(operation) => operation.fmt(ind),
         }
+    }
+}
+
+impl DisplayIndent for IdentifierNode {
+    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+        self.as_str().fmt(ind)
     }
 }
 
@@ -263,11 +278,13 @@ impl DisplayIndent for TemplateLiteral {
 
 impl DisplayIndent for TemplateChunk {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
+        match &self.kind {
             // TODO do we need any escaping here?
-            Self::Literal(literal) => literal.fmt(ind),
+            TemplateChunkKind::Literal(literal) => literal.fmt(ind),
             // TODO escaping here?
-            Self::Expression(expression) => ("${", expression, "}").fmt(ind),
+            TemplateChunkKind::Expression(expression) => {
+                ("${", expression, "}").fmt(ind)
+            }
         }
     }
 }
@@ -280,9 +297,11 @@ impl DisplayIndent for ArrayLiteral {
 
 impl DisplayIndent for ArrayElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Expression(expression) => expression.fmt(ind),
-            Self::Spread(expression) => ("...", expression).fmt(ind),
+        match &self.kind {
+            ArrayElementKind::Expression(expression) => expression.fmt(ind),
+            ArrayElementKind::Spread(expression) => {
+                ("...", expression).fmt(ind)
+            }
         }
     }
 }
@@ -295,12 +314,14 @@ impl DisplayIndent for ObjectLiteral {
 
 impl DisplayIndent for ObjectProperty {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Property {
+        match &self.kind {
+            ObjectPropertyKind::Property {
                 property,
                 expression,
             } => (property, ": ", expression).fmt(ind),
-            Self::Spread(expression) => ("...", expression).fmt(ind),
+            ObjectPropertyKind::Spread(expression) => {
+                ("...", expression).fmt(ind)
+            }
         }
     }
 }
@@ -322,11 +343,11 @@ impl DisplayIndent for Argument {
 
 impl DisplayIndent for PropertyAccess {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match &*self.property {
-            PropertyName::Literal(literal) => {
+        match &self.property.kind {
+            PropertyNameKind::Identifier(literal) => {
                 (&self.object, ".", literal).fmt(ind)
             }
-            PropertyName::Expression(expression) => {
+            PropertyNameKind::Expression(expression) => {
                 (&self.object, "[", expression, "]").fmt(ind)
             }
         }
@@ -398,9 +419,9 @@ impl DisplayIndent for TernaryConditional {
 
 impl DisplayIndent for PropertyName {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            PropertyName::Literal(identifier) => identifier.fmt(ind),
-            PropertyName::Expression(expression) => {
+        match &self.kind {
+            PropertyNameKind::Identifier(identifier) => identifier.fmt(ind),
+            PropertyNameKind::Expression(expression) => {
                 ("[", expression, "]").fmt(ind)
             }
         }
@@ -428,9 +449,9 @@ impl DisplayIndent for Binding {
             }
         }
 
-        match self {
-            Self::Identifier(identifier) => identifier.fmt(ind),
-            Self::Object { properties, rest } => {
+        match &self.kind {
+            BindingKind::Identifier(identifier) => identifier.fmt(ind),
+            BindingKind::Object { properties, rest } => {
                 // Attach the ...rest to the end of the chain. The Vec
                 // allocation is a little lame, but the alternative is to have
                 // Repeat accept an iterator. That opens a giant can of worms
@@ -442,7 +463,7 @@ impl DisplayIndent for Binding {
                     .collect::<Vec<_>>();
                 ("{ ", Repeat::new(properties, ", "), " }").fmt(ind)
             }
-            Self::Array { elements, rest } => {
+            BindingKind::Array { elements, rest } => {
                 let elements = &elements
                     .iter()
                     .map(OrRest::Element)
@@ -457,13 +478,12 @@ impl DisplayIndent for Binding {
 impl DisplayIndent for ObjectPatternElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         let init = self.init.as_ref().map(|init| (" = ", init));
-        match (self.key.data(), self.binding.data()) {
+        match (&self.key.kind, &self.binding.kind) {
             // Use shorthand where available
-            (PropertyName::Literal(key), Binding::Identifier(value))
-                if key == value =>
-            {
-                (key, init).fmt(ind)
-            }
+            (
+                PropertyNameKind::Identifier(key),
+                BindingKind::Identifier(value),
+            ) if key.identifier == value.identifier => (key, init).fmt(ind),
             _ => (&self.key, ": ", &self.binding, init).fmt(ind),
         }
     }
@@ -471,13 +491,13 @@ impl DisplayIndent for ObjectPatternElement {
 
 impl DisplayIndent for ArrayPatternElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match self {
-            Self::Identifier { binding, init } => {
+        match &self.kind {
+            ArrayPatternElementKind::Identifier { binding, init } => {
                 let init = init.as_ref().map(|init| (" = ", init));
                 (binding, init).fmt(ind)
             }
             // The joiner in the parent will include the , automatically
-            Self::Skip => "".fmt(ind),
+            ArrayPatternElementKind::Skip => "".fmt(ind),
         }
     }
 }
@@ -569,12 +589,6 @@ impl<T: DisplayIndent> DisplayIndent for &T {
 impl<T: DisplayIndent> DisplayIndent for Box<T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         (**self).fmt(ind)
-    }
-}
-
-impl<T: DisplayIndent> DisplayIndent for Node<T> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        self.data().fmt(ind)
     }
 }
 

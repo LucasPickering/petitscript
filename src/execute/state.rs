@@ -4,13 +4,12 @@ use crate::{
     Process, RuntimeErrorKind,
     ast::{ArrayPatternElement, Binding, Node, NodeId},
     compile::Program,
-    error::{StackTraceFrame, RuntimeError},
+    error::{RuntimeError, StackTraceFrame},
     execute::{
         Exports,
         eval::Evaluate,
         scope::{GlobalEnvironment, Scope},
     },
-    source::QualifiedSpan,
     util::OptionExt,
     value::{Array, Object, Value},
 };
@@ -70,7 +69,10 @@ impl<'process> ThreadState<'process> {
     }
 
     /// Set the default export value
-    pub fn export_default(&mut self, value: Value) -> Result<(), RuntimeErrorKind> {
+    pub fn export_default(
+        &mut self,
+        value: Value,
+    ) -> Result<(), RuntimeErrorKind> {
         let exports = self.exports_mut()?;
         if exports.default.is_some() {
             return Err(RuntimeErrorKind::AlreadyExported {
@@ -120,7 +122,12 @@ impl<'process> ThreadState<'process> {
                 let call_site =
                     next_frame.map(|frame| frame.call_site).unwrap_or(current);
                 // Convert bytes to lines and columns
-                let span = program.qualify(call_site);
+                let span = match call_site {
+                    CallSite::Node(node_id) => {
+                        program.spans().get(node_id).expect("TODO panic here")
+                    }
+                    CallSite::Native => todo!(),
+                };
 
                 let function_name =
                     frame.function_name.as_deref().unwrap_or("???").to_owned();
@@ -130,7 +137,11 @@ impl<'process> ThreadState<'process> {
                 }
             })
             .collect();
-        RuntimeError { error, trace }
+        RuntimeError {
+            error,
+            trace,
+            source_table: program.sources().clone(),
+        }
     }
 
     /// TODO
@@ -368,21 +379,5 @@ pub enum CallSite {
 impl From<NodeId> for CallSite {
     fn from(node_id: NodeId) -> Self {
         Self::Node(node_id)
-    }
-}
-
-impl Program {
-    /// Convert a call site to a qualified span
-    ///
-    /// For AST nodes, look up the node's span then qualify that. For native
-    /// call sites, just return a native span.
-    fn qualify(&self, call_site: CallSite) -> QualifiedSpan {
-        match call_site {
-            CallSite::Node(node_id) => {
-                let span = self.spans().get(node_id).expect("TODO panic here");
-                self.sources().qualify(span)
-            }
-            CallSite::Native => QualifiedSpan::Native,
-        }
     }
 }

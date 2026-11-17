@@ -3,7 +3,7 @@
 use crate::{
     NativeModuleName, Value,
     compile::SUPPORTED_EXTENSIONS,
-    source::{QualifiedSpan, SourceTable, Span},
+    source::{SourceTable, Span},
     value::{Number, ValueType},
 };
 use annotate_snippets::{AnnotationKind, Level, Snippet};
@@ -98,7 +98,7 @@ impl ParseErrors {
     ///
     /// ```
     /// # use petitscript::Engine;
-    /// let errors = Engine::default().parse("let x = 3;").unwrap_err();
+    /// let errors = Engine::default().parse("f(").unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
     /// eprintln!("{}", renderer.render(&errors.to_report()));
     /// ```
@@ -436,13 +436,53 @@ impl Display for Unsupported {
 }
 
 /// A runtime error paired with its stack trace
+///
+/// Use [RuntimeError::to_report] to get a pretty version of the error and
+/// trace.
 #[derive(Debug, thiserror::Error)]
-#[error("{trace}{error}")]
+#[error("{error}")]
 pub struct RuntimeError {
     /// What go wrong
     pub error: RuntimeErrorKind,
     /// Trace of function calls leading to the error
     pub trace: StackTrace,
+    /// Map of all sources in the program
+    ///
+    /// TODO make this public?
+    pub(crate) source_table: SourceTable,
+}
+
+// TODO transparent impl like in ParseError
+
+impl RuntimeError {
+    /// Generate an [annotate_snippets] report of this error
+    ///
+    /// This report can be used to render the error and stack trace prettily.
+    /// See [annotate_snippets::Renderer].
+    ///
+    /// ```
+    /// # use petitscript::Engine;
+    /// let engine = Engine::default();
+    /// let process = engine.compile("f()").unwrap();
+    /// let error = process.execute().unwrap_err();
+    /// let renderer = annotate_snippets::Renderer::styled();
+    /// eprintln!("{}", renderer.render(&[errors.to_report]()));
+    /// ```
+    pub fn to_report(&self) -> annotate_snippets::Group<'_> {
+        Level::ERROR
+            .primary_title(self.error.to_string())
+            .element(Level::NOTE.message("most recent call last"))
+            .elements(self.trace.iter().map(|frame| {
+                let span = frame.span;
+                let source = self.source_table.get(span.source_id);
+                Snippet::source(source.text())
+                    .path(source.name())
+                    .annotation(
+                        AnnotationKind::Primary
+                            .span(span.start_offset..span.end_offset),
+                    )
+            }))
+    }
 }
 
 /// The categories of errors that can occuring while running a program
@@ -487,7 +527,16 @@ pub enum RuntimeErrorKind {
 
     /// Attempted to get a property of `null` or `undefined`
     #[error("Cannot read properties of `{value}` (property \"{property}\")")]
-    Property { value: Value, property: Value },
+    Property {
+        /// Value being targeted (`null` or `undefined`)
+        ///
+        /// Boxed to reduce variant size.
+        value: Box<Value>,
+        /// Property being accessed (typically a string)
+        ///
+        /// Boxed to reduce variant size.
+        property: Box<Value>,
+    },
 
     /// Reference to an identifier that isn't bound
     #[error("`{name}` is not defined")]
@@ -571,15 +620,15 @@ impl StackTrace {
     }
 }
 
-impl Display for StackTrace {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Error (most recent call last)")?;
-        for frame in &self.0 {
-            writeln!(f, "  {frame}")?;
-        }
-        Ok(())
-    }
-}
+// impl Display for StackTrace {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         writeln!(f, "Error (most recent call last)")?;
+//         for frame in &self.0 {
+//             writeln!(f, "  {frame}")?;
+//         }
+//         Ok(())
+//     }
+// }
 
 impl IntoIterator for StackTrace {
     type Item = StackTraceFrame;
@@ -600,16 +649,16 @@ impl FromIterator<StackTraceFrame> for StackTrace {
 #[derive(Debug)]
 pub struct StackTraceFrame {
     /// TODO
-    pub span: QualifiedSpan,
+    pub span: Span,
     /// TODO
     pub function_name: String,
 }
 
-impl Display for StackTraceFrame {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "in {} at {}", self.function_name, self.span)
-    }
-}
+// impl Display for StackTraceFrame {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "in {} at {}", self.function_name, self.span)
+//     }
+// }
 
 /// An error that can occur while converting to/from [Value]
 #[derive(Debug, thiserror::Error)]

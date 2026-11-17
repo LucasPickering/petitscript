@@ -5,11 +5,15 @@ use std::{env, path::Path, process::ExitCode};
 fn main() -> ExitCode {
     let path = env::args().nth(1).expect("Expected path");
 
+    let renderer = Renderer::styled();
     match run(Path::new(&path)) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Error::Parse(parse_errors)) => {
-            let renderer = Renderer::styled();
             eprintln!("{}", renderer.render(&parse_errors.to_report()));
+            ExitCode::FAILURE
+        }
+        Err(Error::Runtime(error)) => {
+            eprintln!("{}", renderer.render(&[error.to_report()]));
             ExitCode::FAILURE
         }
         Err(error) => {

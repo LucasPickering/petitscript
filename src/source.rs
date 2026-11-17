@@ -4,7 +4,7 @@ use crate::{ast::NodeId, error::SourceError};
 use normalize_path::NormalizePath;
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Display},
+    fmt::Debug,
     fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -162,60 +162,13 @@ impl SourceTable {
     pub fn iter(&self) -> impl Iterator<Item = &Source> {
         self.0.values()
     }
-
-    /// Map a span from cheap IDs and byte offsets to user-friendly source names
-    /// and lines/columns
-    pub fn qualify(&self, span: Span) -> QualifiedSpan {
-        let source = self.get(span.source_id);
-        let text = &source.text();
-        // Lines/columns are 1-indexed, because reasons
-        let mut line = 1;
-        let mut column = 1;
-        let mut start_line = 0;
-        let mut start_column = 0;
-        let mut end_line = 0;
-        let mut end_column = 0;
-        for (index, c) in text.char_indices() {
-            if index == span.start_offset {
-                start_line = line;
-                start_column = column;
-            }
-            if index == span.end_offset {
-                end_line = line;
-                end_column = column;
-            }
-            if index > span.end_offset {
-                break;
-            }
-
-            // Reset at the end of the line
-            if c == '\n' {
-                line += 1;
-                column = 1;
-            } else {
-                column += 1;
-            }
-        }
-
-        QualifiedSpan::Source {
-            source_name: source.name().to_owned(),
-            start_line,
-            start_column,
-            end_line,
-            end_column,
-        }
-    }
 }
 
 /// A range of source code, defined as byte offsets
 ///
-/// This is the raw mapping that we pass around within the compiler/interpreter.
-/// To get a user-friendly version of this, use [SourceTable::qualify].
-///
-/// The parser we use only provides byte offsets for its AST nodes, so we defer
-/// mapping bytes to line/column until it's actually needed.
+/// TODO more
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct Span {
+pub struct Span {
     // TODO shrink these to u32 - it cuts the struct size in half
     /// ID of the [Source] (typically a file) containing the code
     ///
@@ -224,11 +177,11 @@ pub(crate) struct Span {
     pub source_id: SourceId,
     /// Byte offset for the beginning of this span (inclusive)
     ///
-    /// Always <= end_span.
+    /// Always <= `end_span`.
     pub start_offset: usize,
     /// Byte offset for the end of this span (inclusive)
     ///
-    /// Always >= start_span.
+    /// Always >= `start_span`.
     pub end_offset: usize,
 }
 
@@ -244,42 +197,6 @@ impl Span {
             source_id,
             start_offset,
             end_offset,
-        }
-    }
-}
-
-/// A range of source code, mapped to lines/columns
-///
-/// This format is suitable for error printing.
-///
-/// TODO should this just be "Span" since it's external-facing?
-#[derive(Debug)]
-pub enum QualifiedSpan {
-    /// A location in PetitScript source code
-    Source {
-        // TODO comments
-        source_name: String,
-        start_line: usize,
-        start_column: usize,
-        end_line: usize,
-        end_column: usize,
-    },
-    /// A location in Rust native code
-    Native,
-}
-
-impl Display for QualifiedSpan {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            QualifiedSpan::Source {
-                source_name,
-                start_line,
-                start_column,
-                ..
-            } => {
-                write!(f, "{source_name}:{start_line}:{start_column}")
-            }
-            QualifiedSpan::Native => write!(f, "<native code>"),
         }
     }
 }

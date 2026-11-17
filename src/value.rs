@@ -293,14 +293,15 @@ impl Value {
                     Ok(None)
                 }
             }
-            // TODO support number keys here?
             (Self::Object(object), Self::String(key)) => {
                 Ok(object.get(key).cloned())
             }
-            (Self::Undefined | Self::Null, _) => Err(RuntimeErrorKind::Property {
-                value: self.clone(),
-                property: property.clone(),
-            }),
+            (Self::Undefined | Self::Null, _) => {
+                Err(RuntimeErrorKind::Property {
+                    value: Box::new(self.clone()),
+                    property: Box::new(property.clone()),
+                })
+            }
             _ => Ok(None),
         }
     }

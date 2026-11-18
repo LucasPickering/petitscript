@@ -208,9 +208,8 @@ mod tests {
     use super::*;
     use crate::{
         ast::{
-            Declaration, FunctionBody, FunctionCall, FunctionParameter,
-            ImportDeclaration, IntoExpression, IntoStatement, Module, NodeId,
-            ObjectLiteral,
+            Declaration, FunctionCall, FunctionParameter, ImportDeclaration,
+            IntoExpression, IntoStatement, Module, NodeId, ObjectLiteral,
         },
         compile::{CapturedAst, Compiler, LabelledAst},
     };
@@ -234,28 +233,23 @@ mod tests {
         .unwrap()
         .label()
         .program;
-        let expected_statement_1 = Declaration::new(
-            "f",
-            FunctionDefinition::new([], FunctionBody::empty()).with_name("f"),
-        );
+        let expected_statement_1 =
+            Declaration::new("f", FunctionDefinition::empty([]).with_name("f"));
         let expected_statement_2 = Declaration::new(
             "o",
             ObjectLiteral::new([(
                 "g",
-                FunctionDefinition::new([], FunctionBody::empty())
-                    .with_name("g"),
+                FunctionDefinition::empty([]).with_name("g"),
             )]),
         );
         let expected_statement_3 = Declaration::new(
             "param",
-            FunctionDefinition::new(
-                [FunctionParameter::identifier("h").with_init(
-                    FunctionDefinition::new([], FunctionBody::empty())
+            FunctionDefinition::empty([FunctionParameter::identifier("h")
+                .with_init(
+                    FunctionDefinition::empty([])
                         // This name was labelled!
                         .with_name("h"),
-                )],
-                FunctionBody::empty(),
-            )
+                )])
             .with_name("param"),
         );
         let expected = Module::new([
@@ -295,45 +289,49 @@ mod tests {
         let expected = Module::new([
             ImportDeclaration::native(None::<Identifier>, ["add"], "math")
                 .into_stmt(),
-            FunctionDefinition::new(
-                [FunctionParameter::identifier("e")],
-                FunctionBody::block([FunctionCall::new(
-                    Expression::reference("console").property("log"),
-                    [Expression::reference("e")],
-                )]),
+            Declaration::new(
+                "log",
+                FunctionDefinition::block(
+                    [FunctionParameter::identifier("e")],
+                    [FunctionCall::new(
+                        Expression::reference("console").property("log"),
+                        [Expression::reference("e")],
+                    )],
+                )
+                .with_name("log"),
             )
-            .with_name("log")
-            .declare("log")
             .into_stmt(),
             Declaration::new("x", 2).into_stmt(),
-            FunctionDefinition::new(
-                [],
-                FunctionBody::block([
-                    Declaration::new("y", 3).into_stmt(),
-                    FunctionDefinition::new(
-                        [FunctionParameter::identifier("z")],
-                        FunctionBody::block([FunctionCall::named(
-                            "log",
+            Declaration::new(
+                "f",
+                FunctionDefinition::block(
+                    [],
+                    [
+                        Declaration::new("y", 3).into_stmt(),
+                        FunctionDefinition::block(
+                            [FunctionParameter::identifier("z")],
                             [FunctionCall::named(
-                                "add",
-                                [
-                                    Expression::reference("x"),
-                                    Expression::reference("y"),
-                                    Expression::reference("z"),
-                                ],
+                                "log",
+                                [FunctionCall::named(
+                                    "add",
+                                    [
+                                        Expression::reference("x"),
+                                        Expression::reference("y"),
+                                        Expression::reference("z"),
+                                    ],
+                                )],
                             )],
-                        )]),
-                    )
-                    // `console` isn't captured because it isn't declared
-                    // in any parent scope
-                    .with_captures(["log", "add", "x", "y"])
-                    .into_expr()
-                    .return_(),
-                ]),
+                        )
+                        // `console` isn't captured because it isn't declared
+                        // in any parent scope
+                        .with_captures(["log", "add", "x", "y"])
+                        .into_expr()
+                        .return_(),
+                    ],
+                )
+                .with_name("f")
+                .with_captures(["log", "add", "x"]),
             )
-            .with_name("f")
-            .with_captures(["log", "add", "x"])
-            .declare("f")
             .into_stmt(),
         ]);
         NodeId::with_all_equal(|| assert_eq!(module, expected));

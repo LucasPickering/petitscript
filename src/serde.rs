@@ -125,9 +125,7 @@ impl FunctionPool {
 mod tests {
     use super::*;
     use crate::{
-        ast::{
-            Expression, FunctionBody, FunctionDefinition, FunctionParameter,
-        },
+        ast::{Expression, FunctionDefinition, FunctionParameter},
         value::{
             Array, Object,
             function::{BoundFunction, Function},
@@ -251,9 +249,9 @@ mod tests {
     }; "object")]
     #[test_case(
         Function::user(
-            FunctionDefinition::new(
+            FunctionDefinition::expression(
                 [FunctionParameter::identifier("x")],
-                FunctionBody::expression(Expression::reference("x")),
+                Expression::reference("x"),
             )
                 .with_name("func")
                 .with_captures(["cap"])
@@ -290,9 +288,9 @@ mod tests {
     /// wrapper. This takes different code paths through Serializer/Deserializer
     #[test_case(
         Function::user(
-            FunctionDefinition::new(
+            FunctionDefinition::expression(
                 [FunctionParameter::identifier("x")],
-                FunctionBody::expression(Expression::reference("x")),
+                Expression::reference("x"),
             )
                 .with_name("func")
                 .with_captures(["cap"])
@@ -409,7 +407,7 @@ mod tests {
     #[test_case(
         FunctionStruct {
             f: Function::user(
-                FunctionDefinition::new([], FunctionBody::expression(3))
+                FunctionDefinition::expression([], 3)
                     .with_name("f")
                     .into(),
                 Default::default(),
@@ -420,9 +418,9 @@ mod tests {
                 "f",
                 // This works because user functions use structural equality
                 Function::user(
-                    FunctionDefinition::new(
+                    FunctionDefinition::expression(
                         [],
-                        FunctionBody::expression(3),
+                        3,
                     )
                     .with_name("f")
                     .into(),

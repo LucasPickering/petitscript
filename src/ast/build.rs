@@ -1,6 +1,14 @@
 //! Utilities for building ASTs programatically
 //!
-//! See in the parent module.
+//! See example in the parent module.
+//!
+//! ## Functions vs Methods
+//!
+//! Anything that creates a new AST node uses an associated function (e.g.
+//! [`Declaration::new`]). Combinator methods are only used to modify a node
+//! after creation (e.g. [`FunctionParameter::with_init`]).
+//!
+//! TODO that's not actually true, but it's aspirational ^
 
 use crate::ast::{
     Argument, ArrayElementKind, ArrayLiteral, ArrayPatternElementKind,
@@ -114,42 +122,70 @@ impl Declaration {
 }
 
 impl FunctionDefinition {
-    /// Define a new anonymous function
-    pub fn new(
+    /// Define a new function with a block body:
+    /// `(...parameters) => {...statements}`
+    pub fn block(
         parameters: impl IntoIterator<Item = FunctionParameter>,
-        body: FunctionBody,
+        statements: impl IntoIterator<Item = impl IntoStatement>,
     ) -> Self {
         Self {
             id: next_id(),
             name: None,
             parameters: parameters.into_iter().collect(),
-            body,
+            body: FunctionBody::Block(Block::new(statements)),
             captures: Default::default(),
         }
     }
 
-    /// Declare this function with the given name. The name will *not* be
-    /// attached to the function definition, for explicitness/simplicity. There
-    /// are some test cases where the attached name causes havok, so it's easier
-    /// to leave it out and users can attach it manually with
-    /// [`FunctionDefinition::with_name`].
-    pub fn declare(self, name: impl Into<Identifier>) -> Declaration {
-        Declaration::new(name, self)
+    /// Define a new function with an empty body: `(...parameters) => {}`
+    pub fn empty(
+        parameters: impl IntoIterator<Item = FunctionParameter>,
+    ) -> Self {
+        Self {
+            id: next_id(),
+            name: None,
+            parameters: parameters.into_iter().collect(),
+            body: FunctionBody::Block(Block::new([(); 0])),
+            captures: Default::default(),
+        }
     }
 
-    /// Attach a name to this function definition. This does not affect code
-    /// generation at all and is only helpful if the AST is being compiled or
-    /// used for test assertions.
+    /// Define a new function with an expression body:
+    /// `(...parameters) => expression`
+    ///
+    /// The function will evaluate the expression and return its output value.
+    pub fn expression(
+        parameters: impl IntoIterator<Item = FunctionParameter>,
+        expression: impl IntoExpression,
+    ) -> Self {
+        Self {
+            id: next_id(),
+            name: None,
+            parameters: parameters.into_iter().collect(),
+            body: FunctionBody::Expression(Box::new(expression.into_expr())),
+            captures: Default::default(),
+        }
+    }
+
+    /// Attach a name to this function definition.
+    ///
+    /// This does **not affect code generation at all** and is only helpful if
+    /// the AST is being used for test assertions. Normally this is done
+    /// automatically during the "label" step of the compiler.
     #[must_use]
+    #[cfg(test)]
     pub fn with_name(mut self, name: impl Into<Identifier>) -> Self {
         self.name = Some(name.into());
         self
     }
 
-    /// Define what identifiers should be captured by this function. This does
-    /// not affect code generation at all and is only helpful if the AST is
-    /// being compiled or used for test assertions.
+    /// Define what identifiers should be captured by this function
+    ///
+    /// This does not affect code generation at all and is only helpful if the
+    /// AST is being used for test assertions. Normally this is done
+    /// automatically during the "capture" step of the compiler.
     #[must_use]
+    #[cfg(test)]
     pub fn with_captures(
         mut self,
         captures: impl IntoIterator<Item = &'static str>,
@@ -177,31 +213,8 @@ impl FunctionParameter {
     }
 }
 
-impl FunctionBody {
-    /// Create an expression function body, which evaluates a single expression
-    /// and returns its value
-    pub fn expression(expression: impl IntoExpression) -> Self {
-        Self::Expression(Box::new(expression.into_expr()))
-    }
-
-    /// Create a block function body
-    pub fn block(
-        statements: impl IntoIterator<Item = impl IntoStatement>,
-    ) -> Self {
-        Self::Block(Block::new(statements))
-    }
-
-    /// Create a block function body with no statements
-    pub fn empty() -> Self {
-        Self::Block(Block {
-            id: next_id(),
-            statements: Box::new([]),
-        })
-    }
-}
-
 impl FunctionCall {
-    /// Call an expression as a function
+    /// Call an expression as a function: `(function)(...arguments)`
     pub fn new(
         function: impl IntoExpression,
         arguments: impl IntoIterator<Item = impl IntoExpression>,
@@ -219,7 +232,7 @@ impl FunctionCall {
         }
     }
 
-    /// Call a function by name
+    /// Call a function by name: `name(...arguments)`
     pub fn named(
         name: impl Into<Identifier>,
         arguments: impl IntoIterator<Item = impl IntoExpression>,

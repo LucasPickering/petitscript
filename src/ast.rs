@@ -75,21 +75,25 @@
 //!         IntoExpression, IntoStatement, Module,
 //!     },
 //! };
+//!
 //! let module = Module::new([
+//!     // export const x = 3;
 //!     Declaration::new("x", 3).export(),
-//!     FunctionDefinition::new(
-//!         // TODO creating a param should be more concise
-//!         [FunctionParameter::identifier("n")],
-//!         FunctionBody::block([Expression::binary(
-//!             BinaryOperator::Mul,
-//!             Identifier::from("n"),
-//!             2,
-//!         )
-//!         .return_()]),
+//!     // const f = (n) => n * 2;
+//!     Declaration::new(
+//!         "f",
+//!         FunctionDefinition::expression(
+//!             [FunctionParameter::identifier("n")],
+//!             Expression::binary(
+//!                 BinaryOperator::Mul,
+//!                 Expression::reference("n"),
+//!                 2,
+//!             ),
+//!         ),
 //!     )
-//!     .declare("f")
 //!     .into_stmt(),
-//!     FunctionCall::new(Identifier::from("f"), [Identifier::from("x")])
+//!     // export default f(x);
+//!     FunctionCall::named("f", [Expression::reference("x")])
 //!         .into_expr()
 //!         .export_default(),
 //! ]);
@@ -99,9 +103,7 @@
 //!     module.to_string(),
 //!     "\
 //! export const x = 3;
-//! const f = (n) => {
-//!   return n * 2;
-//! };
+//! const f = (n) => n * 2;
 //! export default f(x);
 //! "
 //! );
@@ -897,6 +899,7 @@ impl NodeId {
     /// ## Examples
     ///
     /// ```
+    /// # use petitscript::ast::{Expression, NodeId};
     /// let e1 = Expression {
     ///     id: NodeId(0),
     ///     kind: 3.into(),

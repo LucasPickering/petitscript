@@ -218,17 +218,14 @@ mod tests {
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
                     span: span_let,
-                    ..
                 },
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Mutation),
                     span: span_var,
-                    ..
                 },
                 ParseError {
                     error: ParseErrorKind::Unsupported(Unsupported::Async),
                     span: span_async,
-                    ..
                 },
             ]
             => (*span_let, *span_var, *span_async)

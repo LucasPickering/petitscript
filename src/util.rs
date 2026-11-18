@@ -1,6 +1,4 @@
 /// Extension trait for [`Option`]
-///
-/// TODO move to util module
 pub trait OptionExt<T> {
     /// Map an option with a fallible mapper
     fn try_map<O, E>(

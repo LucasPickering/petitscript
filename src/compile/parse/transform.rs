@@ -793,8 +793,14 @@ impl Transform for BindingOnly<'_> {
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
         match &self.0 {
-            // TODO
-            oxc::BindingPattern::AssignmentPattern(_) => todo!("error"),
+            // If we hit this case, it means the caller made a false assumption
+            oxc::BindingPattern::AssignmentPattern(_) => Err(context
+                .register_error(
+                    self,
+                    ParseErrorKind::Unhandled {
+                        node: format!("{:?}", self.0),
+                    },
+                )),
             // Everything else can't have an expression, so we can transform
             // as usual
             _ => {
@@ -1672,10 +1678,6 @@ impl Transform for oxc::BinaryExpression<'_> {
             oxc::BinaryOperator::Division => BinaryOperator::Div,
             oxc::BinaryOperator::Remainder => BinaryOperator::Mod,
 
-            // TODO
-            oxc::BinaryOperator::In => todo!(),
-            oxc::BinaryOperator::Instanceof => todo!(),
-
             // Unsupported
             oxc::BinaryOperator::Exponential => {
                 unsupported!(context, self, Unsupported::Exponent);
@@ -1690,6 +1692,12 @@ impl Transform for oxc::BinaryExpression<'_> {
             | oxc::BinaryOperator::ShiftRight
             | oxc::BinaryOperator::ShiftRightZeroFill => {
                 unsupported!(context, self, Unsupported::Bitwise);
+            }
+            oxc::BinaryOperator::In => {
+                unsupported!(context, self, Unsupported::In);
+            }
+            oxc::BinaryOperator::Instanceof => {
+                unsupported!(context, self, Unsupported::Instanceof);
             }
         };
         let lhs = self.left.transform(context)?;

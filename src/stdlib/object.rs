@@ -2,13 +2,14 @@
 
 use crate::{
     Process, Value,
-    value::{Array, Object},
+    value::{Array, Object, PetitString},
 };
 
 /// `Object` module
 pub fn module() -> Object {
     Object::default()
         .insert_fn("entries", entries)
+        .insert_fn("hasOwn", has_own)
         .insert_fn("keys", keys)
         .insert_fn("values", values)
 }
@@ -22,6 +23,13 @@ fn entries(_: &Process, object: Object) -> Array {
         .into_iter()
         .map(|(k, v)| Array::from([k.into(), v]).into())
         .collect()
+}
+
+/// `Object.hasOwn`: check if an object contains a key
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwn>
+fn has_own(_: &Process, (object, key): (Object, PetitString)) -> bool {
+    object.get(&key).is_some()
 }
 
 /// `Object.keys`: get the keys of an object as an array

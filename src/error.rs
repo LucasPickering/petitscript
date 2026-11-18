@@ -289,6 +289,12 @@ pub enum Unsupported {
     ImportStringIdentifier,
     /// `import.meta`
     ImportMeta,
+    /// `in`
+    In,
+    /// `instanceof`
+    ///
+    /// This could be useful, but I'm omitting for now.
+    Instanceof,
     /// `<Component></Component>`
     Jsx,
     /// `'label`
@@ -387,6 +393,8 @@ impl Display for Unsupported {
                 Some("import renames must be identifiers"),
             ),
             Self::ImportMeta => ("`import.meta`", None),
+            Self::In => ("`in`", Some("Use Object.hasOwn() instead")),
+            Self::Instanceof => ("`instanceof`", None),
             Self::Jsx => ("JSX", Some("This isn't React...")),
             Self::Label => ("label", None),
             // TODO link to a page on recursion

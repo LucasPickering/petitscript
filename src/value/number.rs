@@ -63,10 +63,12 @@ impl PartialEq for Number {
 impl PartialOrd for Number {
     fn partial_cmp(&self, rhs: &Self) -> Option<Ordering> {
         match (self, rhs) {
-            (Number::Int(i1), Number::Int(i2)) => i1.partial_cmp(i2),
-            (Number::Float(f1), Number::Float(f2)) => f1.partial_cmp(f2),
-            (Number::Int(_), Number::Float(_)) => todo!(),
-            (Number::Float(_), Number::Int(_)) => todo!(),
+            (Number::Int(a), Number::Int(b)) => a.partial_cmp(b),
+            (Number::Float(a), Number::Float(b)) => a.partial_cmp(b),
+            // i64 -> f64 is infallible. There might be loss of precision, but
+            // the range of f64 is much larger
+            (Number::Int(a), Number::Float(b)) => (*a as f64).partial_cmp(b),
+            (Number::Float(a), Number::Int(b)) => a.partial_cmp(&(*b as f64)),
         }
     }
 }

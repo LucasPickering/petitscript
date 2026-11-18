@@ -124,6 +124,7 @@ pub use walk::{AstVisitor, IdentifierPosition, Walk};
 
 use crate::name::NativeModuleName;
 use std::{
+    cell::Cell,
     fmt::{self, Debug},
     hash::Hash,
     ops::{Deref, DerefMut},
@@ -856,27 +857,62 @@ impl Node for IdentifierNode {
 /// An identifier that uniquely identifies an AST node **within that AST**
 ///
 /// These IDs are not globally unique, just within a single AST.
-#[derive(Copy, Clone, Eq)]
+///
+/// ## Equality
+///
+/// This type uses simple equality checking by default, which is important for
+/// its usage as map keys. However, it can be annoying when doing test
+/// assertions on constructed ASTs. In those cases, the IDs can vary widely and
+/// you probably only care about checking the structure of the AST, not the
+/// exact ID values. You can use [`NodeId::with_all_equal`] to temporarily
+/// disable equality checks.
+#[expect(
+    // Hash is safe because PartialEq is non-standard only in a very limited and
+    // intentional context. Deserialize warning is noise because the unsafe comes
+    // from the thread-local, which doesn't affect ser/de.
+    clippy::derived_hash_with_manual_eq,
+    clippy::unsafe_derive_deserialize
+)]
+#[derive(Copy, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct NodeId(
-    /// `None` for [Self::ANY], which is used just for progamatically created
-    /// ASTs. Those will compare `true` to any other ID, which is helpful
-    /// for test assertions. These IDs *cannot* be used as keys in a span
-    /// table. The `Hash` implementation will panic!
-    Option<u32>,
-);
+pub struct NodeId(pub u32);
 
 impl NodeId {
-    /// The node ID that will match *any* other node ID
-    ///
-    /// Use this for programatically constructed ASTs that will be used in
-    /// equality comparisons (e.g. in tests). These IDs *cannot* be used as
-    /// map keys!
-    const ANY: NodeId = NodeId(None);
+    thread_local! {
+        /// Should all node IDs be considered equal?
+        ///
+        /// This can be enabled temporarily with [TODO] to skip ID checks. This
+        /// is most useful in test code assertions, where exact ID values aren't
+        /// important.
+        static ALWAYS_EQUAL: Cell<bool> = const { Cell::new(false) };
+    }
 
-    pub fn new(id: u32) -> Self {
-        Self(Some(id))
+    /// Execute a function while overriding `NodeId`'s [Eq]/[PartialEq]
+    /// implementations such that they **always return true**
+    ///
+    /// Use this for test assertions and other comparisons that want to ignore
+    /// node ID equality. The override will be set *only* while in `f`.
+    ///
+    /// ## Examples
+    ///
+    /// ```
+    /// let e1 = Expression {
+    ///     id: NodeId(0),
+    ///     kind: 3.into(),
+    /// };
+    /// let e2 = Expression {
+    ///     id: NodeId(1),
+    ///     kind: 3.into(),
+    /// };
+    /// assert_ne!(e1, e2); // e1 != e2
+    /// NodeId::with_all_equal(|| assert_eq!(e1, e2)); // e1 == e2
+    /// ```
+    pub fn with_all_equal<T>(f: impl FnOnce() -> T) -> T {
+        Self::ALWAYS_EQUAL.set(true);
+        let out = f();
+        Self::ALWAYS_EQUAL.set(false);
+        out
     }
 }
 
@@ -887,26 +923,9 @@ impl Debug for NodeId {
     }
 }
 
-impl Hash for NodeId {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // ANY IDs are meant for manually built ASTs, not parsed ones. Since the
-        // IDs aren't unique, they can't be used as map keys.
-        match self.0 {
-            Some(id) => id.hash(state),
-            None => {
-                panic!("Cannot hash NodeID::ANY; it should not be used in maps")
-            }
-        }
-    }
-}
-
 impl PartialEq for NodeId {
     fn eq(&self, other: &Self) -> bool {
-        // If the ID is None, that mean's it's ANY, i.e. can't be
-        match (self.0, other.0) {
-            (_, None) | (None, _) => true,
-            (Some(a), Some(b)) => a == b,
-        }
+        self.0 == other.0 || Self::ALWAYS_EQUAL.get()
     }
 }
 

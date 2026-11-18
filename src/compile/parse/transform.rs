@@ -132,7 +132,7 @@ impl ParseContext<'_> {
 
     // TODO combine with node_id(). Maybe a separate fn to map oxc->our Span
     fn node_id_inner(&mut self, span: Span) -> NodeId {
-        let id = NodeId::new(*self.next_node_id);
+        let id = NodeId(*self.next_node_id);
         *self.next_node_id += 1;
         self.spans.insert(id, span);
         id

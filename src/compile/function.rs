@@ -209,7 +209,7 @@ mod tests {
     use crate::{
         ast::{
             Declaration, FunctionBody, FunctionCall, FunctionParameter,
-            ImportDeclaration, IntoExpression, IntoStatement, Module,
+            ImportDeclaration, IntoExpression, IntoStatement, Module, NodeId,
             ObjectLiteral,
         },
         compile::{CapturedAst, Compiler, LabelledAst},
@@ -258,15 +258,12 @@ mod tests {
             )
             .with_name("param"),
         );
-
-        assert_eq!(
-            module,
-            Module::new([
-                expected_statement_1,
-                expected_statement_2,
-                expected_statement_3
-            ])
-        );
+        let expected = Module::new([
+            expected_statement_1,
+            expected_statement_2,
+            expected_statement_3,
+        ]);
+        NodeId::with_equal_ids(|| assert_eq!(module, expected));
     }
 
     /// Test closure capturing
@@ -295,52 +292,50 @@ mod tests {
         .capture()
         .program;
 
-        assert_eq!(
-            module,
-            Module::new([
-                ImportDeclaration::native(None::<Identifier>, ["add"], "math")
-                    .into_stmt(),
-                FunctionDefinition::new(
-                    [FunctionParameter::identifier("e")],
-                    FunctionBody::block([FunctionCall::new(
-                        Expression::reference("console").property("log"),
-                        [Expression::reference("e")]
-                    )])
-                )
-                .with_name("log")
-                .declare("log")
+        let expected = Module::new([
+            ImportDeclaration::native(None::<Identifier>, ["add"], "math")
                 .into_stmt(),
-                Declaration::new("x", 2).into_stmt(),
-                FunctionDefinition::new(
-                    [],
-                    FunctionBody::block([
-                        Declaration::new("y", 3).into_stmt(),
-                        FunctionDefinition::new(
-                            [FunctionParameter::identifier("z")],
-                            FunctionBody::block([FunctionCall::named(
-                                "log",
-                                [FunctionCall::named(
-                                    "add",
-                                    [
-                                        Expression::reference("x"),
-                                        Expression::reference("y"),
-                                        Expression::reference("z"),
-                                    ],
-                                )]
-                            )]),
-                        )
-                        // `console` isn't captured because it isn't declared
-                        // in any parent scope
-                        .with_captures(["log", "add", "x", "y"])
-                        .into_expr()
-                        .return_()
-                    ]),
-                )
-                .with_name("f")
-                .with_captures(["log", "add", "x"])
-                .declare("f")
-                .into_stmt()
-            ])
-        );
+            FunctionDefinition::new(
+                [FunctionParameter::identifier("e")],
+                FunctionBody::block([FunctionCall::new(
+                    Expression::reference("console").property("log"),
+                    [Expression::reference("e")],
+                )]),
+            )
+            .with_name("log")
+            .declare("log")
+            .into_stmt(),
+            Declaration::new("x", 2).into_stmt(),
+            FunctionDefinition::new(
+                [],
+                FunctionBody::block([
+                    Declaration::new("y", 3).into_stmt(),
+                    FunctionDefinition::new(
+                        [FunctionParameter::identifier("z")],
+                        FunctionBody::block([FunctionCall::named(
+                            "log",
+                            [FunctionCall::named(
+                                "add",
+                                [
+                                    Expression::reference("x"),
+                                    Expression::reference("y"),
+                                    Expression::reference("z"),
+                                ],
+                            )],
+                        )]),
+                    )
+                    // `console` isn't captured because it isn't declared
+                    // in any parent scope
+                    .with_captures(["log", "add", "x", "y"])
+                    .into_expr()
+                    .return_(),
+                ]),
+            )
+            .with_name("f")
+            .with_captures(["log", "add", "x"])
+            .declare("f")
+            .into_stmt(),
+        ]);
+        NodeId::with_equal_ids(|| assert_eq!(module, expected));
     }
 }

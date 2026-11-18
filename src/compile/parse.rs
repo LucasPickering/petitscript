@@ -158,7 +158,11 @@ impl ParseContext<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{assert_matches, ast::Declaration, error::Unsupported};
+    use crate::{
+        assert_matches,
+        ast::{Declaration, NodeId},
+        error::Unsupported,
+    };
 
     /// Test an escaped newline `\n` in a string literal
     /// ```notrust
@@ -170,11 +174,9 @@ mod tests {
     #[test]
     fn string_literal_newline() {
         let source = r"const s = 'test\nnewline';";
-        let module = parse_test(source).unwrap();
-        assert_eq!(
-            module,
-            Module::new([Declaration::new("s", "test\nnewline")])
-        );
+        let actual = parse_test(source).unwrap();
+        let expected = Module::new([Declaration::new("s", "test\nnewline")]);
+        NodeId::with_equal_ids(|| assert_eq!(actual, expected));
     }
 
     /// Test \ before a literal newline escapes the newline, allowing for
@@ -189,11 +191,9 @@ mod tests {
     #[test]
     fn string_literal_escape_newline() {
         let source = "const s = 'test \\\nno newline';";
-        let module = parse_test(source).unwrap();
-        assert_eq!(
-            module,
-            Module::new([Declaration::new("s", "test no newline")])
-        );
+        let actual = parse_test(source).unwrap();
+        let expected = Module::new([Declaration::new("s", "test no newline")]);
+        NodeId::with_equal_ids(|| assert_eq!(actual, expected));
     }
 
     /// If multiple AST nodes cannot be transformed, we should get errors for

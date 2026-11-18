@@ -13,21 +13,24 @@ use crate::ast::{
     PropertyAccess, PropertyName, PropertyNameKind, Statement, StatementKind,
     TemplateChunk, TemplateChunkKind, TemplateLiteral, Variable,
 };
+use std::cell::Cell;
 
 /// Generate a new [NodeId]
 ///
-/// For now, this just uses [NodeId::ANY], which generates an ID that will match
-/// all other ideas (and cannot be hashed). This is useful for building ASTs
-/// that will be used in test comparisons. There may be a need for built ASTs
-/// with consistent and unique IDs in the future. If so, there are a few ways
-/// to do that:
-/// - User has to create and pass around an ID generator
-/// - The generator can be stored in thread-local storage and initialized before
-///   the build.
-///   - Could be initialized imperatively, e.g. `init_gen(); /* build AST */`
-///   - Could be in a lambda scope: `build(|| /* build AST */)`
+/// This uses a thread local to keep track of the next available ID. That means
+/// each node ID will be unique not just for the AST, but for any AST generated
+/// in that thread. This does mean that identical ASTs generated sequentially on
+/// the same thread will *not* have consistent IDs.
+///
+/// To ignore IDs on equality checks, see [NodeId::with_equal_ids].
 fn next_id() -> NodeId {
-    NodeId::ANY
+    thread_local! {
+        static NEXT_NODE_ID: Cell<u32> = const { Cell::new(0) };
+    }
+
+    let id = NEXT_NODE_ID.get();
+    NEXT_NODE_ID.set(id + 1);
+    NodeId(id)
 }
 
 impl Block {

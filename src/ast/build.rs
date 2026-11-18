@@ -30,6 +30,21 @@ fn next_id() -> NodeId {
     NodeId::ANY
 }
 
+impl Block {
+    /// Create a new block of statements
+    pub fn new(
+        statements: impl IntoIterator<Item = impl IntoStatement>,
+    ) -> Self {
+        Self {
+            id: next_id(),
+            statements: statements
+                .into_iter()
+                .map(IntoStatement::into_stmt)
+                .collect(),
+        }
+    }
+}
+
 impl Module {
     /// Construct a new module with a series of statements
     pub fn new(
@@ -169,13 +184,7 @@ impl FunctionBody {
     pub fn block(
         statements: impl IntoIterator<Item = impl IntoStatement>,
     ) -> Self {
-        Self::Block(Block {
-            id: next_id(),
-            statements: statements
-                .into_iter()
-                .map(IntoStatement::into_stmt)
-                .collect(),
-        })
+        Self::Block(Block::new(statements))
     }
 
     /// Create a block function body with no statements

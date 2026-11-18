@@ -79,10 +79,10 @@
 //!     Declaration::new("x", 3).export(),
 //!     FunctionDefinition::new(
 //!         // TODO creating a param should be more concise
-//!         [FunctionParameter::identifier("h")],
+//!         [FunctionParameter::identifier("n")],
 //!         FunctionBody::block([Expression::binary(
 //!             BinaryOperator::Mul,
-//!             Identifier::from("x"),
+//!             Identifier::from("n"),
 //!             2,
 //!         )
 //!         .return_()]),
@@ -100,8 +100,8 @@
 //!     "\
 //! export const x = 3;
 //! const f = (n) => {
-//!  return n * 2;
-//! }
+//!   return n * 2;
+//! };
 //! export default f(x);
 //! "
 //! );

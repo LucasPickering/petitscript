@@ -16,21 +16,19 @@ use crate::ast::{
 };
 use std::{borrow::Cow, fmt};
 
-// TODO fix extra newline in lambda bodies
-
 /// TODO
 struct Indenter<'a, 'f> {
     formatter: &'a mut fmt::Formatter<'f>,
     /// How many levels deep we currently are in an indentation tree
     indent_level: usize,
-    /// Indentation string, e.g. `"  "`. `None` for no indentation
-    indentation: Option<&'a str>,
+    /// Indentation string, e.g. `"  "`
+    indentation: &'a str,
 }
 
 impl<'a, 'f> Indenter<'a, 'f> {
     fn new(
         formatter: &'a mut fmt::Formatter<'f>,
-        indentation: Option<&'a str>,
+        indentation: &'a str,
     ) -> Self {
         Self {
             formatter,
@@ -39,16 +37,10 @@ impl<'a, 'f> Indenter<'a, 'f> {
         }
     }
 
-    fn indentation_enabled(&self) -> bool {
-        self.indentation.is_some()
-    }
-
     /// Write the current indentation
     fn indent(&mut self) -> fmt::Result {
-        if let Some(indentation) = self.indentation {
-            for _ in 0..self.indent_level {
-                write!(self.formatter, "{indentation}")?;
-            }
+        for _ in 0..self.indent_level {
+            write!(self.formatter, "{}", self.indentation)?;
         }
         Ok(())
     }
@@ -65,7 +57,9 @@ trait DisplayIndent {
 
 impl DisplayIndent for Module {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        Repeat::new(&self.statements, "").fmt(ind)
+        Repeat::new(&self.statements, "\n")
+            .with_last_delimiter()
+            .fmt(ind)
     }
 }
 
@@ -86,15 +80,13 @@ impl DisplayIndent for Statement {
             }
             StatementKind::Import(import) => import.fmt(ind),
             StatementKind::Export(export) => export.fmt(ind),
-        }?;
-        // Statements include their own trailing newline
-        Newline.fmt(ind)
+        }
     }
 }
 
 impl DisplayIndent for Block {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        ("{", Newline, Indent::new(&self.statements, ""), "}").fmt(ind)
+        ("{", Indent::new(&self.statements, ""), "}").fmt(ind)
     }
 }
 
@@ -308,7 +300,7 @@ impl DisplayIndent for ArrayElement {
 
 impl DisplayIndent for ObjectLiteral {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        ("{", Indent::new(&self.properties, ", "), "}").fmt(ind)
+        ("{", Indent::new(&self.properties, ","), "}").fmt(ind)
     }
 }
 
@@ -503,24 +495,38 @@ impl DisplayIndent for ArrayPatternElement {
 }
 
 /// Print a sequence of values separated by a delimiter
+///
+/// By default, the delimiter is *not* emitted after the last element. Call
+/// [Repeat::with_last_delimiter] to emit it.
 struct Repeat<'a, T> {
     items: &'a [T],
     delimiter: &'a str,
+    /// Emit the delimiter after the final item?
+    include_last_delimiter: bool,
 }
 
 impl<'a, T> Repeat<'a, T> {
     fn new(items: &'a [T], delimiter: &'a str) -> Self {
-        Self { items, delimiter }
+        Self {
+            items,
+            delimiter,
+            include_last_delimiter: false,
+        }
+    }
+
+    fn with_last_delimiter(mut self) -> Self {
+        self.include_last_delimiter = true;
+        self
     }
 }
 
 impl<T: DisplayIndent> DisplayIndent for Repeat<'_, T> {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         for (i, item) in self.items.iter().enumerate() {
-            if i > 0 {
+            item.fmt(ind)?;
+            if self.include_last_delimiter || i < self.items.len() - 1 {
                 self.delimiter.fmt(ind)?;
             }
-            item.fmt(ind)?;
         }
         Ok(())
     }
@@ -539,9 +545,10 @@ impl DisplayIndent for Newline {
 
 /// Print a sequence of values separated by a delimiter
 ///
-/// If indentation is enabled, print a newline and indentation before each item.
-/// A newline will be printed before the first item and after the last. The
-/// delimiter will be printed after each item *except the last*.
+/// Print a newline and indentation before each item. A newline will be printed
+/// before the first item and after the last. The delimiter will be printed
+/// after each item *including the last*. This includes the final delimiter
+/// because the trailing comma is nice on object literals.
 struct Indent<'a, T> {
     items: &'a [T],
     delimiter: &'a str,
@@ -561,21 +568,15 @@ impl<T: DisplayIndent> DisplayIndent for Indent<'_, T> {
         }
 
         ind.indent_level += 1;
-        for (i, item) in self.items.iter().enumerate() {
-            if ind.indentation_enabled() {
-                Newline.fmt(ind)?;
-            }
+        for item in self.items {
+            Newline.fmt(ind)?;
             item.fmt(ind)?;
-            if i < self.items.len() - 1 {
-                write!(ind.formatter, "{}", self.delimiter)?;
-            }
+            write!(ind.formatter, "{}", self.delimiter)?;
         }
         ind.indent_level -= 1;
         // Add a final newline after the last element. This should be back at
         // the original indentation
-        if ind.indentation_enabled() {
-            Newline.fmt(ind)?;
-        }
+        Newline.fmt(ind)?;
         Ok(())
     }
 }
@@ -740,8 +741,7 @@ macro_rules! impl_display {
         $(
             impl std::fmt::Display for $type {
                 fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                    let indent = Some(" ");
-                    let mut indenter = Indenter::new(f, indent);
+                    let mut indenter = Indenter::new(f, "  ");
                     DisplayIndent::fmt(self, &mut indenter)
                 }
             }
@@ -762,6 +762,8 @@ impl_display! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::IntoExpression;
+    use pretty_assertions::assert_eq;
     use std::fmt::Display;
     use test_case::test_case;
 
@@ -773,6 +775,18 @@ mod tests {
     #[test_case(Literal::from(-11), "-11"; "literal int")]
     #[test_case(Literal::from(-3.24), "-3.24"; "literal float")]
     #[test_case(Literal::from("asdf"), "\"asdf\""; "literal string")]
+    #[test_case(
+        ObjectLiteral::new([
+            ("x", 3.into_expr()),
+            ("y", ObjectLiteral::new([("z", 5)]).into_expr()),
+        ]),
+        "{
+  x: 3,
+  y: {
+    z: 5,
+  },
+}"; "literal object"
+    )]
     #[test_case(
         Binding::object(
             [("x", "x", None), ("y", "y1", Some(1))],
@@ -786,6 +800,12 @@ mod tests {
             Some("z"),
         ),
         "[x, , y = 1, ...z]"; "binding array"
+    )]
+    #[test_case(
+        Block::new([Declaration::new("x", 3)]),
+        "{
+  const x = 3;
+}"; "block"
     )]
     // I'll add more test cases as I go. It's definitely not exhaustive.
     fn display<T: Display>(node: T, expected: &str) {

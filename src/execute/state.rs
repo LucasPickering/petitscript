@@ -11,7 +11,7 @@ use crate::{
         scope::{GlobalEnvironment, Scope},
     },
     util::OptionExt,
-    value::{Array, Object, Value},
+    value::{Array, Function, Object, Value},
 };
 use indexmap::{IndexMap, map::Entry};
 use std::{collections::VecDeque, sync::Arc};
@@ -103,14 +103,13 @@ impl<'process> ThreadState<'process> {
     /// Attach a stack trace to the given error, including the given call site
     /// as the most recent location in the trace
     ///
-    /// Typically, `current` is a [NodeId] indicating the nearest AST node to
-    /// the call/error.
+    /// Typically, `location` is the nearest AST [Node] to the error.
     pub fn trace_error(
         &self,
         error: RuntimeErrorKind,
-        current: impl Into<CallSite>, // TODO take a &Node instead?
+        location: impl Into<Location>,
     ) -> RuntimeError {
-        let current = current.into();
+        let current = location.into();
         let program = self.program();
         let trace = self
             .call_stack
@@ -126,14 +125,16 @@ impl<'process> ThreadState<'process> {
                     next_frame.map(|frame| frame.call_site).unwrap_or(current);
                 // Convert bytes to lines and columns
                 let span = match call_site {
-                    CallSite::Node(node_id) => {
-                        program.spans().get(node_id).expect("TODO panic here")
-                    }
-                    CallSite::Native => todo!(),
+                    // This lookup *should* always hit, but shit happens
+                    Location::Node(node_id) => program.spans().get(node_id),
+                    Location::Native => None,
                 };
 
-                let function_name =
-                    frame.function_name.as_deref().unwrap_or("???").to_owned();
+                let function_name = frame
+                    .function_name
+                    .as_deref()
+                    .unwrap_or(Function::ANONYMOUS)
+                    .to_owned();
                 StackTraceFrame {
                     span,
                     function_name,
@@ -168,7 +169,7 @@ impl<'process> ThreadState<'process> {
     pub fn with_frame<T>(
         &mut self,
         scope: Scope,
-        call_site: CallSite,
+        call_site: Location,
         function_name: Option<String>,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
@@ -213,9 +214,9 @@ impl<'process> ThreadState<'process> {
                 // Value must be an object. Copy its properties to another map
                 // so we can drain them as we bind them. (neede
                 // for ... bindings)
-                let object = value.try_into_object().map_err(|error| {
-                    self.trace_error(error.into(), binding.id())
-                })?;
+                let object = value
+                    .try_into_object()
+                    .map_err(|error| self.trace_error(error.into(), binding))?;
                 let mut values = IndexMap::from(object);
                 let mut names = vec![];
 
@@ -247,9 +248,9 @@ impl<'process> ThreadState<'process> {
                 // Value must be an array. Copy its elements to another array
                 // so we can drain them as we bind them. (needed for ...
                 // bindings)
-                let array = value.try_into_array().map_err(|error| {
-                    self.trace_error(error.into(), binding.id())
-                })?;
+                let array = value
+                    .try_into_array()
+                    .map_err(|error| self.trace_error(error.into(), binding))?;
                 // We'll be popping off the front, so a deque is better
                 let mut values = VecDeque::from_iter(array);
                 let mut names = vec![];
@@ -305,7 +306,7 @@ impl CallStack {
     pub fn new(globals: Arc<GlobalEnvironment>) -> Self {
         // This root frame can never be popped
         Self(vec![CallFrame {
-            call_site: CallSite::Native,
+            call_site: Location::Native,
             // There's no fn call yet, so we have to make up a name
             function_name: Some("<root>".into()),
             scope: globals.scope(),
@@ -316,7 +317,7 @@ impl CallStack {
     fn push(
         &mut self,
         scope: Scope,
-        call_site: CallSite,
+        call_site: Location,
         function_name: Option<String>,
     ) {
         self.0.push(CallFrame {
@@ -366,24 +367,23 @@ struct CallFrame {
     /// The location from which this function *was invoked*, i.e. the location
     /// we'll return to when this frame is popped. Used to print the stack
     /// trace
-    call_site: CallSite,
+    call_site: Location,
 }
 
-/// A location from which a function can be called
+/// A location in executing code
 ///
-/// Typically this is an AST node pointing to the invoking
-/// [FunctionCall](super::FunctionCall), but it can also be a point in native
-/// code.
+/// This is used to track the locations of errors and function calls. Typically
+/// this points to an AST node by ID, but it can also be a point in native code.
 #[derive(Copy, Clone, Debug)]
-pub enum CallSite {
-    /// The current function was invoked from another PS function
+pub enum Location {
+    /// A location in the PetitScript AST
     Node(NodeId),
-    /// The current function was invoked from native code
+    /// An unknown location in native code
     Native,
 }
 
-impl From<NodeId> for CallSite {
-    fn from(node_id: NodeId) -> Self {
-        Self::Node(node_id)
+impl<T: Node> From<&T> for Location {
+    fn from(node: &T) -> Self {
+        Self::Node(node.id())
     }
 }

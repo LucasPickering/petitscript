@@ -87,6 +87,9 @@ pub enum Function {
 }
 
 impl Function {
+    /// Placeholder name for anonymous functions
+    pub(crate) const ANONYMOUS: &str = "<anonymous>";
+
     /// Create a new function
     ///
     /// A "user" function is a function defined in PetitScript, as opposed to a
@@ -156,7 +159,7 @@ impl Display for Function {
         write!(
             f,
             "[Function `{}` ({kind})]",
-            self.name().unwrap_or("<anonymous>")
+            self.name().unwrap_or(Self::ANONYMOUS)
         )
     }
 }

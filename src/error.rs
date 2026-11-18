@@ -6,7 +6,7 @@ use crate::{
     source::{SourceTable, Span},
     value::{Number, ValueType},
 };
-use annotate_snippets::{AnnotationKind, Level, Snippet};
+use annotate_snippets::{AnnotationKind, Element, Level, Snippet};
 use std::{
     error::Error as StdError,
     fmt::{self, Display},
@@ -447,8 +447,7 @@ impl Display for Unsupported {
 ///
 /// Use [RuntimeError::to_report] to get a pretty version of the error and
 /// trace.
-#[derive(Debug, thiserror::Error)]
-#[error("{error}")]
+#[derive(Debug)]
 pub struct RuntimeError {
     /// What go wrong
     pub error: RuntimeErrorKind,
@@ -460,8 +459,9 @@ pub struct RuntimeError {
     pub(crate) source_table: SourceTable,
 }
 
-// TODO transparent impl like in ParseError
-
+// ===============
+// Manual impls are needed here to flatten the error stack
+// ===============
 impl RuntimeError {
     /// Generate an [annotate_snippets] report of this error
     ///
@@ -481,15 +481,33 @@ impl RuntimeError {
             .primary_title(self.error.to_string())
             .element(Level::NOTE.message("most recent call last"))
             .elements(self.trace.iter().map(|frame| {
-                let span = frame.span;
-                let source = self.source_table.get(span.source_id);
-                Snippet::source(source.text())
-                    .path(source.name())
-                    .annotation(AnnotationKind::Primary.span(
-                        (span.start_offset as usize)
-                            ..(span.end_offset as usize),
-                    ))
+                if let Some(span) = frame.span {
+                    let source = self.source_table.get(span.source_id);
+                    Element::from(
+                        Snippet::source(source.text())
+                            .path(source.name())
+                            .annotation(AnnotationKind::Primary.span(
+                                (span.start_offset as usize)
+                                    ..(span.end_offset as usize),
+                            )),
+                    )
+                } else {
+                    Level::NOTE.message("???").into()
+                }
             }))
+    }
+}
+
+impl Display for RuntimeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // TODO include stack trace if f.alt()
+        write!(f, "{}", self.error)
+    }
+}
+
+impl StdError for RuntimeError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.error.source()
     }
 }
 
@@ -656,12 +674,16 @@ impl FromIterator<StackTraceFrame> for StackTrace {
 /// One frame in a stack trace
 #[derive(Debug)]
 pub struct StackTraceFrame {
-    /// TODO
-    pub span: Span,
-    /// TODO
+    /// Location from which this function was *invoked*
+    ///
+    /// `None` if the function was invoked from native code, or if the span
+    /// couldn't be located. The latter indicates an internal bug.
+    pub span: Option<Span>,
+    /// Name of the invoked function
     pub function_name: String,
 }
 
+// TODO
 // impl Display for StackTraceFrame {
 //     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 //         write!(f, "in {} at {}", self.function_name, self.span)

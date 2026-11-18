@@ -109,7 +109,7 @@ impl Execute for ImportDeclaration {
             let value = exports.default.ok_or_else(|| {
                 state.trace_error(
                     RuntimeErrorKind::UnknownImport { identifier: None },
-                    name.id(),
+                    name,
                 )
             })?;
             state.scope_mut().declare(name.as_str(), value);
@@ -123,7 +123,7 @@ impl Execute for ImportDeclaration {
                         RuntimeErrorKind::UnknownImport {
                             identifier: Some(named.imported.to_string()),
                         },
-                        named.id(),
+                        named,
                     )
                 })?;
             state.scope_mut().declare(named.local.as_str(), value);
@@ -147,7 +147,7 @@ impl Execute for ImportModule {
                 // The clone is not strictly necessary, but the consuming logic
                 // gets a lot more complicated if we don't
                 .cloned()
-                .map_err(|error| state.trace_error(error, self.id())),
+                .map_err(|error| state.trace_error(error, self)),
             ImportModuleKind::Local(ast) => {
                 let mut thread_state = state.process().create_thread();
                 ast.exec(&mut thread_state)?;
@@ -166,7 +166,7 @@ impl Execute for ExportDeclaration {
             ExportDeclarationKind::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
                     state.export(name).map_err(|error| {
-                        state.trace_error(error, declaration.id())
+                        state.trace_error(error, declaration)
                     })?;
                 }
                 Ok(())
@@ -175,7 +175,7 @@ impl Execute for ExportDeclaration {
                 let value = expression.eval(state)?;
                 state
                     .export_default(value)
-                    .map_err(|error| state.trace_error(error, self.id()))
+                    .map_err(|error| state.trace_error(error, self))
             }
         }
     }

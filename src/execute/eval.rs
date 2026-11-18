@@ -10,7 +10,7 @@ use crate::{
         UnaryOperation, UnaryOperator,
     },
     error::{RuntimeError, RuntimeErrorKind, ValueError},
-    execute::{ThreadState, exec::Execute, state::CallSite},
+    execute::{ThreadState, exec::Execute, state::Location},
     value::{Array, Number, Object, Value, ValueType, function::Function},
 };
 use std::{borrow::Cow, sync::Arc};
@@ -45,7 +45,7 @@ impl Evaluate for Expression {
             ExpressionKind::Identifier(identifier) => state
                 .scope()
                 .get(identifier.as_str())
-                .map_err(|error| state.trace_error(error, self.id())),
+                .map_err(|error| state.trace_error(error, self)),
             ExpressionKind::Function(function) => function.eval(state),
             ExpressionKind::Call(call) => call.eval(state),
             ExpressionKind::Property(access) => access.eval(state),
@@ -74,12 +74,10 @@ impl Evaluate for ArrayLiteral {
                     array = array.push(value);
                 }
                 ArrayElementKind::Spread(expression) => {
-                    let new = expression
-                        .eval(state)?
-                        .try_into_array()
-                        .map_err(|error| {
-                            state.trace_error(error.into(), expression.id())
-                        })?;
+                    let new =
+                        expression.eval(state)?.try_into_array().map_err(
+                            |error| state.trace_error(error.into(), expression),
+                        )?;
                     array = array.concat(new);
                 }
             }
@@ -104,12 +102,10 @@ impl Evaluate for ObjectLiteral {
                     object = object.insert(name, value);
                 }
                 ObjectPropertyKind::Spread(expression) => {
-                    let new = expression
-                        .eval(state)?
-                        .try_into_object()
-                        .map_err(|error| {
-                            state.trace_error(error.into(), expression.id())
-                        })?;
+                    let new =
+                        expression.eval(state)?.try_into_object().map_err(
+                            |error| state.trace_error(error.into(), expression),
+                        )?;
                     object = object.insert_all(new);
                 }
             }
@@ -158,7 +154,7 @@ impl Evaluate for FunctionDefinition {
         let scope = state.scope();
         let captures = scope
             .captures(&self.captures)
-            .map_err(|error| state.trace_error(error, self.id()))?;
+            .map_err(|error| state.trace_error(error, self))?;
 
         Ok(Function::user(Arc::new(self.clone()), captures).into())
     }
@@ -185,7 +181,7 @@ impl Evaluate for FunctionCall {
                                 .map_err(|error| {
                                     state.trace_error(
                                         error.into(),
-                                        expression.id(),
+                                        &**expression,
                                     )
                                 })?;
                             arguments.extend(array);
@@ -193,7 +189,7 @@ impl Evaluate for FunctionCall {
                     }
                 }
 
-                function.call(state, self.id().into(), arguments)
+                function.call(state, self.into(), arguments)
             }
             // f?.() syntax. Skip the call, do NOT eval arguments
             Value::Undefined | Value::Null if self.optional => {
@@ -203,7 +199,7 @@ impl Evaluate for FunctionCall {
                 expected: ValueType::Function,
                 actual: function.type_(),
             })
-            .map_err(|error| state.trace_error(error.into(), self.id())),
+            .map_err(|error| state.trace_error(error.into(), self)),
         }
     }
 }
@@ -214,7 +210,7 @@ impl Evaluate for PropertyAccess {
         let target = self.object.eval(state)?;
         let property = self.property.eval(state)?;
         get_property(state, target, property)
-            .map_err(|error| state.trace_error(error, self.id()))
+            .map_err(|error| state.trace_error(error, self))
     }
 }
 
@@ -231,7 +227,7 @@ impl Evaluate for OptionalPropertyAccess {
                     // Error should be impossible here, because we handled the
                     // failure cases above
                     let error = RuntimeErrorKind::internal(error);
-                    state.trace_error(error, self.id())
+                    state.trace_error(error, self)
                 })
             }
         }
@@ -304,13 +300,14 @@ impl Evaluate for BinaryOperation {
 }
 
 impl Function {
-    /// Call this function with some arguments. `call_site` is the AST node from
-    /// which the function is being invoked. We track this for a  potential
-    /// stack trace.
+    /// Call this function with some arguments
+    ///
+    /// `location` is the AST node from which the function is being invoked. We
+    /// track this for the stack trace.
     pub(super) fn call(
         &self,
         state: &mut ThreadState<'_>,
-        call_site: CallSite,
+        location: Location,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         match self {
@@ -322,7 +319,7 @@ impl Function {
                 // scope from the globals. We'll add captures and args to that
                 state.with_frame(
                     state.process().globals.clone().scope(),
-                    call_site,
+                    location,
                     self.name().map(String::from),
                     |state| {
                         // Insert captured bindings into the scope
@@ -341,14 +338,14 @@ impl Function {
             }
             Self::Native { function, .. } => function
                 .call(state.process(), arguments)
-                .map_err(|error| state.trace_error(error, call_site)),
+                .map_err(|error| state.trace_error(error, location)),
             Self::Bound {
                 function, receiver, ..
             } => function
                 // Clone is necessary on receiver because there could be
                 // multiple references to `this.f`
                 .call(state.process(), Value::clone(receiver), arguments)
-                .map_err(|error| state.trace_error(error, call_site)),
+                .map_err(|error| state.trace_error(error, location)),
         }
     }
 

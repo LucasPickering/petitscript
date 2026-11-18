@@ -15,7 +15,7 @@ use crate::{
     error::{DuplicateAppData, RuntimeError, RuntimeErrorKind, UnknownAppData},
     execute::{
         exec::Execute,
-        state::{CallSite, ThreadState},
+        state::{Location, ThreadState},
     },
     name::NativeModuleName,
     value::{FromPetitArgs, IntoPetitResult, Value, function::Function},
@@ -137,7 +137,7 @@ impl Process {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
             ThreadState::new(Arc::clone(&self.globals), self, false);
-        function.call(&mut thread_state, CallSite::Native, arguments)
+        function.call(&mut thread_state, Location::Native, arguments)
     }
 
     /// Create a new thread to evaluate a module

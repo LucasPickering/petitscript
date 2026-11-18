@@ -103,7 +103,7 @@ impl<'process> ThreadState<'process> {
     /// Attach a stack trace to the given error, including the given call site
     /// as the most recent location in the trace
     ///
-    /// Typically, `location` is the nearest AST [Node] to the error.
+    /// Typically, `location` is the nearest AST [`Node`] to the error.
     pub fn trace_error(
         &self,
         error: RuntimeErrorKind,
@@ -192,7 +192,7 @@ impl<'process> ThreadState<'process> {
     ///
     /// The binding can be a single identifier, or a structured identifier, in
     /// which case multiple names may be bound. This is a convenience method for
-    /// calling [Self::declare] on each name in the binding.
+    /// calling [`Self::declare`] on each name in the binding.
     ///
     /// Object/array bindings may involve evaluating inner expressions, such
     /// as:

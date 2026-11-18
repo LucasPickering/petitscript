@@ -109,7 +109,7 @@ impl ParseContext<'_> {
 
     /// Generate a new node ID for a transformed AST node
     ///
-    /// This will convert the given oxc node's span to [Span], then insert it
+    /// This will convert the given oxc node's span to [`Span`], then insert it
     /// into the table. Use this for all transformed nodes.
     fn id(&mut self, node: &impl GetSpan) -> NodeId {
         self.node_id_inner(self.map_span(node.span()))
@@ -119,7 +119,7 @@ impl ParseContext<'_> {
     /// node*
     ///
     /// Use this for nodes that syntactically overlap a node that's already
-    /// been transformed, e.g. a [Binding] wrapping an [IdentifierNode]. The
+    /// been transformed, e.g. a [`Binding`] wrapping an [`IdentifierNode`]. The
     /// new node ID will be inserted into the span map with the same span as
     /// the given node.
     fn id_from(&mut self, node: &impl Node) -> NodeId {
@@ -146,7 +146,7 @@ trait Transform {
     /// Transform the AST node
     ///
     /// If the transformation fails, the error will be registered with the
-    /// parse context. [Reg] is returned to indicate the error was stored.
+    /// parse context. [`Reg`] is returned to indicate the error was stored.
     /// Practically, the error variant could just be `()`, but that would make
     /// it very easy to return `()` without actually registering an error.
     fn transform(
@@ -698,7 +698,7 @@ impl Transform for oxc::BindingPattern<'_> {
     /// expression on the right side
     ///
     /// Not all use cases support the init expression. For those that don't,
-    /// wrap the node in [BindingOnly] before calling `transform()`.
+    /// wrap the node in [`BindingOnly`] before calling `transform()`.
     type Output = (Binding, Option<Expression>);
 
     fn transform(
@@ -877,7 +877,7 @@ impl Transform for oxc::BindingIdentifier<'_> {
 }
 
 /// PS doesn't differentiate between identifier declarations and references, so
-/// this just maps to [Identifier]
+/// this just maps to [`Identifier`]
 impl Transform for oxc::IdentifierName<'_> {
     type Output = IdentifierNode;
 
@@ -893,7 +893,7 @@ impl Transform for oxc::IdentifierName<'_> {
 }
 
 /// PS doesn't differentiate between identifier declarations and references, so
-/// this just maps to [Identifier]
+/// this just maps to [`Identifier`]
 impl Transform for oxc::IdentifierReference<'_> {
     type Output = IdentifierNode;
 
@@ -1041,7 +1041,7 @@ impl Transform for oxc::ArrowFunctionExpression<'_> {
 
 /// Body block of a `function` or a `=>` function
 ///
-/// This always produces a [FunctionBody::Block]
+/// This always produces a [`FunctionBody::Block`]
 impl Transform for oxc::FunctionBody<'_> {
     type Output = FunctionBody;
 
@@ -1805,7 +1805,7 @@ fn transform_ident(ident: oxc::Ident<'_>) -> Identifier {
         .expect("Valid ES identifier not accepted by PetitScript")
 }
 
-/// Indicator that an error has been registered via [ParseContext::error]
+/// Indicator that an error has been registered via [`ParseContext::error`]
 ///
 /// This is the error variant for all transformations because it forces
 /// transformers to register their errors with the context.

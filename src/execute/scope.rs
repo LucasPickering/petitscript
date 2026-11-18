@@ -15,11 +15,13 @@ use std::{
     sync::Arc,
 };
 
-/// A scope is a hierarchical list of sets of bindings. Each set of bindings is
-/// known as an "environment". When we enter a new lexical scope (defined by
-/// braces: `{}`), we add a new environment to the scope. When we exit the
-/// scope, we remove the environment. Conceptually, the scope chain consists of
-/// a single [GlobalScope] at the top, followed by one or more user scopes.
+/// A scope is a hierarchical list of sets of bindings
+///
+/// Each set of bindings is known as an "environment". When we enter a new
+/// lexical scope (defined by braces: `{}`), we add a new environment to the
+/// scope. When we exit the scope, we remove the environment. Conceptually, the
+/// scope chain consists of a single [`GlobalEnvironment`] at the top, followed
+/// by one or more user scopes.
 ///
 /// A user scope is a scope in which a user can declare names.
 #[derive(Debug)]
@@ -222,7 +224,7 @@ impl GlobalEnvironment {
 }
 
 /// A set of unique names, each bound to a value. This is a flat map, with no
-/// hierarchy. For hierarchical scoping, see [Scope].
+/// hierarchy. For hierarchical scoping, see [`Scope`].
 #[derive(Clone, Debug, Default)]
 struct Environment(IndexMap<String, Value>);
 

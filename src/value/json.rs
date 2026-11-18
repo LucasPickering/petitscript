@@ -61,7 +61,7 @@ pub fn write_json(buf: &mut String, value: &Value) {
 
 type Stream<'i> = &'i str;
 
-/// Parse a JSON string to a [Value]
+/// Parse a JSON string to a [`Value`]
 pub fn parse_json(mut input: &str) -> Result<Value, ContextError> {
     delimited(ws, json_value, ws).parse_next(&mut input)
 }

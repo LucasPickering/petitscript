@@ -497,7 +497,7 @@ impl DisplayIndent for ArrayPatternElement {
 /// Print a sequence of values separated by a delimiter
 ///
 /// By default, the delimiter is *not* emitted after the last element. Call
-/// [Repeat::with_last_delimiter] to emit it.
+/// [`Repeat::with_last_delimiter`] to emit it.
 struct Repeat<'a, T> {
     items: &'a [T],
     delimiter: &'a str,
@@ -731,8 +731,8 @@ impl fmt::Display for NativeModuleName {
     }
 }
 
-/// Implement [Display](std::fmt::Display) on all types that implement
-/// [DisplayIndent]
+/// Implement [`Display`](std::fmt::Display) on all types that implement
+/// [`DisplayIndent`]
 ///
 /// It would be great to do this with a blanket impl, but that's not possible
 /// because `Display` is a foreign trait

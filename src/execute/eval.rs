@@ -17,10 +17,11 @@ use std::{borrow::Cow, sync::Arc};
 
 /// Evaluate an expression into a value
 pub trait Evaluate: Node {
-    /// Evaluate an AST node into a runtime [Value]. Errors are returned wrapped
-    /// with the source span of the AST node from which the error originated.
-    /// We use `Traced<RuntimeError,Span>` instead of `Error::Runtime` because
-    /// we don't have the context needed here to qualify the spans.
+    /// Evaluate an AST node into a runtime [`Value`]. Errors are returned
+    /// wrapped with the source span of the AST node from which the error
+    /// originated. We use `Traced<RuntimeError,Span>` instead of
+    /// `Error::Runtime` because we don't have the context needed here to
+    /// qualify the spans.
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError>;
 }
 

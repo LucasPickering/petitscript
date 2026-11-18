@@ -29,7 +29,7 @@ impl Number {
         }
     }
 
-    /// Return `true` if this value is NaN. See [Number::NAN]
+    /// Return `true` if this value is NaN. See [`Number::NAN`]
     pub fn is_nan(self) -> bool {
         if let Self::Float(f) = self {
             f.is_nan()

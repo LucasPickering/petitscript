@@ -10,5 +10,5 @@ arg "<file>" help="File to execute"
 
 [tasks.doc]
 description = "Build docs"
-run = "cargo doc -p petitscript --all-features"
+run = "cargo doc -p petitscript --all-features --no-deps"
 sources = ["Cargo.toml", "src/**/*.rs"]

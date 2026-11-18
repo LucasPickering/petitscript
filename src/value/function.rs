@@ -45,7 +45,7 @@ pub enum Function {
     Native {
         /// Display name for this function
         ///
-        /// Native functions should always be created via [Function::native],
+        /// Native functions should always be created via [`Function::native`],
         /// which requires a name to be given. There's no such thing as an
         /// anonymous native function. This is for labelling purposes only; it
         /// does not affect program behavior beyond its `toString()` output.
@@ -68,7 +68,7 @@ pub enum Function {
         /// Display name for this function
         ///
         /// Native functions should always be created via
-        /// [Exports::export_fn](crate::Exports::export_fn),
+        /// [`Exports::export_fn`](crate::Exports::export_fn),
         /// which requires a name to be given. There's no such thing as an
         /// anonymous native function. This is for labelling purposes only;
         /// it does not affect program behavior beyond its `toString()` output.
@@ -107,8 +107,8 @@ impl Function {
     /// Create a new native function
     ///
     /// Generally it's more convenient to call
-    /// [Object::insert_fn](crate::value::Object::insert_fn)
-    /// or [Exports::export_fn](crate::Exports::export_fn).
+    /// [`Object::insert_fn`](crate::value::Object::insert_fn)
+    /// or [`Exports::export_fn`](crate::Exports::export_fn).
     pub fn native<F, Args, Out>(name: String, function: F) -> Self
     where
         F: 'static + Fn(&Process, Args) -> Out + Send + Sync,

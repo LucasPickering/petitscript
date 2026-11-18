@@ -263,7 +263,7 @@ mod tests {
             expected_statement_2,
             expected_statement_3,
         ]);
-        NodeId::with_equal_ids(|| assert_eq!(module, expected));
+        NodeId::with_all_equal(|| assert_eq!(module, expected));
     }
 
     /// Test closure capturing
@@ -336,6 +336,6 @@ mod tests {
             .declare("f")
             .into_stmt(),
         ]);
-        NodeId::with_equal_ids(|| assert_eq!(module, expected));
+        NodeId::with_all_equal(|| assert_eq!(module, expected));
     }
 }

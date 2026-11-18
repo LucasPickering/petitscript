@@ -125,7 +125,7 @@ impl ParseContext<'_> {
         self.sources.get(self.current_source_id)
     }
 
-    /// Map an [oxc_span::Span] to a PetitScript [Span]
+    /// Map an [`oxc_span::Span`] to a PetitScript [`Span`]
     fn map_span(&self, span: oxc_span::Span) -> Span {
         Span {
             source_id: self.current_source_id,
@@ -136,9 +136,7 @@ impl ParseContext<'_> {
 
     /// Map a parse error from oxc to our parse type
     ///
-    /// Oxc's errors are defined in the [oxc_diagnostics] crate, which is a fork
-    /// of [miette]. We use miette's error type for parse errors, so the
-    /// mapping is mostly 1:1.
+    /// Oxc's errors are defined in the [oxc_diagnostics] crate.
     fn map_oxc_diagnostic(&self, diagnostic: OxcDiagnostic) -> ParseError {
         // Map the oxc diagnostic to our error type
         let diagnostic = diagnostic.inner_owned();
@@ -176,7 +174,7 @@ mod tests {
         let source = r"const s = 'test\nnewline';";
         let actual = parse_test(source).unwrap();
         let expected = Module::new([Declaration::new("s", "test\nnewline")]);
-        NodeId::with_equal_ids(|| assert_eq!(actual, expected));
+        NodeId::with_all_equal(|| assert_eq!(actual, expected));
     }
 
     /// Test \ before a literal newline escapes the newline, allowing for
@@ -193,7 +191,7 @@ mod tests {
         let source = "const s = 'test \\\nno newline';";
         let actual = parse_test(source).unwrap();
         let expected = Module::new([Declaration::new("s", "test no newline")]);
-        NodeId::with_equal_ids(|| assert_eq!(actual, expected));
+        NodeId::with_all_equal(|| assert_eq!(actual, expected));
     }
 
     /// If multiple AST nodes cannot be transformed, we should get errors for

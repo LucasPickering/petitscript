@@ -26,38 +26,38 @@ use winnow::error::ContextError;
 /// together.
 ///
 /// Each variant corresponds to another error type in this module, and this
-/// implements [From] for each variant. The two most common variants are:
-/// - [Error::Parse]: Error while parsing/compiling a program
-/// - [Error::Runtime]: Error while executing a program
+/// implements [`From`] for each variant. The two most common variants are:
+/// - [`Error::Parse`]: Error while parsing/compiling a program
+/// - [`Error::Runtime`]: Error while executing a program
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Attempted to register two values of the same type as app data
     ///
-    /// See [DuplicateAppData].
+    /// See [`DuplicateAppData`].
     #[error(transparent)]
     DuplicateAppData(#[from] DuplicateAppData),
 
     /// Error(s) while parsing source code
     ///
-    /// See [ParseErrors].
+    /// See [`ParseErrors`].
     #[error(transparent)]
     Parse(#[from] ParseErrors),
 
     /// Error while executing a PetitScript program
     ///
-    /// See [RuntimeError].
+    /// See [`RuntimeError`].
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
 
     /// Error loading a source
     ///
-    /// See [SourceError].
+    /// See [`SourceError`].
     #[error(transparent)]
     Source(#[from] SourceError),
 
     /// User requested app data of a type that has not been set
     ///
-    /// See [UnknownAppData].
+    /// See [`UnknownAppData`].
     #[error(transparent)]
     UnknownAppData(#[from] UnknownAppData),
 
@@ -69,14 +69,14 @@ pub enum Error {
 #[cfg(test)]
 static_assertions::assert_impl_all!(Error: Send, Sync);
 
-/// Container for one or more [ParseError]s during parsing
+/// Container for one or more [`ParseError`]s during parsing
 ///
 /// Parsing does not fail fast. It collects as many errors as it can, but will
 /// fail if there is at least one.
 ///
 /// This can hold errors from multiple modules. Each error has a `span` field
 /// indicating the file and location of the offending code. Use
-/// [ParseErrors::to_report] to get a pretty report of errors.
+/// [`ParseErrors::to_report`] to get a pretty report of errors.
 #[derive(Debug, thiserror::Error)]
 #[error("{} parse error(s)", errors.len())]
 pub struct ParseErrors {
@@ -125,14 +125,14 @@ impl ParseErrors {
 ///
 /// PetitScript uses a two-part parser:
 /// - First, source code is parsed to an ECMAScript (JavaScript) abstract syntax
-///   tree via [oxc_parser]
+///   tree via [`oxc_parser`]
 /// - Then, the ES AST is transformed to a PetitScript AST
 ///
 /// The first step will fail if the source code is not valid syntax. The second
 /// will fail if the code is not valid PetitScript. As PS is a small subset of
 /// JS, there are many syntactic constructs in JS that are not valid PS.
 ///
-/// This is typically contained within [ParseErrors], which aggregates all the
+/// This is typically contained within [`ParseErrors`], which aggregates all the
 /// errors for a single parsing run.
 #[derive(Debug)]
 pub struct ParseError {
@@ -159,7 +159,7 @@ impl StdError for ParseError {
 
 /// The categories of errors that can occuring during parsing
 ///
-/// This is contained by [ParseError], which carries the error info as well as
+/// This is contained by [`ParseError`], which carries the error info as well as
 /// source context.
 #[derive(Debug, thiserror::Error)]
 pub enum ParseErrorKind {
@@ -204,7 +204,7 @@ pub enum ParseErrorKind {
 
     /// I/O error while loading source code from a file
     ///
-    /// See [SourceError].
+    /// See [`SourceError`].
     #[error(transparent)]
     Source(#[from] SourceError),
 
@@ -222,7 +222,7 @@ pub enum ParseErrorKind {
     /// Source code contains a syntax construct that isn't supported in our
     /// semantics
     ///
-    /// See [Unsupported].
+    /// See [`Unsupported`].
     #[error("{0}")]
     Unsupported(Unsupported),
 }
@@ -277,9 +277,9 @@ pub enum Unsupported {
     ExportNamedDeclaration,
     /// `const x = function() {}`
     ///
-    /// This is different from [Self::AnonymousFunction] because function
-    /// expressions may have an identifier, but are still illegal in an
-    /// expression position.
+    /// This is different from [`Unsupported::AnonymousFunction`] because
+    /// function expressions may have an identifier, but are still illegal
+    /// in an expression position.
     FunctionExpression,
     /// `function*`
     Generator,
@@ -445,7 +445,7 @@ impl Display for Unsupported {
 
 /// A runtime error paired with its stack trace
 ///
-/// Use [RuntimeError::to_report] to get a pretty version of the error and
+/// Use [`RuntimeError::to_report`] to get a pretty version of the error and
 /// trace.
 #[derive(Debug)]
 pub struct RuntimeError {
@@ -513,8 +513,8 @@ impl StdError for RuntimeError {
 
 /// The categories of errors that can occuring while running a program
 ///
-/// This is contained by [RuntimeError], which carries the error along with its
-/// stack trace.
+/// This is contained by [`RuntimeError`], which carries the error along with
+/// its stack trace.
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeErrorKind {
     /// Attempted to export the same name twice
@@ -690,7 +690,7 @@ pub struct StackTraceFrame {
 //     }
 // }
 
-/// An error that can occur while converting to/from [Value]
+/// An error that can occur while converting to/from [`Value`]
 #[derive(Debug, thiserror::Error)]
 pub enum ValueError {
     /// A custom error message for deserialization
@@ -698,8 +698,8 @@ pub enum ValueError {
     #[error("{0}")]
     Custom(String),
 
-    /// Attempted to deserialize into a [Function](crate::value::Function) from
-    /// a data format other than [Value]
+    /// Attempted to deserialize into a [`Function`](crate::value::Function)
+    /// from a data format other than [`Value`]
     ///
     /// `Function` can only be serialized into/deserialized from `Function`; it
     /// cannot be represented in other serde data formats or transformed
@@ -716,7 +716,7 @@ pub enum ValueError {
     #[error(transparent)]
     InvalidUtf8(#[from] FromUtf8Error),
 
-    /// Error converting [Number] to a specific number type. Could be a
+    /// Error converting [`Number`] to a specific number type. Could be a
     /// mismatch (float -> int or vice versa), or a value out of range
     #[error("Cannot convert number {number} to {expected}: {description}")]
     Number {
@@ -731,7 +731,7 @@ pub enum ValueError {
 
     /// An operation required a specific type (or types), but received a value
     /// of an unsupported type. This commonly occurs during type downcasting,
-    /// e.g. [Value] to [Number].
+    /// e.g. [`Value`] to [`Number`].
     #[error("Type error: expected {expected}, received {actual}")]
     Type {
         expected: ValueType,
@@ -747,7 +747,7 @@ impl ValueError {
 }
 
 /// Error while parsing a string to
-/// [Identifier](crate::ast::Identifier)
+/// [`Identifier`](crate::ast::Identifier)
 #[derive(Debug, thiserror::Error)]
 #[error(
     "invalid identifier `{identifier}`; must be non-empty, contain only UTF-8 \
@@ -757,7 +757,7 @@ pub struct IdentifierError {
     pub identifier: String,
 }
 
-/// Error while parsing a string to [NativeModuleName]
+/// Error while parsing a string to [`NativeModuleName`]
 #[derive(Debug, thiserror::Error)]
 #[error(
     "invalid module name `{name}`; module names must not be empty and can \
@@ -769,7 +769,7 @@ pub struct ModuleNameError {
 
 /// User requested app data of a type that has not been set
 ///
-/// See [Process::app_data](crate::Process::app_data).
+/// See [`Process::app_data`](crate::Process::app_data).
 #[derive(Debug, thiserror::Error)]
 #[error("no app data of type `{type_name}` is registered")]
 pub struct UnknownAppData {
@@ -778,7 +778,7 @@ pub struct UnknownAppData {
 
 /// Attempted to register two values of the same type as app data
 ///
-/// See [Process::app_data](crate::Process::app_data).
+/// See [`Process::app_data`](crate::Process::app_data).
 #[derive(Debug, thiserror::Error)]
 #[error("multiple app data values of type `{type_name}` were registered")]
 pub struct DuplicateAppData {

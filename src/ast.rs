@@ -13,7 +13,7 @@
 //! Each AST node gets a unique ID, which is used to associate it with metadata
 //! stored outside the AST (e.g. source spans). These IDs are stored inline in
 //! each node struct, in a field called `id`. They can be accessed generically
-//! via the [Node] trait. There are a lot of ways to do this and they all have
+//! via the [`Node`] trait. There are a lot of ways to do this and they all have
 //! tradeoffs. Some considered alternatives:
 //!
 //! - Store the metadata inline in the AST. Replace each ID with the actual
@@ -59,12 +59,12 @@
 //! you have to manually assign node IDs. Instead, you can use the methods
 //! defined on the node types to create them more easily. There are also 3
 //! traits that make converting between node types easier:
-//! - [IntoNode]: Convert from a node kind to its parent node (e.g.
-//!   [ExpressionKind] -> [Expression])
-//! - [IntoExpression]: Convert to [Expression] (e.g. [Identifier] ->
-//!   [Expression])
-//! - [IntoStatement]: Convert to [Statement] (e.g. [Declaration] ->
-//!   [Statement])
+//! - [`IntoNode`]: Convert from a node kind to its parent node (e.g.
+//!   [`ExpressionKind`] -> [`Expression`])
+//! - [`IntoExpression`]: Convert to [`Expression`] (e.g. [`Identifier`] ->
+//!   [`Expression`])
+//! - [`IntoStatement`]: Convert to [`Statement`] (e.g. [`Declaration`] ->
+//!   [`Statement`])
 //!
 //! ```rust
 //! use petitscript::{
@@ -235,7 +235,7 @@ pub struct FunctionDefinition {
     /// A label for this function, to be passed onto the function value
     ///
     /// This is **not necessarily** the name the function is bound to; that is
-    /// defined in the parent [Declaration].
+    /// defined in the parent [`Declaration`].
     pub name: Option<Identifier>,
     pub parameters: Box<[FunctionParameter]>,
     // `Node` not necessary because both variants of the body contain it
@@ -371,7 +371,7 @@ impl Node for ImportNamed {
 /// Source for an imported module, i.e. the string after `from`
 pub type ImportModule = KindedNode<ImportModuleKind>;
 
-/// Kind for [ImportModule]
+/// Kind for [`ImportModule`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImportModuleKind {
@@ -584,7 +584,7 @@ impl Node for FunctionCall {
     }
 }
 
-/// One argument in a [FunctionCall]
+/// One argument in a [`FunctionCall`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Argument {
@@ -739,7 +739,7 @@ impl Node for TernaryConditional {
 /// - Property access: `o.a` or `o["a"]`
 pub type PropertyName = KindedNode<PropertyNameKind>;
 
-/// Type of a [PropertyName]
+/// Type of a [`PropertyName`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PropertyNameKind {
@@ -776,7 +776,7 @@ pub enum BindingKind {
     },
 }
 
-/// A specific bound field in a [BindingKind::Object]
+/// A specific bound field in a [`BindingKind::Object`]
 ///
 /// - `const { x } = object`
 /// - `const { x: x2 } = object`
@@ -802,7 +802,7 @@ impl Node for ObjectPatternElement {
 /// TODO
 pub type ArrayPatternElement = KindedNode<ArrayPatternElementKind>;
 
-/// One element in a [BindingKind::Array]
+/// One element in a [`BindingKind::Array`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayPatternElementKind {
@@ -824,7 +824,7 @@ pub enum ArrayPatternElementKind {
     Skip,
 }
 
-/// An [Identifier] with a [NodeId]
+/// An [`Identifier`] with a [`NodeId`]
 ///
 /// Use this for identifiers that exist in the source code.
 #[derive(Clone, Debug, PartialEq)]
@@ -882,13 +882,13 @@ impl NodeId {
     thread_local! {
         /// Should all node IDs be considered equal?
         ///
-        /// This can be enabled temporarily with [TODO] to skip ID checks. This
-        /// is most useful in test code assertions, where exact ID values aren't
-        /// important.
+        /// This can be enabled temporarily with [`NodeId::with_all_equal`] to
+        /// skip ID checks. This is most useful in test code assertions, where
+        /// exact ID values aren't important.
         static ALWAYS_EQUAL: Cell<bool> = const { Cell::new(false) };
     }
 
-    /// Execute a function while overriding `NodeId`'s [Eq]/[PartialEq]
+    /// Execute a function while overriding `NodeId`'s [`Eq`]/[`PartialEq`]
     /// implementations such that they **always return true**
     ///
     /// Use this for test assertions and other comparisons that want to ignore

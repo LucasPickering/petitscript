@@ -5,11 +5,10 @@ use crate::{
 };
 use indexmap::IndexMap;
 use serde::de::{
-    self,
+    self, IntoDeserializer, Unexpected,
     value::{
         MapDeserializer, SeqDeserializer, StringDeserializer, U64Deserializer,
     },
-    IntoDeserializer, Unexpected,
 };
 use std::fmt::Display;
 
@@ -27,8 +26,8 @@ impl IntoDeserializer<'_, ValueError> for Value {
     }
 }
 
-/// Deserialize from [Value] to any type that implements
-/// [Deserialize](serde::Deserialize)
+/// Deserialize from [`Value`] to any type that implements
+/// [`Deserialize`](serde::Deserialize)
 pub struct Deserializer {
     value: Value,
 }
@@ -237,7 +236,7 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer {
                 return serde::Deserializer::deserialize_seq(
                     self.value.into_deserializer(),
                     visitor,
-                )
+                );
             }
             Value::Undefined => Unexpected::UnitVariant,
             Value::Object(_) => Unexpected::StructVariant,
@@ -259,7 +258,7 @@ impl<'de> de::VariantAccess<'de> for VariantDeserializer {
                 return serde::Deserializer::deserialize_map(
                     self.value.into_deserializer(),
                     visitor,
-                )
+                );
             }
             Value::Undefined => Unexpected::UnitVariant,
             Value::Array(_) => Unexpected::TupleVariant,

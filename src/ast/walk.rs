@@ -15,7 +15,7 @@ use std::ops::DerefMut;
 /// Walk over an AST node and all its children, apply
 ///
 /// This never needs to be implemented outside this file. Instead, implement
-/// [AstVisitor] and override the methods as needed to visit/modify each
+/// [`AstVisitor`] and override the methods as needed to visit/modify each
 /// individual AST node. The implementations of `Walk` will take care of moving
 /// down the tree for you.
 ///
@@ -425,7 +425,7 @@ impl<T: Walk> Walk for Option<T> {
 
 /// A trait for applying actions to individual nodes of an AST
 ///
-/// This should be used in conjunction with [Walk] to apply an action to _all_
+/// This should be used in conjunction with [`Walk`] to apply an action to _all_
 /// nodes of the AST. This trait defines one method for each AST node type,
 /// which all do nothing by default. Override individual functions as needed to
 /// apply your visitor actions.
@@ -538,9 +538,9 @@ pub trait AstVisitor {
     fn enter_variable(&mut self, _: &mut Variable) {}
     fn exit_variable(&mut self, _: &mut Variable) {}
 
-    /// Visit a usage of an [Identifier]
+    /// Visit a usage of an [`Identifier`]
     ///
-    /// Identifiers can be used in 3 positions; see [IdentifierPosition].
+    /// Identifiers can be used in 3 positions; see [`IdentifierPosition`].
     fn visit_identifier(
         &mut self,
         _identifier: &mut Identifier,

@@ -1,4 +1,4 @@
-/// Extension trait for [Option]
+/// Extension trait for [`Option`]
 ///
 /// TODO move to util module
 pub trait OptionExt<T> {

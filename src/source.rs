@@ -74,7 +74,7 @@ impl Source {
     /// Imported local modules (`import ... from './other.js'`) from this source
     /// will be performed relative to this path. Sources that don't have a
     /// path cannot import local modules. Doing so will result in a
-    /// [ParseErrorKind::ImportInvalidLocal](crate::error::ParseErrorKind::ImportInvalidLocal).
+    /// [`ParseErrorKind::ImportInvalidLocal`](crate::error::ParseErrorKind::ImportInvalidLocal).
     pub fn path(&self) -> Option<&Path> {
         match self {
             Self::Static(_) | Self::String(_) => None,
@@ -95,32 +95,32 @@ impl Source {
     }
 }
 
-/// Convert a string literal to [Source::Static]
+/// Convert a string literal to [`Source::Static`]
 impl From<&'static str> for Source {
     fn from(value: &'static str) -> Self {
         Self::Static(value)
     }
 }
 
-/// Convert a [String] to [Source::String]
+/// Convert a [`String`] to [`Source::String`]
 impl From<String> for Source {
     fn from(value: String) -> Self {
         Self::String(value.into())
     }
 }
 
-/// Cheap ID for a specific [Source] in a [SourceTable]
+/// Cheap ID for a specific [`Source`] in a [`SourceTable`]
 ///
-/// Sources get aliased by ID because each [Span] needs to point to its source,
-/// and each AST node needs a span.
+/// Sources get aliased by ID because each [`Span`] needs to point to its
+/// source, and each AST node needs a span.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SourceId(u16);
 
-/// A table of [Source]s for a single program
+/// A table of [`Source`]s for a single program
 ///
 /// The parser builds, uses, and returns this as a centralized store of all
 /// source code that produced a program. Each source (each file typically) is
-/// assigned an ID that can be used in [Span] throughout the AST.
+/// assigned an ID that can be used in [`Span`] throughout the AST.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SourceTable(HashMap<SourceId, Source>);
 
@@ -143,7 +143,7 @@ impl SourceTable {
     /// ## Panics
     ///
     /// Panic if the ID isn't in the table. Any ID returned by
-    /// [SourceTable::insert] will be valid for that table.
+    /// [`SourceTable::insert`] will be valid for that table.
     pub fn get(&self, id: SourceId) -> &Source {
         self.0.get(&id).expect("TODO")
     }
@@ -169,10 +169,10 @@ impl SourceTable {
 /// TODO more
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Span {
-    /// ID of the [Source] (typically a file) containing the code
+    /// ID of the [`Source`] (typically a file) containing the code
     ///
     /// This is just an ID because we create thousands of spans, so we need
-    /// this to be cheap. Use [SourceTable] to look up the actual source.
+    /// this to be cheap. Use [`SourceTable`] to look up the actual source.
     pub source_id: SourceId,
     /// Byte offset for the beginning of this span (inclusive)
     ///

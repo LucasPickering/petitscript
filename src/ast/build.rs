@@ -15,14 +15,14 @@ use crate::ast::{
 };
 use std::cell::Cell;
 
-/// Generate a new [NodeId]
+/// Generate a new [`NodeId`]
 ///
 /// This uses a thread local to keep track of the next available ID. That means
 /// each node ID will be unique not just for the AST, but for any AST generated
 /// in that thread. This does mean that identical ASTs generated sequentially on
 /// the same thread will *not* have consistent IDs.
 ///
-/// To ignore IDs on equality checks, see [NodeId::with_equal_ids].
+/// To ignore IDs on equality checks, see [`NodeId::with_equal_ids`].
 fn next_id() -> NodeId {
     thread_local! {
         static NEXT_NODE_ID: Cell<u32> = const { Cell::new(0) };
@@ -131,7 +131,8 @@ impl FunctionDefinition {
     /// Declare this function with the given name. The name will *not* be
     /// attached to the function definition, for explicitness/simplicity. There
     /// are some test cases where the attached name causes havok, so it's easier
-    /// to leave it out and users can attach it manually with [Self::with_name].
+    /// to leave it out and users can attach it manually with
+    /// [`FunctionDefinition::with_name`].
     pub fn declare(self, name: impl Into<Identifier>) -> Declaration {
         Declaration::new(name, self)
     }
@@ -590,8 +591,8 @@ impl Binding {
     /// Create an array binding
     ///
     /// `elements` is a list of `(binding, init)` pairs. Each element can be
-    /// `None`, which will map to [ArrayPatternElementKind::Skip]. `rest` is the
-    /// optional `...` element at the end of the pattern.
+    /// `None`, which will map to [`ArrayPatternElementKind::Skip`]. `rest` is
+    /// the optional `...` element at the end of the pattern.
     pub fn array(
         elements: impl IntoIterator<
             Item = Option<(impl Into<Binding>, Option<impl IntoExpression>)>,
@@ -635,13 +636,13 @@ impl From<&'static str> for Identifier {
     }
 }
 
-/// Convert an AST value into an [Expression] node
+/// Convert an AST value into an [`Expression`] node
 ///
-/// This is needed instead of just [From] impls because it will generate at
+/// This is needed instead of just [`From`] impls because it will generate at
 /// least one node ID, meaning it's not a simple 1:1 stable conversion. Having
 /// it as a separate trait also makes it easier to make blanket impls.
 pub trait IntoExpression {
-    /// Convert the value to [ExpressionKind], then wrap as an [Expression]
+    /// Convert the value to [`ExpressionKind`], then wrap as an [`Expression`]
     fn into_expr(self) -> Expression;
 }
 
@@ -669,13 +670,13 @@ impl IntoExpression for Identifier {
     }
 }
 
-/// Convert an AST value into a [Statement] node
+/// Convert an AST value into a [`Statement`] node
 ///
-/// This is needed instead of just [From] impls because it will generate at
+/// This is needed instead of just [`From`] impls because it will generate at
 /// least one node ID, meaning it's not a simple 1:1 stable conversion. Having
 /// it as a separate trait also makes it easier to make blanket impls.
 pub trait IntoStatement {
-    /// Convert the value to [StatementKind], then wrap as an [Statement]
+    /// Convert the value to [`StatementKind`], then wrap as an [`Statement`]
     fn into_stmt(self) -> Statement;
 }
 
@@ -697,11 +698,11 @@ where
     }
 }
 
-/// Convert an AST enum value into its [Node] wrapper
+/// Convert an AST enum value into its [`Node`] wrapper
 pub trait IntoNode {
     type Node: Node;
 
-    /// Convert an AST enum value into its [Node] wrapper
+    /// Convert an AST enum value into its [`Node`] wrapper
     ///
     /// This will generate an ID for the wrapping node.
     fn into_node(self) -> Self::Node;
@@ -726,7 +727,7 @@ impl IntoNode for Identifier {
     }
 }
 
-/// Implement [IntoNode] for [KindedNode] type aliases
+/// Implement [`IntoNode`] for [`KindedNode`] type aliases
 macro_rules! impl_into_node {
     ($($type:ty)*) => {
         $(

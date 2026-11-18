@@ -18,13 +18,13 @@ pub fn parse(source: impl Into<Source>) -> Result<Module, ParseErrors> {
     Ok(Compiler::new(source).parse()?.program.module)
 }
 
-/// Parse and compile source code into an executable [Program]
+/// Parse and compile source code into an executable [`Program`]
 pub fn compile(source: impl Into<Source>) -> Result<Program, ParseErrors> {
     let program = Compiler::new(source).parse()?.label().capture().end();
     Ok(program)
 }
 
-/// Compile a prebuilt AST into an executable [Program]
+/// Compile a prebuilt AST into an executable [`Program`]
 ///
 /// Helpful for tests and other environments where an AST is built
 /// programatically rather than by parsing source code. Compilation is
@@ -42,7 +42,7 @@ pub fn compile_ast(module: Module) -> Program {
     .end()
 }
 
-/// An executable program. This is produced by [compile]
+/// An executable program. This is produced by [`compile`]
 #[derive(Debug)]
 pub struct Program {
     sources: SourceTable,

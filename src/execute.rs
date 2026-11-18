@@ -84,7 +84,7 @@ impl Process {
     ///
     /// ## Errors
     ///
-    /// Return [UnknownAppData] if there is no app data of type `T`.
+    /// Return [`UnknownAppData`] if there is no app data of type `T`.
     pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, UnknownAppData> {
         self.app_data.get()
     }
@@ -101,7 +101,7 @@ impl Process {
     ///
     /// ## Errors
     ///
-    /// Return [DuplicateAppData] if there is already app data of type
+    /// Return [`DuplicateAppData`] if there is already app data of type
     /// `T` registered.
     pub fn set_app_data<T: Any + Send + Sync>(
         &mut self,
@@ -215,16 +215,17 @@ impl Exports {
     /// Create a native function and export it with the given name
     ///
     /// The given function must take two arguments: `(process, args)`. `process`
-    /// is the [Process] executing the function, and `args` is a list of
+    /// is the [`Process`] executing the function, and `args` is a list of
     /// arguments passed by the caller.
     ///
-    /// `args` must implement [FromPetitArgs], which is implemented for tuples
-    /// of individual values implementing [FromPetit](crate::value::FromPetit).
+    /// `args` must implement [`FromPetitArgs`], which is implemented for tuples
+    /// of individual values implementing
+    /// [`FromPetit`](crate::value::FromPetit).
     ///
-    /// The return value must implement [IntoPetitResult]. This can be any value
-    /// that implements [IntoPetit](crate::value::IntoPetit), or a `Result`
-    /// where `T` implements [IntoPetit](crate::value::IntoPetit) and `E`
-    /// implements `Into` for [RuntimeError].
+    /// The return value must implement [`IntoPetitResult`]. This can be any
+    /// value that implements [`IntoPetit`](crate::value::IntoPetit), or a
+    /// `Result` where `T` implements [`IntoPetit`](crate::value::IntoPetit)
+    /// and `E` implements `Into` for [`RuntimeError`].
     ///
     /// ```
     /// use petitscript::{Exports, Value, error::ValueError, value::Number};

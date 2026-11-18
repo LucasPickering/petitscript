@@ -2,7 +2,7 @@
 //!
 //! This module is designed to imitate a Serde data format crate, and thus
 //! follows [the conventions laid out by Serde](https://serde.rs/conventions.html),
-//! with the exception of the `Error` and `Result` types: we use [ValueError]
+//! with the exception of the `Error` and `Result` types: we use [`ValueError`]
 //! instead and no `Result` alias is provided.
 //!
 //! TODO add examples
@@ -33,7 +33,7 @@ pub fn from_value<'de, T: Deserialize<'de>>(
 /// A tool for out-of-band serialization and deserialization of functions
 ///
 /// Functions are challenging to serialize and serve little value as raw data.
-/// The only meaningful use case to ser/de functions is going between [Value]
+/// The only meaningful use case to ser/de functions is going between [`Value`]
 /// and another type `T` that contains a `Function` internally. So we only need
 /// to support pass-through ser/de, in which a `Function` is mapped right back
 /// to a `Function`. Rather than trying to shove the function through serde's
@@ -112,8 +112,8 @@ impl FunctionPool {
 
     /// Take a function from the pool corresponding to the given ID. Return an
     /// error if the function isn't in the pool. This typically indicates a user
-    /// tried to deserialize from a format other than [Value] into a [Function],
-    /// which is not supported.
+    /// tried to deserialize from a format other than [`Value`] into a
+    /// [`Function`], which is not supported.
     fn take(id: u64) -> Result<Function, ValueError> {
         Self::POOL
             .with_borrow_mut(|pool| pool.pool.remove(&id))

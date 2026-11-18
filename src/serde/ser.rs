@@ -14,8 +14,8 @@ impl ser::Error for ValueError {
     }
 }
 
-/// Serialize any type that implements [Serialize](serde::Serialize) into a
-/// [Value]
+/// Serialize any type that implements [`Serialize`](serde::Serialize) into a
+/// [`Value`]
 pub struct Serializer;
 
 /// Serialize a `T` into `Value` using its `From<T>` impl

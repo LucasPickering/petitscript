@@ -128,7 +128,7 @@ impl Value {
         }
     }
 
-    /// Return `true` if this value is NaN. See [Number::NAN]
+    /// Return `true` if this value is NaN. See [`Number::NAN`]
     pub fn is_nan(&self) -> bool {
         if let Self::Number(n) = self {
             n.is_nan()
@@ -138,8 +138,8 @@ impl Value {
     }
 
     /// Coerce this value to a string. This intentionally shadows
-    /// [ToString::to_string] to prevent accidentally using display rules for
-    /// coercion. The [Display] impl is intended just for debug printing in
+    /// [`ToString::to_string`] to prevent accidentally using display rules for
+    /// coercion. The [`Display`] impl is intended just for debug printing in
     /// Rust. This coercion implementation aims to match JS's semantics for
     /// string coercion. If you specifically want the display implementation,
     /// use `format!({string})` instead.
@@ -358,7 +358,7 @@ impl Not for Value {
     type Output = Self;
 
     /// Apply boolean negation to this value. The value will be cast to a
-    /// boolean according to [Self::to_bool], then negated.
+    /// boolean according to [`Value::to_bool`], then negated.
     fn not(self) -> Self::Output {
         (!self.to_bool()).into()
     }
@@ -368,8 +368,8 @@ impl Neg for Value {
     type Output = Self;
 
     /// Apply arithmetic negation to this value. The value will be cast to a
-    /// number according to [Self::to_number], then negated. If the value cannot
-    /// be cast to a number, the result is `NaN`.
+    /// number according to [`Value::to_number`], then negated. If the value
+    /// cannot be cast to a number, the result is `NaN`.
     fn neg(self) -> Self::Output {
         if let Some(number) = self.to_number() {
             Self::Number(-number)
@@ -490,7 +490,7 @@ impl<T: Into<Value>> From<IndexMap<&str, T>> for Value {
     }
 }
 
-/// Possible types for a [Value]
+/// Possible types for a [`Value`]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum ValueType {
     Undefined,
@@ -522,7 +522,7 @@ impl Display for ValueType {
     }
 }
 
-/// A trait for converting into [Value]
+/// A trait for converting into [`Value`]
 pub trait IntoPetit {
     fn into_petit(self) -> Result<Value, ValueError>;
 }
@@ -548,7 +548,7 @@ impl IntoPetit for PathBuf {
     }
 }
 
-/// A trait for converting from [Value]
+/// A trait for converting from [`Value`]
 pub trait FromPetit: Sized {
     fn from_petit(value: Value) -> Result<Self, ValueError>;
 }

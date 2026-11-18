@@ -35,10 +35,12 @@
 //! - Try/catch
 //! - Async
 //!
-//! Here's a simple example of compiling and executing some PetitScript code:
+//! ## Examples
+//!
+//! The simplest example of parsing and executing some PetitScript code:
 //!
 //! ```
-//! use petitscript::{Error, Engine};
+//! use petitscript::{Engine, Error};
 //!
 //! fn main() -> Result<(), Error> {
 //!     let engine = Engine::new();
@@ -51,8 +53,6 @@
 //!     Ok(())
 //! }
 //! ```
-//!
-//! ## Examples
 //!
 //! - TODO Native modules
 //! - TODO Local modules
@@ -131,15 +131,15 @@ impl Engine {
         Self::builder().with_stdlib().build()
     }
 
-    /// Create a new [EngineBuilder]
+    /// Create a new [`EngineBuilder`]
     ///
     ///
     /// <div class="warning">
     ///
-    /// By default, [EngineBuilder] does not include the PetitScript standard
-    /// library in the built engine. Use [Engine::new] to get an engine with
+    /// By default, [`EngineBuilder`] does not include the PetitScript standard
+    /// library in the built engine. Use [`Engine::new`] to get an engine with
     /// the standard library if you do not need customization. Otherwise, be
-    /// sure to call [EngineBuilder::with_stdlib].
+    /// sure to call [`EngineBuilder::with_stdlib`].
     ///
     /// </div>
     pub fn builder() -> EngineBuilder {
@@ -158,10 +158,10 @@ impl Engine {
     ///
     /// The returned AST is
     /// not fully compiled and therefore can't be executed. Call
-    /// [Engine::compile_ast] to complete compilation.
+    /// [`Engine::compile_ast`] to complete compilation.
     ///
     /// This is only useful if you want to introspect the compiled program. If
-    /// you're just executing code, you should call [Engine::compile] to get
+    /// you're just executing code, you should call [`Engine::compile`] to get
     /// the compiled process in a single step.
     ///
     /// ## Errors
@@ -174,12 +174,12 @@ impl Engine {
         compile::parse(source)
     }
 
-    /// Parse and compile some source code into an executable [Process]
+    /// Parse and compile some source code into an executable [`Process`]
     ///
     /// ## Errors
     ///
     /// Return an error if the program is syntactically invalid. PetitScript has
-    /// no static checks beyond imports and parsing, so [ParseErrors] is the
+    /// no static checks beyond imports and parsing, so [`ParseErrors`] is the
     /// only possible error.
     pub fn compile(
         &self,
@@ -189,7 +189,7 @@ impl Engine {
         Ok(self.spawn(program))
     }
 
-    /// Compile a pre-parsed AST into an executable [Process]
+    /// Compile a pre-parsed AST into an executable [`Process`]
     ///
     /// This is helpful for tests and other environments where an AST is built
     /// programatically rather than by parsing source code. This is infallible
@@ -211,11 +211,11 @@ impl Default for Engine {
     }
 }
 
-/// A modular builder for constructing [Engine]s
+/// A modular builder for constructing [`Engine`]s
 ///
 /// This builder can be used to customize an engine, such as registering native
-/// modules with [with_module](Self::with_module). Create a builder with
-/// [Engine::builder]:
+/// modules with [`with_module`](Self::with_module). Create a builder with
+/// [`Engine::builder`]:
 ///
 /// ```
 /// # use petitscript::Engine;
@@ -252,10 +252,7 @@ impl EngineBuilder {
     ///
     /// let name: NativeModuleName = "math".parse().unwrap();
     /// let mut module = Exports::default();
-    /// module.export_fn(
-    ///     "add",
-    ///     |_process, (a, b): (Number, Number)| a + b
-    /// );
+    /// module.export_fn("add", |_process, (a, b): (Number, Number)| a + b);
     /// Engine::builder().with_module(name, module).build();
     /// ```
     ///

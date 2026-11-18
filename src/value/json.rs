@@ -14,16 +14,19 @@ use winnow::{
 };
 
 /// Recursively write a JSON value into a string buffer
+///
+/// This attempts to follow the description of `JSON.stringify`, but with some
+/// simplifications around invalid JSON values:
+/// - `undefined`, buffers, and functions are always serialized as `null`
 pub fn write_json(buf: &mut String, value: &Value) {
     // Errors aren't possible in any of these writes because we're writing to
     // a string
     match value {
-        // Undefined is hard because it's variable in JS:
+        // Taking a shortcut here. The correct implementation in JS is variable:
         // JSON.stringify(undefined) => undefined
         // JSON.stringify({a: undefined}) => "{}"
         // JSON.stringify([undefined]) => "[null]"
-        Value::Undefined => todo!("undefined to json"),
-        Value::Null => write!(buf, "null").unwrap(),
+        Value::Undefined | Value::Null => write!(buf, "null").unwrap(),
         Value::Boolean(b) => write!(buf, "{b}").unwrap(),
         Value::Number(number) => write!(buf, "{number}").unwrap(),
         Value::String(s) => write!(buf, "\"{s}\"").unwrap(),

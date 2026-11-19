@@ -442,7 +442,9 @@ impl Transform for oxc::ImportSpecifier<'_> {
                 };
                 let imported = IdentifierNode {
                     id: context.id(&self.imported),
-                    identifier: transform_ident(imported),
+                    identifier: transform_ident(imported).map_err(|error| {
+                        context.register_error(&self.imported, error)
+                    })?,
                 };
                 let local = self.local.transform(context)?;
 
@@ -870,7 +872,8 @@ impl Transform for oxc::BindingIdentifier<'_> {
     ) -> Result<Self::Output, Reg> {
         Ok(IdentifierNode {
             id: context.id(self),
-            identifier: transform_ident(self.name),
+            identifier: transform_ident(self.name)
+                .map_err(|error| context.register_error(self, error))?,
         })
     }
 }
@@ -886,7 +889,8 @@ impl Transform for oxc::IdentifierName<'_> {
     ) -> Result<Self::Output, Reg> {
         Ok(IdentifierNode {
             id: context.id(self),
-            identifier: transform_ident(self.name),
+            identifier: transform_ident(self.name)
+                .map_err(|error| context.register_error(self, error))?,
         })
     }
 }
@@ -902,7 +906,8 @@ impl Transform for oxc::IdentifierReference<'_> {
     ) -> Result<Self::Output, Reg> {
         Ok(IdentifierNode {
             id: context.id(self),
-            identifier: transform_ident(self.name),
+            identifier: transform_ident(self.name)
+                .map_err(|error| context.register_error(self, error))?,
         })
     }
 }
@@ -1793,15 +1798,16 @@ impl Transform for oxc::Argument<'_> {
 
 /// Transform an oxc identifier to a PS identifier
 ///
-/// Panics if the identifier fails to re-parse, which *should* be
-/// impossible because we use the same identifier rules.
-fn transform_ident(ident: oxc::Ident<'_>) -> Identifier {
+/// Returns an error if the identifier fails to parse. PS uses a more strict
+/// identifier definition than ES.
+fn transform_ident(
+    ident: oxc::Ident<'_>,
+) -> Result<Identifier, ParseErrorKind> {
     // Error here *should* be impossible because we use the same identifier
     // rules as ES
-    ident
-        .as_str()
-        .parse()
-        .expect("Valid ES identifier not accepted by PetitScript")
+    ident.as_str().parse().map_err(|_| {
+        ParseErrorKind::Unsupported(Unsupported::UnicodeIdentifier)
+    })
 }
 
 /// Indicator that an error has been registered via [`ParseContext::error`]

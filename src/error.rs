@@ -358,6 +358,10 @@ pub enum Unsupported {
     This,
     /// `using`
     Using,
+    /// Identifier with a non-ASCII letter
+    ///
+    /// ES supports unicode letters in identifiers. PS doesn't.
+    UnicodeIdentifier,
     /// Wonky V8-specific shit
     V8Intrinstic,
     /// `void`
@@ -465,6 +469,13 @@ impl Display for Unsupported {
             }
             Self::This => ("`this`", None),
             Self::Using => ("`using`", None),
+            Self::UnicodeIdentifier => (
+                "unicode identifier",
+                Some(
+                    "identifiers can only contain ASCII letters (a-z and A-Z), \
+                    digits 0-9, `$`, and `_`",
+                ),
+            ),
             Self::V8Intrinstic => ("V8 intrinsic", None),
             Self::Void => ("`void`", None),
             Self::With => ("`with`", None),
@@ -678,16 +689,6 @@ impl StackTrace {
     }
 }
 
-// impl Display for StackTrace {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         writeln!(f, "Error (most recent call last)")?;
-//         for frame in &self.0 {
-//             writeln!(f, "  {frame}")?;
-//         }
-//         Ok(())
-//     }
-// }
-
 impl IntoIterator for StackTrace {
     type Item = StackTraceFrame;
     type IntoIter = <Vec<StackTraceFrame> as IntoIterator>::IntoIter;
@@ -782,8 +783,8 @@ impl ValueError {
 /// [`Identifier`](crate::ast::Identifier)
 #[derive(Debug, thiserror::Error)]
 #[error(
-    "invalid identifier `{identifier}`; must be non-empty, contain only UTF-8 \
-    letters, `0-9`, `_`, or `$`, and not start with a digit"
+    "invalid identifier `{identifier}`; must be non-empty; contain only `a-z`, \
+    `A-Z`, `0-9`, `_`, or `$`; and not start with a digit"
 )]
 pub struct IdentifierError {
     pub identifier: String,
@@ -792,8 +793,8 @@ pub struct IdentifierError {
 /// Error while parsing a string to [`NativeModuleName`]
 #[derive(Debug, thiserror::Error)]
 #[error(
-    "invalid module name `{name}`; module names must not be empty and can \
-    only contain alphanumeric characters, hyphens (-) or underscores (_)"
+    "invalid module name `{name}`; module names must be non-empty and contain \
+    only `a-z`, `A-Z`, `0-9`, `-`, or `_`"
 )]
 pub struct ModuleNameError {
     pub name: String,

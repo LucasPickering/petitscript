@@ -2,5 +2,3 @@ target/
 .DS_Store
 .vscode/
 expand.rs
-# TODO remove this once prop tests are stable
-proptest-regressions/

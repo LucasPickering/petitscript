@@ -4,8 +4,9 @@
 use crate::error::{IdentifierError, ModuleNameError};
 use std::{borrow::Borrow, str::FromStr};
 
-/// The name of a variable, function, or property. Identifiers must adhere to
-/// these rules:
+/// The name of a variable, function, or property
+///
+/// Identifiers must adhere to these rules:
 /// - Allowed characters are unicode letters, `0-9`, `$`, and `_`
 /// - Must not start with a digit
 ///
@@ -15,9 +16,7 @@ use std::{borrow::Borrow, str::FromStr};
 #[cfg_attr(feature = "serde", serde(transparent))]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Identifier(
-    // \p{L} will spit out valid unicode letters
-    // https://www.unicode.org/reports/tr44/tr44-24.html#General_Category_Values
-    #[cfg_attr(test, proptest(regex = r"[\p{L}_$][\p{L}0-9_$]*"))] String,
+    #[cfg_attr(test, proptest(regex = r"[a-zA-Z_$][a-zA-Z0-9_$]*"))] String,
 );
 
 impl Identifier {
@@ -33,7 +32,7 @@ impl TryFrom<String> for Identifier {
     fn try_from(identifier: String) -> Result<Self, Self::Error> {
         /// Is a char valid as the first in an identifier?
         fn is_valid_first(c: char) -> bool {
-            c.is_alphabetic() || ['$', '_'].contains(&c)
+            c.is_ascii_alphabetic() || ['$', '_'].contains(&c)
         }
 
         /// Is a char valid anywhere in an identifier?

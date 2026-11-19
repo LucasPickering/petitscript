@@ -1,6 +1,6 @@
 [package]
 authors = {workspace = true}
-description = "TODO"
+description = "Compile and execute PetitScript code from the command line"
 edition = {workspace = true}
 homepage = {workspace = true}
 keywords = {workspace = true}

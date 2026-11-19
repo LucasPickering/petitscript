@@ -393,8 +393,10 @@ impl Display for Unsupported {
                 Some("import renames must be identifiers"),
             ),
             Self::ImportMeta => ("`import.meta`", None),
-            Self::In => ("`in`", Some("Use Object.hasOwn() instead")),
-            Self::Instanceof => ("`instanceof`", None),
+            Self::In => ("`in`", Some("Use Object.hasOwn()")),
+            Self::Instanceof => {
+                ("`instanceof`", Some("use `typeof ... === ...`"))
+            }
             Self::Jsx => ("JSX", Some("This isn't React...")),
             Self::Label => ("label", None),
             // TODO link to a page on recursion

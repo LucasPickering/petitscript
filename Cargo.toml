@@ -1,6 +1,6 @@
 [package]
 authors = {workspace = true}
-description = "Minimal embeddable JavaScript subset"
+description = "Minimal embeddable JavaScript-like interpreted language"
 edition = {workspace = true}
 homepage = {workspace = true}
 keywords = {workspace = true}

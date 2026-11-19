@@ -13,14 +13,15 @@ use crate::{
     value::Value,
 };
 
-/// TODO
+/// Execute an imperative step in a program
 pub trait Execute: Node {
+    /// Outcome of the execution
+    ///
+    /// Execution does *not* emit a value within the semantics of PS. The
+    /// [Execute::Output] return type facilitates control flow (e.g. `return`).
     type Output<'process>;
 
-    /// TODO. Errors are returned wrapped with the source span of the AST node
-    /// from which the error originated. We use `Traced<RuntimeError,Span>`
-    /// instead of `Error::Runtime` because we don't have the context needed
-    /// here to qualify the spans.
+    /// Execute the statement, modifying state appropriately
     fn exec<'process>(
         &self,
         state: &mut ThreadState<'process>,

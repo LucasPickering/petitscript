@@ -132,8 +132,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-/// The root AST node for a single source file. This is the outcome of parsing a
-/// file, and may contain nested modules from local imports.
+/// Root AST node for a single source file
+///
+/// This is the outcome of parsing a file. It may contain nested modules via
+/// [ImportModuleKind::Local].
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Module {
@@ -147,18 +149,24 @@ impl Node for Module {
     }
 }
 
-/// TODO
+/// An imperative statement
+///
+/// `Statement` is one of the two primary AST types, the other being
+/// [`Expression`]. Expressions resolve to values while statements execute
+/// without emitting a value.
 pub type Statement = KindedNode<StatementKind>;
 
-/// TODO
+/// Variants for [`Statement`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StatementKind {
-    /// TODO
+    /// Do nothing
     Empty,
-    /// TODO
+    /// Collection of statements to be executed sequentially: `{...}`
     Block(Block),
-    /// TODO
+    /// An expression in statement position: `expression;`
+    ///
+    /// This will *not* emit the expression's value. The value is discarded.
     Expression(Expression),
     /// `const` declaration
     Declaration(Declaration),
@@ -166,19 +174,21 @@ pub enum StatementKind {
     // Control flow
     // Loops aren't supported at all because they aren't very useful without
     // mutation. I may add them at some point, but I'm starting minimal.
-    /// TODO
+    /// `if`/`else` conditional
     If(If),
-    /// TODO
+    /// Exit the current function, optionally with a return value: `return
+    /// [expression];`
     Return(Option<Expression>),
 
-    /// TODO
+    /// Import values from another module: `import ... from '...'`
     Import(ImportDeclaration),
-    /// TODO
+    /// Export a name or value: `export const ...` or `export default ...`
     Export(ExportDeclaration),
 }
 
-/// A collection of statements, delineated by `{ }`. This declares a new lexical
-/// scope.
+/// A collection of statements to be executed sequentially
+///
+/// A block is delineated by `{ }` and creates a new lexical scope.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Block {
@@ -373,7 +383,7 @@ impl Node for ImportNamed {
 /// Source for an imported module, i.e. the string after `from`
 pub type ImportModule = KindedNode<ImportModuleKind>;
 
-/// Kind for [`ImportModule`]
+/// Variants for [`ImportModule`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ImportModuleKind {
@@ -387,10 +397,10 @@ pub enum ImportModuleKind {
     Local(Module),
 }
 
-/// TODO
+/// Export a name or value: `export const ...` or `export default ...`
 pub type ExportDeclaration = KindedNode<ExportDeclarationKind>;
 
-/// TODO
+/// Variants for [`ExportDeclaration`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExportDeclarationKind {
@@ -400,10 +410,14 @@ pub enum ExportDeclarationKind {
     DefaultExpression(Expression),
 }
 
-/// TODO
+/// An expresion that resolves to a value
+///
+/// `Expression` is one of the two primary AST types, the other being
+/// [`Statement`]. Expressions resolve to values while statements execute
+/// without emitting a value.
 pub type Expression = KindedNode<ExpressionKind>;
 
-/// TODO
+/// Variants for [`Expression`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExpressionKind {
@@ -411,7 +425,7 @@ pub enum ExpressionKind {
     Parenthesized(Box<Expression>),
     /// Primitive and complex type literals
     Literal(Literal),
-    /// String template
+    /// Literal defined with backticks (`` ` ``)
     Template(TemplateLiteral),
     /// Reference to an identifier
     ///
@@ -442,34 +456,34 @@ pub enum ExpressionKind {
     Ternary(TernaryConditional),
 }
 
-/// TODO
-/// TODO document why no spans
+/// Fixed value defined literally in source code
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Literal {
-    /// TODO
+    /// `null`: the empty value
     Null,
-    /// TODO
+    /// `undefined`: the *other* empty value
     ///
-    /// TODO explain why this is a literal instead of an identifier like it is
-    /// in ES
+    /// In ECMAScript, `undefined` is a global identifier. In PetitScript, it's
+    /// a keyword bound to a specific literal type.
     Undefined,
-    /// TODO
+    /// `true`/`false`
     Boolean(bool),
-    /// TODO
+    /// Floating-point (decimal) literal: `3.21`
     Float(f64),
-    /// TODO
+    /// Integer literal: `-37`
     Int(i64),
-    /// TODO
+    /// String literal: `"hello"` or `'world'`
     String(String),
-    // TODO remove the nodes on these? are they needed?
-    /// TODO
+    /// Array literal: `[1, "hello"]`
     Array(ArrayLiteral),
-    /// TODO
+    /// Object literal: `{a: 1, b: "hello"}`
     Object(ObjectLiteral),
 }
 
-/// TODO
+/// Literal defined with backticks (`` ` ``) that enables string interpolation
+///
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals>
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TemplateLiteral {
@@ -485,10 +499,13 @@ impl Node for TemplateLiteral {
     }
 }
 
-/// TODO
+/// One piece in a template string: the `hello ` or `${world}` of `` `hello
+/// ${world}` ``
+///
+/// Either a static string or an expression
 pub type TemplateChunk = KindedNode<TemplateChunkKind>;
 
-/// One piece in a template. Either a static string or an expression
+/// Variants for [`TemplateChunk`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TemplateChunkKind {
@@ -498,7 +515,7 @@ pub enum TemplateChunkKind {
     Expression(Expression),
 }
 
-/// TODO
+/// [`Array`](crate::value::Array) literal: `[1, "hello"]`
 ///
 /// Array literals do *not* support element elision (`[1, , 3]`). All elements
 /// must be defined.
@@ -515,20 +532,37 @@ impl Node for ArrayLiteral {
     }
 }
 
-/// TODO
+/// One element in an array literal: `x` in `[x]`
 pub type ArrayElement = KindedNode<ArrayElementKind>;
 
-/// TODO
+/// Variants for [`ArrayElement`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayElementKind {
-    /// TODO
+    /// A single expression to resolve to an array literal value
     Expression(Expression),
-    /// TODO
+    /// A `...` spread expression
+    ///
+    /// If this expression evaluates into an array, then all the elements of
+    /// that array will be included in the array created by this literal. If it
+    /// evaluates to any other value type, this will raise an error.
+    ///
+    /// ```notrust
+    /// [1, 2 ...[3, 4, 5]] // [1, 2, 3, 4, 5]
+    /// ```
     Spread(Expression),
 }
 
-/// TODO
+/// [`Object`](crate::value::Object) literal: `{a: 1, b: "hello"}`
+///
+/// Object literals can contain both constant and expression keys:
+/// ```notrust
+/// {
+///   x: 1,
+///   [':::']: "colons!",
+///   [f()]: "func_key",
+/// }
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObjectLiteral {
@@ -542,12 +576,12 @@ impl Node for ObjectLiteral {
     }
 }
 
-/// TODO
-pub type ObjectProperty = KindedNode<ObjectPropertyKind>;
-
 /// One property in an object literal
 ///
 /// Objects don't support methods, getters, or setters
+pub type ObjectProperty = KindedNode<ObjectPropertyKind>;
+
+/// Variants for [`ObjectProperty`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ObjectPropertyKind {
@@ -599,14 +633,20 @@ pub enum Argument {
     Spread(Box<Expression>),
 }
 
-/// TODO
+/// Access a property from an object: `o.x` or `o["x"]`
+///
+/// If `object` is an object and the property is in that object, this will
+/// evaluate to the value of the corresponding property. If `object` is `null`
+/// or `undefined`, this will raise an error. If the property isn't in the
+/// object or if `object` is any other value (e.g. a number or function), it
+/// will evaluate to `undefined`.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PropertyAccess {
     pub id: NodeId,
-    /// TODO
+    /// Object to access into
     pub object: Box<Expression>,
-    /// TODO
+    /// Property to access
     pub property: PropertyName,
 }
 
@@ -616,14 +656,24 @@ impl Node for PropertyAccess {
     }
 }
 
-/// TODO
+/// Access a property from an object,
+///
+/// This behaves the same as [`PropertyAccess`] **except**. In the case where
+/// `object` is `null` or `undefined`. Rather than raise an error, it will
+/// return the value of `object` instead.
+///
+/// ```notrust
+/// o?.x // o.x
+/// null?.x // null
+/// undefined?.x // undefined
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OptionalPropertyAccess {
     pub id: NodeId,
-    /// TODO
+    /// Object to access into
     pub object: Box<Expression>,
-    /// TODO
+    /// Property to access
     pub property: PropertyName,
 }
 
@@ -633,12 +683,17 @@ impl Node for OptionalPropertyAccess {
     }
 }
 
-/// TODO
+/// Operation with one
+///
+/// All unary operators are *prefix*, meaning the operator appears *before*
+/// the operand.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UnaryOperation {
     pub id: NodeId,
+    /// Operation to perform
     pub operator: UnaryOperator,
+    /// Operand to transform
     pub expression: Box<Expression>,
 }
 
@@ -648,7 +703,7 @@ impl Node for UnaryOperation {
     }
 }
 
-/// TODO
+/// Operator for [`UnaryOperation`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UnaryOperator {
@@ -662,13 +717,19 @@ pub enum UnaryOperator {
     Typeof,
 }
 
-/// TODO
+/// Operation with two operands
+///
+/// All binary operators are *infix*, meaning the operator appears *between*
+/// the operands.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BinaryOperation {
     pub id: NodeId,
+    /// Operation to perform
     pub operator: BinaryOperator,
+    /// Left-hand side of the operation
     pub lhs: Box<Expression>,
+    /// Right-hand side of the operation
     pub rhs: Box<Expression>,
 }
 
@@ -678,7 +739,7 @@ impl Node for BinaryOperation {
     }
 }
 
-/// TODO
+/// Operator for [`BinaryOperation`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BinaryOperator {
@@ -714,10 +775,9 @@ pub enum BinaryOperator {
 
     /// `??`
     NullishCoalesce,
-    // TODO bitwise operations, exponent
 }
 
-/// TODO
+/// Conditional expression: `condition ? then : else`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TernaryConditional {
@@ -741,7 +801,7 @@ impl Node for TernaryConditional {
 /// - Property access: `o.a` or `o["a"]`
 pub type PropertyName = KindedNode<PropertyNameKind>;
 
-/// Type of a [`PropertyName`]
+/// Variants for [`PropertyName`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PropertyNameKind {
@@ -751,27 +811,42 @@ pub enum PropertyNameKind {
     Expression(Box<Expression>),
 }
 
-/// TODO
+/// Bind identifier(s) to value(s)
+///
+/// A binding assigns identifiers to values. Each identifier is mapped to a
+/// singular value.
+///
+/// ```notrust
+/// // Bindings cannot be declared in any context. In this case, the const
+/// // keyword uses bindings to create declarations.
+/// const x = 3;
+/// const { a, b } = { a: 1, b: 2 };
+/// const [d, e, f] = [1, 2, 3];
+/// ```
 pub type Binding = KindedNode<BindingKind>;
 
-/// TODO
+/// Variants for [`Binding`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BindingKind {
-    /// `const x = 3`
+    /// Bind a single name to a value: `x = 3`
     Identifier(IdentifierNode),
-    /// An object pattern: `const { a, b, c } = object`
+    /// Bind multiple names to a destructed object: `{ a, b, c } = object`
+    ///
+    /// This is recursive, so object and array patterns can be nested within.
     Object {
         properties: Box<[ObjectPatternElement]>,
-        /// `const { ...x } = object`
+        /// `{ ...x } = object`
         ///
         /// This can only appear once, at the end of the pattern.
         rest: Option<Box<Binding>>,
     },
-    /// An array pattern: `const [a, b, c] = array`
+    /// Bind multiple names to a destructured array: `[a, b, c] = array`
+    ///
+    /// This is recursive, so object and array patterns can be nested within.
     Array {
         elements: Box<[ArrayPatternElement]>,
-        /// `const [...x] = array`
+        /// `[...x] = array`
         ///
         /// This can only appear once, at the end of the pattern.
         rest: Option<Box<Binding>>,
@@ -801,10 +876,10 @@ impl Node for ObjectPatternElement {
     }
 }
 
-/// TODO
+/// One element in a [`BindingKind::Array`]
 pub type ArrayPatternElement = KindedNode<ArrayPatternElementKind>;
 
-/// One element in a [`BindingKind::Array`]
+/// Variants for [`ArrayPatternElement`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArrayPatternElementKind {
@@ -821,8 +896,6 @@ pub enum ArrayPatternElementKind {
     /// Skip this field while binding
     ///
     /// `const [a,, c] = [1, 2, 3]`
-    ///
-    /// TODO replace this with underscore binding
     Skip,
 }
 
@@ -932,19 +1005,23 @@ impl PartialEq for NodeId {
     }
 }
 
-/// TODO
+/// An AST node
+///
+/// Every AST node has a unique ID
 pub trait Node {
-    /// TODO
+    /// Get this node's ID
     fn id(&self) -> NodeId;
 }
 
-/// TODO
+/// An AST node whose content is defined by an enum
+///
+/// This is just a pairing of an enum and node ID.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KindedNode<T> {
-    /// TODO
+    /// Node ID
     pub id: NodeId,
-    /// TODO
+    /// Node contents
     pub kind: T,
 }
 

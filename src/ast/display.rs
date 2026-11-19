@@ -16,7 +16,11 @@ use crate::ast::{
 };
 use std::{borrow::Cow, fmt};
 
-/// TODO
+/// Wrapper around [`fmt::Formatter`] that enables incremented indenting
+///
+/// This doesn't apply any indenting itself. It just allows [DisplayIndent]
+/// implementations to track and check the indentation level so they can insert
+/// indentation as needed. [`Indent`] does the actual indentation.
 struct Indenter<'a, 'f> {
     formatter: &'a mut fmt::Formatter<'f>,
     /// How many levels deep we currently are in an indentation tree
@@ -46,9 +50,13 @@ impl<'a, 'f> Indenter<'a, 'f> {
     }
 }
 
-/// TODO
+/// A variant of [`Display`] that accepts an [`Indenter`]
+///
+/// The indenter allows the implementation to increase indentation (when
+/// entering a new block), decrease it (when exiting a block), and insert
+/// indentation (on a new line).
 trait DisplayIndent {
-    /// TODO
+    /// Format this value into the output, possibly with indentation
     ///
     /// Normally I like full words for variable names, but I cannot spell
     /// `indenter` correctly so I abbreviated it :)
@@ -263,7 +271,6 @@ impl DisplayIndent for Literal {
 
 impl DisplayIndent for TemplateLiteral {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        // TODO escape backticks
         ("`", Repeat::new(&self.chunks, ""), "`").fmt(ind)
     }
 }
@@ -271,9 +278,10 @@ impl DisplayIndent for TemplateLiteral {
 impl DisplayIndent for TemplateChunk {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
-            // TODO do we need any escaping here?
+            // TODO escape backticks in here
             TemplateChunkKind::Literal(literal) => literal.fmt(ind),
-            // TODO escaping here?
+            // Escaping isn't needed here, the parser is smart enough to tell
+            // when a backtick is part of the expression vs closing the literal
             TemplateChunkKind::Expression(expression) => {
                 ("${", expression, "}").fmt(ind)
             }

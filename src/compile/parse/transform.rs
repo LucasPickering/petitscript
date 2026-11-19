@@ -317,7 +317,6 @@ impl Transform for oxc::Statement<'_> {
     }
 }
 
-/// TODO
 impl Transform for oxc::ImportDeclaration<'_> {
     type Output = ImportDeclaration;
 

@@ -5,10 +5,10 @@ mod object;
 mod string;
 
 use crate::{
+    Process,
     error::RuntimeErrorKind,
     execute::GlobalEnvironment,
-    value::{function::Varargs, Number, Object, Value, ValueType},
-    Process,
+    value::{Number, Object, Value, ValueType, function::Varargs},
 };
 
 /// Create a scope containing the entire standard library. This needs to be
@@ -32,7 +32,7 @@ fn boolean(_: &Process, value: Value) -> bool {
 }
 
 /// Coerce a value to a number
-/// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion
+/// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion>
 fn number(_: &Process, value: Value) -> Number {
     value.to_number().unwrap_or(Number::NAN)
 }
@@ -75,21 +75,11 @@ pub fn json() -> Object {
 }
 
 /// Stringify a value to JSON
-/// TODO accept &Value
-fn json_stringify(
-    _: &Process,
-    value: Value,
-    // TODO support `replace` and `space` args
-) -> String {
+fn json_stringify(_: &Process, value: Value) -> String {
     value.to_json()
 }
 
 /// Parse a JSON string
-/// TODO can we accept a &str?
-fn json_parse(
-    _: &Process,
-    input: String,
-    // TODO support `reviver` arg
-) -> Result<Value, RuntimeErrorKind> {
+fn json_parse(_: &Process, input: String) -> Result<Value, RuntimeErrorKind> {
     Value::from_json(&input)
 }

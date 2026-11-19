@@ -22,8 +22,7 @@ pub use string::PetitString;
 use crate::{
     error::{RuntimeErrorKind, ValueError},
     value::macros::{
-        ensure_type, impl_value_conversions, impl_value_from,
-        impl_value_numeric_binary_op,
+        impl_value_conversions, impl_value_from, impl_value_numeric_binary_op,
     },
 };
 use indexmap::IndexMap;
@@ -41,15 +40,23 @@ use std::{
 /// types.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Value {
-    /// TODO
+    /// The empty value
     ///
-    /// This value serializes as the unit value `()`
+    /// Use this in most cases where an empty value is needed. This value
+    /// serializes as `None`.
+    Null,
+    /// The *other* empty value
+    ///
+    /// While PetitScript removes a lot of the thorns and oddities of
+    /// JavaScript, `undefined` remains. Its prevalence in the semantics of
+    /// the language make it too hard to avoid while remaining close to a strict
+    /// subset of JS.
+    ///
+    /// Unlike `null`, `undefined` is not representable in JSON. It will be
+    /// converted to `null`. With [`serde`]this value serializes as the unit
+    /// value `()`.
     #[default]
     Undefined,
-    /// TODO
-    ///
-    /// This value serializes as `None`
-    Null,
     /// `true` or `false`
     Boolean(bool),
     /// A float or integer
@@ -72,9 +79,11 @@ pub enum Value {
 static_assertions::assert_impl_all!(Value: Send, Sync);
 
 impl Value {
-    /// Create a new byte buffer. TODO this could potentially lead to
-    /// unnecessary clones if someone already has a `Bytes`. Clean it up
-    /// somehow, or add a note pointing people to the From implementations
+    /// Create a new byte buffer
+    ///
+    /// TODO this could potentially lead to unnecessary clones if someone
+    /// already has a `Bytes`. Clean it up somehow, or add a note pointing
+    /// people to the From implementations
     #[cfg(feature = "buffer")]
     pub fn buffer(bytes: impl Into<Vec<u8>>) -> Self {
         Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
@@ -338,7 +347,6 @@ impl Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO pretty printing param
         match self {
             Self::Undefined => write!(f, "undefined"),
             Self::Null => write!(f, "null"),
@@ -568,7 +576,7 @@ impl FromPetit for PathBuf {
 
 impl<T: FromPetit> FromPetit for Vec<T> {
     fn from_petit(value: Value) -> Result<Self, ValueError> {
-        let array = ensure_type!(value, Array);
+        let array = value.try_into_array()?;
         array.into_iter().map(T::from_petit).collect()
     }
 }
@@ -641,7 +649,7 @@ mod tests {
         // NaN != NaN, so we need to use a different check if that's what we're
         // looking for
         if expected.is_some_and(Number::is_nan) {
-            assert!(actual.is_some_and(Number::is_nan), "TODO");
+            assert!(actual.is_some_and(Number::is_nan), "Expected NaN");
         } else {
             assert_eq!(actual, expected);
         }

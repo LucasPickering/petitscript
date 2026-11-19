@@ -12,25 +12,216 @@ use crate::ast::{
 };
 use std::ops::DerefMut;
 
-/// Walk over an AST node and all its children, apply
+/// A trait for applying actions to individual nodes of an AST
+///
+/// This should be used in conjunction with [`Walk`] to apply an action to _all_
+/// nodes of the AST. This trait defines one method for each AST node type,
+/// which all do nothing by default. Override individual functions as needed to
+/// apply your visitor actions.
+///
+/// For each [`Node`](crate::ast::Node) type, this trait provides one method
+/// called *before* traversing that node's children (`enter_*`), and another
+/// called after (`exit_*`). Identifiers specifically have no children, so only
+/// [`AstVisitor::visit_identifier`] is provided.
+///
+/// It would be great to make this a generic trait on the node type, like
+/// `AstVisitor<T>` and implement it only for the node types you want to visit,
+/// but that requires specialization in order to provide default impls for all
+/// other node types.
+pub trait AstVisitor {
+    /// Called before walking down an [`Argument`]
+    fn enter_argument(&mut self, _: &mut Argument) {}
+    /// Called after walking down an [`Argument`]
+    fn exit_argument(&mut self, _: &mut Argument) {}
+
+    /// Called before walking down an [`ArrayElement`]
+    fn enter_array_element(&mut self, _: &mut ArrayElement) {}
+    /// Called after walking down an [`ArrayElement`]
+    fn exit_array_element(&mut self, _: &mut ArrayElement) {}
+
+    /// Called before walking down an [`ArrayLiteral`]
+    fn enter_array_literal(&mut self, _: &mut ArrayLiteral) {}
+    /// Called after walking down an [`ArrayLiteral`]
+    fn exit_array_literal(&mut self, _: &mut ArrayLiteral) {}
+
+    /// Called before walking down an [`ArrayPatternElement`]
+    fn enter_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
+    /// Called after walking down an [`ArrayPatternElement`]
+    fn exit_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
+
+    /// Called before walking down a [`BinaryOperation`]
+    fn enter_binary(&mut self, _: &mut BinaryOperation) {}
+    /// Called after walking down a [`BinaryOperation`]
+    fn exit_binary(&mut self, _: &mut BinaryOperation) {}
+
+    /// Called before walking down a [`Binding`]
+    fn enter_binding(&mut self, _: &mut Binding) {}
+    /// Called after walking down a [`Binding`]
+    fn exit_binding(&mut self, _: &mut Binding) {}
+
+    /// Called before walking down a [`Block`]
+    fn enter_block(&mut self, _: &mut Block) {}
+    /// Called after walking down a [`Block`]
+    fn exit_block(&mut self, _: &mut Block) {}
+
+    /// Called before walking down a [`Declaration`]
+    fn enter_declaration(&mut self, _: &mut Declaration) {}
+    /// Called after walking down a [`Declaration`]
+    fn exit_declaration(&mut self, _: &mut Declaration) {}
+
+    /// Called before walking down an [`ExportDeclaration`]
+    fn enter_export(&mut self, _: &mut ExportDeclaration) {}
+    /// Called after walking down an [`ExportDeclaration`]
+    fn exit_export(&mut self, _: &mut ExportDeclaration) {}
+
+    /// Called before walking down an [`Expression`]
+    fn enter_expression(&mut self, _: &mut Expression) {}
+    /// Called after walking down an [`Expression`]
+    fn exit_expression(&mut self, _: &mut Expression) {}
+
+    /// Called before walking down a [`FunctionBody`]
+    fn enter_function_body(&mut self, _: &mut FunctionBody) {}
+    /// Called after walking down a [`FunctionBody`]
+    fn exit_function_body(&mut self, _: &mut FunctionBody) {}
+
+    /// Called before walking down a [`FunctionCall`]
+    fn enter_function_call(&mut self, _: &mut FunctionCall) {}
+    /// Called after walking down a [`FunctionCall`]
+    fn exit_function_call(&mut self, _: &mut FunctionCall) {}
+
+    /// Called before walking down a [`FunctionDefinition`]
+    fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {}
+    /// Called after walking down a [`FunctionDefinition`]
+    fn exit_function_definition(&mut self, _: &mut FunctionDefinition) {}
+
+    /// Called before walking down a [`FunctionParameter`]
+    fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
+    /// Called after walking down a [`FunctionParameter`]
+    fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
+
+    /// Called before walking down an [`If`]
+    fn enter_if(&mut self, _: &mut If) {}
+    /// Called after walking down an [`If`]
+    fn exit_if(&mut self, _: &mut If) {}
+
+    /// Called before walking down an [`ImportDeclaration`]
+    fn enter_import(&mut self, _: &mut ImportDeclaration) {}
+    /// Called after walking down an [`ImportDeclaration`]
+    fn exit_import(&mut self, _: &mut ImportDeclaration) {}
+
+    /// Called before walking down an [`ImportNamed`]
+    fn enter_import_named(&mut self, _: &mut ImportNamed) {}
+    /// Called after walking down an [`ImportNamed`]
+    fn exit_import_named(&mut self, _: &mut ImportNamed) {}
+
+    /// Called before walking down an [`ImportModule`]
+    fn enter_import_module(&mut self, _: &mut ImportModule) {}
+    /// Called after walking down an [`ImportModule`]
+    fn exit_import_module(&mut self, _: &mut ImportModule) {}
+
+    /// Called before walking down a [`Literal`]
+    fn enter_literal(&mut self, _: &mut Literal) {}
+    /// Called after walking down a [`Literal`]
+    fn exit_literal(&mut self, _: &mut Literal) {}
+
+    /// Called before walking down a [`Module`]
+    fn enter_module(&mut self, _: &mut Module) {}
+    /// Called after walking down a [`Module`]
+    fn exit_module(&mut self, _: &mut Module) {}
+
+    /// Called before walking down an [`ObjectLiteral`]
+    fn enter_object_literal(&mut self, _: &mut ObjectLiteral) {}
+    /// Called after walking down an [`ObjectLiteral`]
+    fn exit_object_literal(&mut self, _: &mut ObjectLiteral) {}
+
+    /// Called before walking down an [`ObjectPatternElement`]
+    fn enter_object_pattern_element(&mut self, _: &mut ObjectPatternElement) {}
+    /// Called after walking down an [`ObjectPatternElement`]
+    fn exit_object_pattern_element(&mut self, _: &mut ObjectPatternElement) {}
+
+    /// Called before walking down an [`ObjectProperty`]
+    fn enter_object_property(&mut self, _: &mut ObjectProperty) {}
+    /// Called after walking down an [`ObjectProperty`]
+    fn exit_object_property(&mut self, _: &mut ObjectProperty) {}
+
+    /// Called before walking down an [`OptionalPropertyAccess`]
+    fn enter_optional_property(&mut self, _: &mut OptionalPropertyAccess) {}
+    /// Called after walking down an [`OptionalPropertyAccess`]
+    fn exit_optional_property(&mut self, _: &mut OptionalPropertyAccess) {}
+
+    /// Called before walking down a [`PropertyAccess`]
+    fn enter_property_access(&mut self, _: &mut PropertyAccess) {}
+    /// Called after walking down a [`PropertyAccess`]
+    fn exit_property_access(&mut self, _: &mut PropertyAccess) {}
+
+    /// Called before walking down a [`PropertyName`]
+    fn enter_property_name(&mut self, _: &mut PropertyName) {}
+    /// Called after walking down a [`PropertyName`]
+    fn exit_property_name(&mut self, _: &mut PropertyName) {}
+
+    /// Called before walking down a [`Statement`]
+    fn enter_statement(&mut self, _: &mut Statement) {}
+    /// Called after walking down a [`Statement`]
+    fn exit_statement(&mut self, _: &mut Statement) {}
+
+    /// Called before walking down a [`TemplateLiteral`]
+    fn enter_template(&mut self, _: &mut TemplateLiteral) {}
+    /// Called after walking down a [`TemplateLiteral`]
+    fn exit_template(&mut self, _: &mut TemplateLiteral) {}
+
+    /// Called before walking down a [`TemplateChunk`]
+    fn enter_template_chunk(&mut self, _: &mut TemplateChunk) {}
+    /// Called after walking down a [`TemplateChunk`]
+    fn exit_template_chunk(&mut self, _: &mut TemplateChunk) {}
+
+    /// Called before walking down a [`TernaryConditional`]
+    fn enter_ternary(&mut self, _: &mut TernaryConditional) {}
+    /// Called after walking down a [`TernaryConditional`]
+    fn exit_ternary(&mut self, _: &mut TernaryConditional) {}
+
+    /// Called before walking down a [`UnaryOperation`]
+    fn enter_unary(&mut self, _: &mut UnaryOperation) {}
+    /// Called after walking down a [`UnaryOperation`]
+    fn exit_unary(&mut self, _: &mut UnaryOperation) {}
+
+    /// Called before walking down a [`Variable`]
+    fn enter_variable(&mut self, _: &mut Variable) {}
+    /// Called after walking down a [`Variable`]
+    fn exit_variable(&mut self, _: &mut Variable) {}
+
+    /// Called when walking over an [`Identifier`]
+    ///
+    /// Identifiers can be used in 3 positions; see [`IdentifierPosition`].
+    fn visit_identifier(
+        &mut self,
+        _identifier: &mut Identifier,
+        _position: IdentifierPosition,
+    ) {
+    }
+}
+
+/// Walk over an AST node and all its children, applying some transformation
 ///
 /// This never needs to be implemented outside this file. Instead, implement
 /// [`AstVisitor`] and override the methods as needed to visit/modify each
 /// individual AST node. The implementations of `Walk` will take care of moving
 /// down the tree for you.
 ///
-/// Until you're part of this Turbo Team, WALK SLOWLY.
+/// > Until you're part of this Turbo Team, WALK SLOWLY.
 pub trait Walk {
-    /// Walk down the AST, calling the given visitor for each individual node.
-    /// The node will be visited _before_ walking down to its children.
+    /// Walk down the AST, calling the given visitor for each individual node
+    ///
+    /// At the start of each `walk()` call, the node will call its corresponding
+    /// `enter_` method of [`AstVisitor`]. After walking through all children,
+    /// it will call the `exit_` method.
     fn walk(&mut self, visitor: &mut dyn AstVisitor);
 }
 
 impl Walk for Module {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_ast(self);
+        visitor.enter_module(self);
         self.statements.walk(visitor);
-        visitor.exit_ast(self);
+        visitor.exit_module(self);
     }
 }
 
@@ -63,9 +254,9 @@ impl Walk for Block {
 
 impl Walk for Declaration {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_lexical_declaration(self);
+        visitor.enter_declaration(self);
         self.variables.walk(visitor);
-        visitor.exit_lexical_declaration(self);
+        visitor.exit_declaration(self);
     }
 }
 
@@ -311,13 +502,13 @@ impl Walk for FunctionCall {
 
 impl Walk for Argument {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
-        visitor.enter_function_argument(self);
+        visitor.enter_argument(self);
         match self {
             Self::Expression(expression) | Self::Spread(expression) => {
                 expression.walk(visitor);
             }
         }
-        visitor.exit_function_argument(self);
+        visitor.exit_argument(self);
     }
 }
 
@@ -423,133 +614,7 @@ impl<T: Walk> Walk for Option<T> {
     }
 }
 
-/// A trait for applying actions to individual nodes of an AST
-///
-/// This should be used in conjunction with [`Walk`] to apply an action to _all_
-/// nodes of the AST. This trait defines one method for each AST node type,
-/// which all do nothing by default. Override individual functions as needed to
-/// apply your visitor actions.
-///
-/// For each node type, this trait provides one method called *before*
-/// traversing that node's children (`enter_*`), and another called after
-/// (`exit_*`). Each `visit` method is called on a node _before_ traversing that
-/// node's children. For nodes with no children, only a `visit_*` method is
-/// provided.
-///
-/// It would be great to make this a generic trait on the node type, like
-/// `AstVisitor<T>` and implement it only for the node types you want to visit,
-/// but that requires specialization in order to provide default impls for all
-/// other node types.
-pub trait AstVisitor {
-    // TODO docs on each method
-    fn enter_array_element(&mut self, _: &mut ArrayElement) {}
-    fn exit_array_element(&mut self, _: &mut ArrayElement) {}
-
-    fn enter_array_literal(&mut self, _: &mut ArrayLiteral) {}
-    fn exit_array_literal(&mut self, _: &mut ArrayLiteral) {}
-
-    fn enter_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
-    fn exit_array_pattern_element(&mut self, _: &mut ArrayPatternElement) {}
-
-    fn enter_ast(&mut self, _: &mut Module) {}
-    fn exit_ast(&mut self, _: &mut Module) {}
-
-    fn enter_binary(&mut self, _: &mut BinaryOperation) {}
-    fn exit_binary(&mut self, _: &mut BinaryOperation) {}
-
-    fn enter_binding(&mut self, _: &mut Binding) {}
-    fn exit_binding(&mut self, _: &mut Binding) {}
-
-    fn enter_block(&mut self, _: &mut Block) {}
-    fn exit_block(&mut self, _: &mut Block) {}
-
-    fn enter_export(&mut self, _: &mut ExportDeclaration) {}
-    fn exit_export(&mut self, _: &mut ExportDeclaration) {}
-
-    fn enter_expression(&mut self, _: &mut Expression) {}
-    fn exit_expression(&mut self, _: &mut Expression) {}
-
-    fn enter_function_argument(&mut self, _: &mut Argument) {}
-    fn exit_function_argument(&mut self, _: &mut Argument) {}
-
-    fn enter_function_body(&mut self, _: &mut FunctionBody) {}
-    fn exit_function_body(&mut self, _: &mut FunctionBody) {}
-
-    fn enter_function_call(&mut self, _: &mut FunctionCall) {}
-    fn exit_function_call(&mut self, _: &mut FunctionCall) {}
-
-    fn enter_function_definition(&mut self, _: &mut FunctionDefinition) {}
-    fn exit_function_definition(&mut self, _: &mut FunctionDefinition) {}
-
-    fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
-    fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
-
-    fn enter_if(&mut self, _: &mut If) {}
-    fn exit_if(&mut self, _: &mut If) {}
-
-    fn enter_import(&mut self, _: &mut ImportDeclaration) {}
-    fn exit_import(&mut self, _: &mut ImportDeclaration) {}
-
-    fn enter_import_named(&mut self, _: &mut ImportNamed) {}
-    fn exit_import_named(&mut self, _: &mut ImportNamed) {}
-
-    fn enter_import_module(&mut self, _: &mut ImportModule) {}
-    fn exit_import_module(&mut self, _: &mut ImportModule) {}
-
-    fn enter_lexical_declaration(&mut self, _: &mut Declaration) {}
-    fn exit_lexical_declaration(&mut self, _: &mut Declaration) {}
-
-    fn enter_literal(&mut self, _: &mut Literal) {}
-    fn exit_literal(&mut self, _: &mut Literal) {}
-
-    fn enter_object_literal(&mut self, _: &mut ObjectLiteral) {}
-    fn exit_object_literal(&mut self, _: &mut ObjectLiteral) {}
-
-    fn enter_object_pattern_element(&mut self, _: &mut ObjectPatternElement) {}
-    fn exit_object_pattern_element(&mut self, _: &mut ObjectPatternElement) {}
-
-    fn enter_object_property(&mut self, _: &mut ObjectProperty) {}
-    fn exit_object_property(&mut self, _: &mut ObjectProperty) {}
-
-    fn enter_optional_property(&mut self, _: &mut OptionalPropertyAccess) {}
-    fn exit_optional_property(&mut self, _: &mut OptionalPropertyAccess) {}
-
-    fn enter_property_access(&mut self, _: &mut PropertyAccess) {}
-    fn exit_property_access(&mut self, _: &mut PropertyAccess) {}
-
-    fn enter_property_name(&mut self, _: &mut PropertyName) {}
-    fn exit_property_name(&mut self, _: &mut PropertyName) {}
-
-    fn enter_statement(&mut self, _: &mut Statement) {}
-    fn exit_statement(&mut self, _: &mut Statement) {}
-
-    fn enter_template(&mut self, _: &mut TemplateLiteral) {}
-    fn exit_template(&mut self, _: &mut TemplateLiteral) {}
-
-    fn enter_template_chunk(&mut self, _: &mut TemplateChunk) {}
-    fn exit_template_chunk(&mut self, _: &mut TemplateChunk) {}
-
-    fn enter_ternary(&mut self, _: &mut TernaryConditional) {}
-    fn exit_ternary(&mut self, _: &mut TernaryConditional) {}
-
-    fn enter_unary(&mut self, _: &mut UnaryOperation) {}
-    fn exit_unary(&mut self, _: &mut UnaryOperation) {}
-
-    fn enter_variable(&mut self, _: &mut Variable) {}
-    fn exit_variable(&mut self, _: &mut Variable) {}
-
-    /// Visit a usage of an [`Identifier`]
-    ///
-    /// Identifiers can be used in 3 positions; see [`IdentifierPosition`].
-    fn visit_identifier(
-        &mut self,
-        _identifier: &mut Identifier,
-        _position: IdentifierPosition,
-    ) {
-    }
-}
-
-/// TODO
+/// Syntactic position in which an [`Identifier`] is used
 #[derive(Copy, Clone, Debug)]
 pub enum IdentifierPosition {
     /// Binding position declaring a new name

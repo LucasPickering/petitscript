@@ -45,7 +45,9 @@ macro_rules! impl_into_petit {
     };
 }
 
-/// TODO
+/// Check if the value is of the expected type
+///
+/// If not, return a `ValueError`
 macro_rules! ensure_type {
     ($value:expr, $variant:ident) => {
         if let $crate::Value::$variant(value) = $value {

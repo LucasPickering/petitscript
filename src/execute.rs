@@ -292,7 +292,6 @@ struct AppData(
 
 impl AppData {
     fn get<T: Any + Send + Sync>(&self) -> Result<&T, UnknownAppData> {
-        // TODO return a ref from this instead once we eliminate the outer arc
         let data =
             self.0
                 .get(&TypeId::of::<T>())

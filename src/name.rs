@@ -109,9 +109,8 @@ impl FromStr for NativeModuleName {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::property_test;
     use test_case::test_case;
-
-    // TODO prop tests for this
 
     /// Test parsing valid identifiers. Parsing doesn't apply transformation, so
     /// the expected value is the same as the input
@@ -132,6 +131,30 @@ mod tests {
     fn parse_identifier_error(identifier: &str) {
         let result = identifier.parse::<Identifier>();
         assert!(result.is_err(), "Expected {identifier} to be invalid");
+    }
+
+    /// Property test for identifier parsing
+    ///
+    /// Identifier parsing succeeds iff the input string:
+    /// - Is non-empty
+    /// - Contains only unicode letters, `0-9`, `$`, and `_`
+    /// - Does not start with a digit
+    #[property_test]
+    fn parse_identifier_prop(s: String) {
+        let result = s.parse::<Identifier>();
+        if !s.is_empty()
+            && !s.starts_with(|c: char| c.is_ascii_digit())
+            && s.chars().all(|c| {
+                // is_alphabetic || is_ascii_digit() is NOT the same as
+                // is_alphanumeric(). There are other numeric chars that we
+                // want to reject.
+                c.is_alphabetic() || c.is_ascii_digit() || c == '$' || c == '_'
+            })
+        {
+            result.expect("expected valid identifier");
+        } else {
+            result.expect_err("expected invalid identifier");
+        }
     }
 
     // TODO module name parse errors

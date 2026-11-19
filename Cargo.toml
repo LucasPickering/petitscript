@@ -26,6 +26,7 @@ winnow = "0.7.4"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+proptest = {version = "1.11.0", default-features = false, features = ["attr-macro", "std"]}
 serde_json = {workspace = true}
 static_assertions = "1.1.0"
 test-case = "3.3.1"

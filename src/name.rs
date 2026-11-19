@@ -13,7 +13,12 @@ use std::{borrow::Borrow, str::FromStr};
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Identifier(String);
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct Identifier(
+    // \p{L} will spit out valid unicode letters
+    // https://www.unicode.org/reports/tr44/tr44-24.html#General_Category_Values
+    #[cfg_attr(test, proptest(regex = r"[\p{L}_$][\p{L}0-9_$]*"))] String,
+);
 
 impl Identifier {
     /// Get a reference to the identifier's string value
@@ -66,7 +71,10 @@ impl FromStr for Identifier {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct NativeModuleName(String);
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct NativeModuleName(
+    #[cfg_attr(test, proptest(regex = r"[a-zA-Z][a-zA-Z0-9_-]*"))] String,
+);
 
 impl NativeModuleName {
     /// Get a reference to the module name's string value

@@ -770,9 +770,13 @@ impl_display! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::IntoExpression;
+    use crate::{
+        Engine,
+        ast::{IntoExpression, NodeId},
+    };
     use pretty_assertions::assert_eq;
-    use std::fmt::Display;
+    use proptest::property_test;
+    use std::{fmt::Display, sync::LazyLock};
     use test_case::test_case;
 
     /// Test stringification of AST nodes
@@ -820,5 +824,18 @@ mod tests {
         assert_eq!(node.to_string(), expected);
     }
 
-    // TODO prop test for display -> parse round trip
+    /// Property test for AST display + parsing
+    ///
+    /// Any generated AST should stringify->parse back to itself.
+    #[property_test]
+    fn display_parse_prop(module: Module) {
+        static ENGINE: LazyLock<Engine> = LazyLock::new(Engine::new);
+
+        let source = module.to_string();
+        let parsed = ENGINE
+            .parse(source)
+            .unwrap_or_else(|error| panic!("{error:#}"));
+        // Compare original to parsed (ignoring node IDs)
+        NodeId::with_all_equal(|| assert_eq!(module, parsed));
+    }
 }

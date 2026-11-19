@@ -75,10 +75,23 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 /// fail if there is at least one.
 ///
 /// This can hold errors from multiple modules. Each error has a `span` field
-/// indicating the file and location of the offending code. Use
-/// [`ParseErrors::to_report`] to get a pretty report of errors.
+/// indicating the file and location of the offending code.
+///
+///
+/// ## Display
+///
+/// The default [`Display`] implementation for this type just prints the
+/// number of parse errors. This ensures the message is concise and fits on one
+/// line. To get the full error chain, print in alternate mode:
+///
+/// ```notest
+/// println!("{errors:#}");
+/// ```
+///
+/// If you want to customize the display further, you can use
+/// [`ParseErrors::to_report`]. Combine this with the [`annotate_snippets`]
+/// crate to customize the report renderer.
 #[derive(Debug, thiserror::Error)]
-#[error("{} parse error(s)", errors.len())]
 pub struct ParseErrors {
     /// One or more parse errors
     pub errors: Vec<ParseError>,
@@ -91,10 +104,10 @@ pub struct ParseErrors {
 }
 
 impl ParseErrors {
-    /// Generate an [annotate_snippets] report of these errors
+    /// Generate an [`annotate_snippets`] report of these errors
     ///
     /// This report can be used to render the errors prettily. See
-    /// [annotate_snippets::Renderer].
+    /// [`annotate_snippets::Renderer`].
     ///
     /// ```
     /// # use petitscript::Engine;
@@ -118,6 +131,23 @@ impl ParseErrors {
                 )
             })
             .collect()
+    }
+}
+
+impl Display for ParseErrors {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} parse error(s)", self.errors.len())?;
+
+        // In alternate mode, print the children as well. This behavior is
+        // maybe(?) non-standard, but making the error chain easy to access is
+        // really important.
+        if f.alternate() {
+            writeln!(f)?;
+            let renderer = annotate_snippets::Renderer::plain();
+            writeln!(f, "{}", renderer.render(&self.to_report()))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -465,10 +495,10 @@ pub struct RuntimeError {
 // Manual impls are needed here to flatten the error stack
 // ===============
 impl RuntimeError {
-    /// Generate an [annotate_snippets] report of this error
+    /// Generate an [`annotate_snippets`] report of this error
     ///
     /// This report can be used to render the error and stack trace prettily.
-    /// See [annotate_snippets::Renderer].
+    /// See [`annotate_snippets::Renderer`].
     ///
     /// ```
     /// # use petitscript::Engine;

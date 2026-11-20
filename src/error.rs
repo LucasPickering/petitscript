@@ -490,6 +490,20 @@ impl Display for Unsupported {
 ///
 /// Use [`RuntimeError::to_report`] to get a pretty version of the error and
 /// trace.
+///
+/// ## Display
+///
+/// The default [`Display`] implementation for this type just prints the error
+/// message. This ensures the message is concise and fits on one line. To
+/// include the stack trace, print in alternate mode:
+///
+/// ```notest
+/// println!("{errors:#}");
+/// ```
+///
+/// If you want to customize the display further, you can use
+/// [`RuntimeError::to_report`]. Combine this with the [`annotate_snippets`]
+/// crate to customize the report renderer.
 #[derive(Debug)]
 pub struct RuntimeError {
     /// What go wrong
@@ -543,8 +557,17 @@ impl RuntimeError {
 
 impl Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO include stack trace if f.alt()
-        write!(f, "{}", self.error)
+        // In alternate mode, print the stack trace as well. For now this is
+        // with annotate-snippets, but I'd like to make a custom renderer
+        if f.alternate() {
+            writeln!(f)?;
+            let renderer = annotate_snippets::Renderer::plain();
+            writeln!(f, "{}", renderer.render(&[self.to_report()]))?;
+        } else {
+            write!(f, "{}", self.error)?;
+        }
+
+        Ok(())
     }
 }
 

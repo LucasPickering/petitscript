@@ -249,7 +249,6 @@ impl EngineBuilder {
     /// #     Process,
     /// #     value::Number
     /// # };
-    ///
     /// let name: NativeModuleName = "math".parse().unwrap();
     /// let mut module = Exports::default();
     /// module.export_fn("add", |_process, (a, b): (Number, Number)| a + b);

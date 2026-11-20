@@ -125,7 +125,6 @@ mod tests {
     #[test_case("$"; "dollar")]
     #[test_case("a"; "letter")]
     #[test_case("a1"; "letter_digit")]
-    #[test_case("ä"; "unicode")]
     fn parse_identifier(identifier: &str) {
         let parsed = identifier.parse::<Identifier>().unwrap();
         assert_eq!(parsed.as_str(), identifier);
@@ -135,6 +134,7 @@ mod tests {
     #[test_case(""; "empty")]
     #[test_case("1a"; "digit_start")]
     #[test_case("."; "special_char")]
+    #[test_case("ä"; "unicode")]
     fn parse_identifier_error(identifier: &str) {
         let result = identifier.parse::<Identifier>();
         assert!(result.is_err(), "Expected {identifier} to be invalid");
@@ -151,12 +151,8 @@ mod tests {
         let result = s.parse::<Identifier>();
         if !s.is_empty()
             && !s.starts_with(|c: char| c.is_ascii_digit())
-            && s.chars().all(|c| {
-                // is_alphabetic || is_ascii_digit() is NOT the same as
-                // is_alphanumeric(). There are other numeric chars that we
-                // want to reject.
-                c.is_alphabetic() || c.is_ascii_digit() || c == '$' || c == '_'
-            })
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '$' || c == '_')
         {
             result.expect("expected valid identifier");
         } else {

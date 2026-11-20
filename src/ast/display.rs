@@ -826,6 +826,7 @@ mod tests {
     ///
     /// Any generated AST should stringify->parse back to itself.
     #[property_test]
+    #[ignore = "AST generation is broken; maybe fix, maybe delete"]
     fn display_parse_prop(module: Module) {
         static ENGINE: LazyLock<Engine> = LazyLock::new(Engine::new);
 

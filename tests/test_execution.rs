@@ -1,8 +1,9 @@
 use indexmap::IndexMap;
 use petitscript::{
-    Engine, Error, Exports, Process, Source, Value, value::Number,
+    Engine, Exports, Process, Source, Value, error::RuntimeError, value::Number,
 };
-use std::{path::PathBuf, sync::LazyLock};
+use pretty_assertions::assert_eq;
+use std::{path::Path, sync::LazyLock};
 use test_case::test_case;
 
 fn add(_: &Process, (a, b): (Number, Number)) -> Number {
@@ -25,7 +26,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
 /// asserts on the *default* export of each script. If we need to assert on
 /// multiple values, export an object.
 #[test_case(
-    "bindings",
+    "bindings.js",
     [
         // Object bindings
         ("a", Value::from(1)),
@@ -44,13 +45,13 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     ];
     "bindings"
 )]
-#[test_case("capture", 9; "capture")]
-#[test_case("importLocal", 9; "import_local")]
-#[test_case("importNative", 9; "import_native")]
-#[test_case("json", true; "json")]
-#[test_case("parameterScope", 7; "parameter_scope")]
+#[test_case("capture.js", 9; "capture")]
+#[test_case("importLocal.js", 9; "import_local")]
+#[test_case("importNative.js", 9; "import_native")]
+#[test_case("json.js", true; "json")]
+#[test_case("parameterScope.js", 7; "parameter_scope")]
 #[test_case(
-    "propertyAccess",
+    "propertyAccess.js",
     [
         ("id", 1.into()),
         ("opt", 2.into()),
@@ -59,35 +60,26 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     ];
     "property_access"
 )]
-#[test_case("prototype", true; "prototype")]
-#[test_case("varargs", 3; "varargs")]
+#[test_case("prototype.js", true; "prototype")]
+#[test_case("varargs.js", 3; "varargs")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
-    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-    let exported = execute(path).unwrap_or_else(|error| panic!("{error}"));
+    let exported = execute(format!("tests/ps/{file_name}"))
+        .unwrap_or_else(|error| panic!("{error:#}"));
     let expected_default = expected.into();
     assert_eq!(exported, expected_default);
 }
 
 /// Test error cases during execution
 ///
-/// Assert the program fails with an error message _containing_ the given error.
+/// Assert the program fails with the given error message.
 #[test_case(
-    "stackTrace",
-    "Error (most recent call last)
-  in <root> at tests/ps/stackTrace.js:11:16
-  in g at tests/ps/stackTrace.js:8:10
-  in f at tests/ps/stackTrace.js:4:10
-  in error at tests/ps/common.js:2:28
-`x` is not defined";
-    "stack_trace")]
-#[test_case(
-    "importUnknown",
+    "importUnknown.js",
     "Module does not provide an export with the name `unknown`";
     "import_unknown"
 )]
 fn error(file_name: &'static str, expected_error: &'static str) {
-    let path = PathBuf::from(format!("tests/ps/{file_name}.js"));
-    let error = execute(path).unwrap_err().to_string();
+    let error = execute(format!("tests/ps/{file_name}")).unwrap_err();
+    let error = format!("{error:#}");
     assert!(
         error.contains(expected_error),
         "Expected error message to contain `{expected_error}`\nbut it was:\n\
@@ -95,14 +87,52 @@ fn error(file_name: &'static str, expected_error: &'static str) {
     );
 }
 
+/// Test stack traces on runtime errors
+///
+/// This format is pretty specific and feels odd to test, but I want to make
+/// sure SOMETHING is testing stack traces.
+#[test]
+fn error_stack_trace() {
+    let error = execute("tests/ps/stackTrace.js").unwrap_err();
+    let error = format!("{error:#}");
+    assert_eq!(
+        error,
+        "
+error: `x` is not defined
+   |
+   = note: most recent call last
+  --> tests/ps/stackTrace.js:11:16
+   |
+11 | export default g();
+   |                ^^^
+   |
+  ::: tests/ps/stackTrace.js:8:10
+   |
+ 8 |   return f() + 1;
+   |          ^^^
+   |
+  ::: tests/ps/stackTrace.js:4:10
+   |
+ 4 |   return error();
+   |          ^^^^^^^
+   |
+  ::: tests/ps/common.js:2:28
+   |
+ 2 | export const error = () => x;
+   |                            ^
+",
+    );
+}
+
 /// Compile and execute a program
 ///
 /// If the program succeeds, expected no named exports and return the default
 /// export.
-fn execute(path: PathBuf) -> Result<Value, Error> {
+fn execute(path: impl AsRef<Path>) -> Result<Value, RuntimeError> {
+    let path = path.as_ref();
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());
-    let source = Source::file(&path).unwrap();
+    let source = Source::file(path).unwrap();
     let process = ENGINE.compile(source).unwrap();
     let exports = process.execute()?;
 

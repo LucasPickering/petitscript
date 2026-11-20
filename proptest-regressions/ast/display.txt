@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9ba7bde7229a5e071e6793bb8454944404f57e7a8da489855461e7d2b5c63d12 # shrinks to DisplayParsePropArgs = DisplayParsePropArgs { module: Module { id: 0, statements: [Statement { id: 0, kind: Declaration(Declaration { id: 0, variables: [Variable { id: 0, binding: Binding { id: 0, kind: Identifier(IdentifierNode { id: 0, identifier: Identifier("in") }) }, init: Some(Expression { id: 0, kind: Identifier(IdentifierNode { id: 0, identifier: Identifier("A") }) }) }] }) }] } }

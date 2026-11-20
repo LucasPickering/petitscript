@@ -1400,7 +1400,7 @@ impl Transform for oxc::ArrayExpression<'_> {
                     Ok(ArrayElement {
                         id: context.id_from(&expression),
                         expression,
-                        spread: false,
+                        spread: true,
                     })
                 }
                 oxc::ArrayExpressionElement::Elision(elision) => {
@@ -1416,7 +1416,7 @@ impl Transform for oxc::ArrayExpression<'_> {
                     Ok(ArrayElement {
                         id: context.id_from(&expression),
                         expression,
-                        spread: true,
+                        spread: false,
                     })
                 }
             })

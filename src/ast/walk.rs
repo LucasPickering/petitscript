@@ -1,8 +1,8 @@
 use crate::ast::{
-    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
-    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation, Binding,
-    BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
-    Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
+    ArrayPatternElementKind, BinaryOperation, Binding, BindingKind, Block,
+    Declaration, ExportDeclaration, ExportDeclarationKind, Expression,
+    ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
     FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
     ImportModuleKind, ImportNamed, Literal, Module, ObjectLiteral,
     ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
@@ -456,12 +456,7 @@ impl Walk for ArrayLiteral {
 impl Walk for ArrayElement {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_array_element(self);
-        match &mut self.kind {
-            ArrayElementKind::Expression(expression)
-            | ArrayElementKind::Spread(expression) => {
-                expression.walk(visitor);
-            }
-        }
+        self.expression.walk(visitor);
         visitor.exit_array_element(self);
     }
 }

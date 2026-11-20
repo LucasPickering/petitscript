@@ -625,24 +625,9 @@ impl Node for ArrayLiteral {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ArrayElement {
     pub id: NodeId,
-    /// Array element variant
-    pub kind: ArrayElementKind,
-}
-
-impl Node for ArrayElement {
-    fn id(&self) -> NodeId {
-        self.id
-    }
-}
-
-/// Variants for [`ArrayElement`]
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum ArrayElementKind {
-    /// A single expression to resolve to an array literal value
-    Expression(Expression),
-    /// A `...` spread expression
+    /// Expression evaluating to the array element
+    pub expression: Expression,
+    /// If `true`, this element is a `...` spread expression
     ///
     /// If this expression evaluates into an array, then all the elements of
     /// that array will be included in the array created by this literal. If it
@@ -651,7 +636,13 @@ pub enum ArrayElementKind {
     /// ```notrust
     /// [1, 2 ...[3, 4, 5]] // [1, 2, 3, 4, 5]
     /// ```
-    Spread(Expression),
+    pub spread: bool,
+}
+
+impl Node for ArrayElement {
+    fn id(&self) -> NodeId {
+        self.id
+    }
 }
 
 /// [`Object`](crate::value::Object) literal: `{a: 1, b: "hello"}`

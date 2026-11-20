@@ -6,18 +6,18 @@
 use crate::{
     NativeModuleName, Source,
     ast::{
-        Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
-        ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
-        BinaryOperator, Binding, BindingKind, Block, Declaration,
-        ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
-        FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-        Identifier, IdentifierNode, If, ImportDeclaration, ImportModule,
-        ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
-        ObjectLiteral, ObjectPatternElement, ObjectProperty,
-        ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
-        PropertyName, PropertyNameKind, Statement, StatementKind,
-        TemplateChunk, TemplateChunkKind, TemplateLiteral, TernaryConditional,
-        UnaryOperation, UnaryOperator, Variable,
+        Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
+        ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
+        BindingKind, Block, Declaration, ExportDeclaration,
+        ExportDeclarationKind, Expression, ExpressionKind, FunctionBody,
+        FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
+        IdentifierNode, If, ImportDeclaration, ImportModule, ImportModuleKind,
+        ImportNamed, Literal, Module, Node, NodeId, ObjectLiteral,
+        ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+        Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+        TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
+        Variable,
     },
     compile::{
         SUPPORTED_EXTENSIONS,
@@ -1399,7 +1399,8 @@ impl Transform for oxc::ArrayExpression<'_> {
                         spread_element.argument.transform(context)?;
                     Ok(ArrayElement {
                         id: context.id_from(&expression),
-                        kind: ArrayElementKind::Spread(expression),
+                        expression,
+                        spread: false,
                     })
                 }
                 oxc::ArrayExpressionElement::Elision(elision) => {
@@ -1414,7 +1415,8 @@ impl Transform for oxc::ArrayExpression<'_> {
                         as_expression!(context, element).transform(context)?;
                     Ok(ArrayElement {
                         id: context.id_from(&expression),
-                        kind: ArrayElementKind::Expression(expression),
+                        expression,
+                        spread: true,
                     })
                 }
             })

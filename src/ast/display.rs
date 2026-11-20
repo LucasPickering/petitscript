@@ -1,18 +1,17 @@
 //! Generate source code from AST nodes
 
 use crate::ast::{
-    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
-    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
-    BinaryOperator, Binding, BindingKind, Block, Declaration,
-    ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
-    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    Identifier, IdentifierNode, If, ImportDeclaration, ImportModule,
-    ImportModuleKind, ImportNamed, Literal, Module, NativeModuleName,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
-    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
-    TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
-    Variable,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
+    ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
+    BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
+    Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
+    FunctionParameter, Identifier, IdentifierNode, If, ImportDeclaration,
+    ImportModule, ImportModuleKind, ImportNamed, Literal, Module,
+    NativeModuleName, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    PropertyNameKind, Statement, StatementKind, TemplateChunk,
+    TemplateChunkKind, TemplateLiteral, TernaryConditional, UnaryOperation,
+    UnaryOperator, Variable,
 };
 use std::{borrow::Cow, fmt};
 
@@ -297,11 +296,10 @@ impl DisplayIndent for ArrayLiteral {
 
 impl DisplayIndent for ArrayElement {
     fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        match &self.kind {
-            ArrayElementKind::Expression(expression) => expression.fmt(ind),
-            ArrayElementKind::Spread(expression) => {
-                ("...", expression).fmt(ind)
-            }
+        if self.spread {
+            ("...", &self.expression).fmt(ind)
+        } else {
+            self.expression.fmt(ind)
         }
     }
 }

@@ -2,12 +2,11 @@
 
 use crate::{
     ast::{
-        Argument, ArrayElementKind, ArrayLiteral, BinaryOperation,
-        BinaryOperator, Expression, ExpressionKind, FunctionCall,
-        FunctionDefinition, FunctionParameter, Literal, Node, ObjectLiteral,
-        ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
-        PropertyName, PropertyNameKind, TemplateChunkKind, TemplateLiteral,
-        UnaryOperation, UnaryOperator,
+        Argument, ArrayLiteral, BinaryOperation, BinaryOperator, Expression,
+        ExpressionKind, FunctionCall, FunctionDefinition, FunctionParameter,
+        Literal, Node, ObjectLiteral, ObjectPropertyKind,
+        OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+        TemplateChunkKind, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{RuntimeError, RuntimeErrorKind, ValueError},
     execute::{ThreadState, exec::Execute, state::Location},
@@ -68,19 +67,15 @@ impl Evaluate for ArrayLiteral {
     fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
         let mut array = Array::default();
         for element in &self.elements {
-            match &element.kind {
-                // These are optimized to avoid allocations where possible
-                ArrayElementKind::Expression(expression) => {
-                    let value = expression.eval(state)?;
-                    array = array.push(value);
-                }
-                ArrayElementKind::Spread(expression) => {
-                    let new =
-                        expression.eval(state)?.try_into_array().map_err(
-                            |error| state.trace_error(error.into(), expression),
-                        )?;
-                    array = array.concat(new);
-                }
+            let value = element.expression.eval(state)?;
+            // These are optimized to avoid allocations where possible
+            if element.spread {
+                let new = value.try_into_array().map_err(|error| {
+                    state.trace_error(error.into(), &element.expression)
+                })?;
+                array = array.concat(new);
+            } else {
+                array = array.push(value);
             }
         }
         Ok(array.into())

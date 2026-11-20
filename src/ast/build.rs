@@ -11,13 +11,12 @@
 //! TODO that's not actually true, but it's aspirational ^
 
 use crate::ast::{
-    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
-    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
-    BinaryOperator, Binding, BindingKind, Block, Declaration,
-    ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
-    FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    Identifier, IdentifierNode, ImportDeclaration, ImportModule,
-    ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
+    Argument, ArrayElement, ArrayLiteral, ArrayPatternElement,
+    ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
+    BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
+    Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
+    FunctionParameter, Identifier, IdentifierNode, ImportDeclaration,
+    ImportModule, ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
     ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
     OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
     Statement, StatementKind, TemplateChunk, TemplateChunkKind,
@@ -444,9 +443,10 @@ impl ArrayLiteral {
             id: next_id(),
             elements: iter
                 .into_iter()
-                .map(|expression| {
-                    ArrayElementKind::Expression(expression.into_expr())
-                        .into_node()
+                .map(|expression| ArrayElement {
+                    id: next_id(),
+                    expression: expression.into_expr(),
+                    spread: false,
                 })
                 .collect(),
         }
@@ -761,7 +761,6 @@ macro_rules! impl_into_node {
 }
 
 impl_into_node! {
-    ArrayElementKind => ArrayElement,
     ArrayPatternElementKind => ArrayPatternElement,
     BindingKind => Binding,
     ExportDeclarationKind => ExportDeclaration,

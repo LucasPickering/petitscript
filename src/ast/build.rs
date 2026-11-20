@@ -11,15 +11,17 @@
 //! TODO that's not actually true, but it's aspirational ^
 
 use crate::ast::{
-    Argument, ArrayElementKind, ArrayLiteral, ArrayPatternElementKind,
-    BinaryOperation, BinaryOperator, Binding, BindingKind, Block, Declaration,
+    Argument, ArrayElement, ArrayElementKind, ArrayLiteral,
+    ArrayPatternElement, ArrayPatternElementKind, BinaryOperation,
+    BinaryOperator, Binding, BindingKind, Block, Declaration,
     ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
     FunctionBody, FunctionCall, FunctionDefinition, FunctionParameter,
-    Identifier, IdentifierNode, ImportDeclaration, ImportModuleKind,
-    ImportNamed, KindedNode, Literal, Module, Node, NodeId, ObjectLiteral,
-    ObjectPatternElement, ObjectPropertyKind, OptionalPropertyAccess,
-    PropertyAccess, PropertyName, PropertyNameKind, Statement, StatementKind,
-    TemplateChunk, TemplateChunkKind, TemplateLiteral, Variable,
+    Identifier, IdentifierNode, ImportDeclaration, ImportModule,
+    ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+    TemplateLiteral, Variable,
 };
 use std::cell::Cell;
 
@@ -742,13 +744,13 @@ impl IntoNode for Identifier {
 
 /// Implement [`IntoNode`] for [`KindedNode`] type aliases
 macro_rules! impl_into_node {
-    ($($type:ty)*) => {
+    ($($from:ty => $to:ty,)*) => {
         $(
-            impl IntoNode for $type {
-                type Node = KindedNode<$type>;
+            impl IntoNode for $from {
+                type Node = $to;
 
                 fn into_node(self) -> Self::Node {
-                    KindedNode {
+                    Self::Node {
                         id: next_id(),
                         kind: self,
                     }
@@ -759,16 +761,16 @@ macro_rules! impl_into_node {
 }
 
 impl_into_node! {
-    ArrayElementKind
-    ArrayPatternElementKind
-    BindingKind
-    ExportDeclarationKind
-    ExpressionKind
-    ImportModuleKind
-    ObjectPropertyKind
-    PropertyNameKind
-    StatementKind
-    TemplateChunkKind
+    ArrayElementKind => ArrayElement,
+    ArrayPatternElementKind => ArrayPatternElement,
+    BindingKind => Binding,
+    ExportDeclarationKind => ExportDeclaration,
+    ExpressionKind => Expression,
+    ImportModuleKind => ImportModule,
+    ObjectPropertyKind => ObjectProperty,
+    PropertyNameKind => PropertyName,
+    StatementKind => Statement,
+    TemplateChunkKind => TemplateChunk,
 }
 
 impl From<bool> for Literal {

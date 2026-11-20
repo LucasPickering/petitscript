@@ -157,7 +157,20 @@ impl Node for Module {
 /// `Statement` is one of the two primary AST types, the other being
 /// [`Expression`]. Expressions resolve to values while statements execute
 /// without emitting a value.
-pub type Statement = KindedNode<StatementKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct Statement {
+    pub id: NodeId,
+    /// Statement variant
+    pub kind: StatementKind,
+}
+
+impl Node for Statement {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`Statement`]
 #[derive(Clone, Debug, PartialEq)]
@@ -397,7 +410,20 @@ impl Node for ImportNamed {
 }
 
 /// Source for an imported module, i.e. the string after `from`
-pub type ImportModule = KindedNode<ImportModuleKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct ImportModule {
+    pub id: NodeId,
+    /// Import module variant
+    pub kind: ImportModuleKind,
+}
+
+impl Node for ImportModule {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`ImportModule`]
 #[derive(Clone, Debug, PartialEq)]
@@ -415,7 +441,20 @@ pub enum ImportModuleKind {
 }
 
 /// Export a name or value: `export const ...` or `export default ...`
-pub type ExportDeclaration = KindedNode<ExportDeclarationKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct ExportDeclaration {
+    pub id: NodeId,
+    /// Declaration variant
+    pub kind: ExportDeclarationKind,
+}
+
+impl Node for ExportDeclaration {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`ExportDeclaration`]
 #[derive(Clone, Debug, PartialEq)]
@@ -433,7 +472,20 @@ pub enum ExportDeclarationKind {
 /// `Expression` is one of the two primary AST types, the other being
 /// [`Statement`]. Expressions resolve to values while statements execute
 /// without emitting a value.
-pub type Expression = KindedNode<ExpressionKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct Expression {
+    pub id: NodeId,
+    /// Expression variant
+    pub kind: ExpressionKind,
+}
+
+impl Node for Expression {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`Expression`]
 #[derive(Clone, Debug, PartialEq)]
@@ -523,7 +575,20 @@ impl Node for TemplateLiteral {
 /// ${world}` ``
 ///
 /// Either a static string or an expression
-pub type TemplateChunk = KindedNode<TemplateChunkKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct TemplateChunk {
+    pub id: NodeId,
+    /// Template chunk variant
+    pub kind: TemplateChunkKind,
+}
+
+impl Node for TemplateChunk {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`TemplateChunk`]
 #[derive(Clone, Debug, PartialEq)]
@@ -555,7 +620,20 @@ impl Node for ArrayLiteral {
 }
 
 /// One element in an array literal: `x` in `[x]`
-pub type ArrayElement = KindedNode<ArrayElementKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct ArrayElement {
+    pub id: NodeId,
+    /// Array element variant
+    pub kind: ArrayElementKind,
+}
+
+impl Node for ArrayElement {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`ArrayElement`]
 #[derive(Clone, Debug, PartialEq)]
@@ -603,7 +681,20 @@ impl Node for ObjectLiteral {
 /// One property in an object literal
 ///
 /// Objects don't support methods, getters, or setters
-pub type ObjectProperty = KindedNode<ObjectPropertyKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct ObjectProperty {
+    pub id: NodeId,
+    /// Object property variant
+    pub kind: ObjectPropertyKind,
+}
+
+impl Node for ObjectProperty {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`ObjectProperty`]
 #[derive(Clone, Debug, PartialEq)]
@@ -833,7 +924,20 @@ impl Node for TernaryConditional {
 /// - Object literal: `const o = { a: 1 };`
 /// - Object pattern: `const { a } = { a: 1 };`
 /// - Property access: `o.a` or `o["a"]`
-pub type PropertyName = KindedNode<PropertyNameKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct PropertyName {
+    pub id: NodeId,
+    /// Property name variant
+    pub kind: PropertyNameKind,
+}
+
+impl Node for PropertyName {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`PropertyName`]
 #[derive(Clone, Debug, PartialEq)]
@@ -858,7 +962,20 @@ pub enum PropertyNameKind {
 /// const { a, b } = { a: 1, b: 2 };
 /// const [d, e, f] = [1, 2, 3];
 /// ```
-pub type Binding = KindedNode<BindingKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct Binding {
+    pub id: NodeId,
+    /// Binding variant
+    pub kind: BindingKind,
+}
+
+impl Node for Binding {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`Binding`]
 #[derive(Clone, Debug, PartialEq)]
@@ -913,7 +1030,20 @@ impl Node for ObjectPatternElement {
 }
 
 /// One element in a [`BindingKind::Array`]
-pub type ArrayPatternElement = KindedNode<ArrayPatternElementKind>;
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct ArrayPatternElement {
+    pub id: NodeId,
+    /// Array pattern element variant
+    pub kind: ArrayPatternElementKind,
+}
+
+impl Node for ArrayPatternElement {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
 
 /// Variants for [`ArrayPatternElement`]
 #[derive(Clone, Debug, PartialEq)]
@@ -1050,23 +1180,4 @@ impl PartialEq for NodeId {
 pub trait Node {
     /// Get this node's ID
     fn id(&self) -> NodeId;
-}
-
-/// An AST node whose content is defined by an enum
-///
-/// This is just a pairing of an enum and node ID.
-#[derive(Clone, Debug, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct KindedNode<T> {
-    /// Node ID
-    pub id: NodeId,
-    /// Node contents
-    pub kind: T,
-}
-
-impl<K> Node for KindedNode<K> {
-    fn id(&self) -> NodeId {
-        self.id
-    }
 }

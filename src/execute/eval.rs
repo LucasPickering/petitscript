@@ -10,7 +10,10 @@ use crate::{
     },
     error::{RuntimeError, RuntimeErrorKind, ValueError},
     execute::{ThreadState, exec::Execute, state::Location},
-    value::{Array, Number, Object, Value, ValueType, function::Function},
+    value::{
+        Array, Number, Object, Value, ValueType,
+        function::{Function, FunctionInner},
+    },
 };
 use std::{borrow::Cow, sync::Arc};
 
@@ -306,8 +309,8 @@ impl Function {
         location: Location,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
-        match self {
-            Self::User {
+        match self.inner() {
+            FunctionInner::User {
                 definition,
                 captures,
             } => {
@@ -332,10 +335,10 @@ impl Function {
                     },
                 )
             }
-            Self::Native { function, .. } => function
+            FunctionInner::Native { function, .. } => function
                 .call(state.process(), arguments)
                 .map_err(|error| state.trace_error(error, location)),
-            Self::Bound {
+            FunctionInner::Bound {
                 function, receiver, ..
             } => function
                 // Clone is necessary on receiver because there could be

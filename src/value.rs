@@ -77,6 +77,9 @@ pub enum Value {
 
 #[cfg(test)]
 static_assertions::assert_impl_all!(Value: Send, Sync);
+#[cfg(test)]
+// Value is used a LOT, so changes to its size should be intentional
+static_assertions::assert_eq_size!(Value, [u8; 24]);
 
 impl Value {
     /// Create a new byte buffer

@@ -621,12 +621,8 @@ pub enum RuntimeErrorKind {
     #[error("Cannot read properties of `{value}` (property \"{property}\")")]
     Property {
         /// Value being targeted (`null` or `undefined`)
-        ///
-        /// Boxed to reduce variant size.
         value: Box<Value>,
         /// Property being accessed (typically a string)
-        ///
-        /// Boxed to reduce variant size.
         property: Box<Value>,
     },
 

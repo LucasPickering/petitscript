@@ -314,7 +314,7 @@ impl Function {
                 // Put all declarations in a new frame. This will init a clean
                 // scope from the globals. We'll add captures and args to that
                 state.with_frame(
-                    state.process().globals.clone().scope(),
+                    state.process().engine.globals.clone().scope(),
                     location,
                     self.name().map(String::from),
                     |state| {

@@ -144,7 +144,7 @@ impl Execute for ImportModule {
         match &self.kind {
             ImportModuleKind::Native(name) => state
                 .process()
-                .native_module(name)
+                .get_native_module(name)
                 // The clone is not strictly necessary, but the consuming logic
                 // gets a lot more complicated if we don't
                 .cloned()

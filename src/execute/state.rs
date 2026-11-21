@@ -19,13 +19,14 @@ use std::{collections::VecDeque, sync::Arc};
 /// TODO
 #[derive(Debug)]
 pub(super) struct ThreadState<'process> {
+    // TODO comments
     process: &'process Process,
     call_stack: CallStack,
-    // TODO comments
     exports: Option<Exports>,
 }
 
 impl<'process> ThreadState<'process> {
+    /// TODO
     pub fn new(
         globals: Arc<GlobalEnvironment>,
         process: &'process Process,
@@ -44,6 +45,7 @@ impl<'process> ThreadState<'process> {
         }
     }
 
+    /// TODO
     pub fn process(&self) -> &'process Process {
         self.process
     }
@@ -290,11 +292,13 @@ impl<'process> ThreadState<'process> {
     }
 }
 
-/// The function call stack. The most recent call is always the last element,
-/// i.e. on _top_ of the stack. In our machine, a stack frame is mainly just a
-/// scope of names. This should not be confused with the hierarchical
-/// parent/child structure of scopes. Pushing a new frame is *not* the same as
-/// creating a subscope of the current scope.
+/// The function call stack
+///
+/// The most recent call is always the last element, i.e. on _top_ of the stack.
+/// In our machine, a stack frame is mainly just a scope of names. This should
+/// not be confused with the hierarchical parent/child structure of scopes.
+/// Pushing a new frame is *not* the same as creating a subscope of the current
+/// scope.
 ///
 /// Invariant: A call stack can never be empty! The root scope is always the
 /// bottom frame of the stack. For root processes, this is the root scope of

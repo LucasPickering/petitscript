@@ -10,7 +10,7 @@ pub use scope::{GlobalEnvironment, Prototype};
 #[cfg(feature = "serde")]
 use crate::error::ValueError;
 use crate::{
-    Source,
+    Engine, Source,
     compile::Program,
     error::{DuplicateAppData, RuntimeError, RuntimeErrorKind, UnknownAppData},
     execute::{
@@ -32,19 +32,12 @@ use std::{
 /// only runs on demand.
 #[derive(Clone, Debug)]
 pub struct Process {
-    /// The program we'll be executing
+    /// Engine that compiled this program
+    ///
+    /// This provides globals and native modules
+    engine: Engine,
+    /// Program we'll be executing
     program: Arc<Program>,
-    /// A clone of the module registry from the engine
-    ///
-    /// This clone should be relatively cheap because all the values within
-    /// each export are reference counted. Cloning will snapshot the modules at
-    /// the time of the process being spawned, allowing the engine to register
-    /// new modules as needed without interfering with running modules.
-    ///
-    /// TODO hang onto the Engine instead? it's immutable
-    modules: IndexMap<NativeModuleName, Exports>,
-    /// Global values available to the program, i.e. the stdlib
-    globals: Arc<GlobalEnvironment>,
     /// Arbitrary user-defined data attached to this process
     app_data: AppData,
 }
@@ -54,15 +47,10 @@ static_assertions::assert_impl_all!(Process: Send, Sync);
 
 impl Process {
     /// TODO
-    pub(super) fn new(
-        modules: IndexMap<NativeModuleName, Exports>,
-        globals: Arc<GlobalEnvironment>,
-        program: Program,
-    ) -> Self {
+    pub(crate) fn new(engine: Engine, program: Program) -> Self {
         Self {
+            engine,
             program: program.into(),
-            modules,
-            globals,
             app_data: AppData::default(),
         }
     }
@@ -136,25 +124,23 @@ impl Process {
     ) -> Result<Value, RuntimeError> {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut thread_state =
-            ThreadState::new(Arc::clone(&self.globals), self, false);
+            ThreadState::new(Arc::clone(&self.engine.globals), self, false);
         function.call(&mut thread_state, Location::Native, arguments)
     }
 
     /// Create a new thread to evaluate a module
     fn create_thread(&self) -> ThreadState<'_> {
-        ThreadState::new(self.globals.clone(), self, true)
+        ThreadState::new(self.engine.globals.clone(), self, true)
     }
 
     /// Look up a native module by name
-    fn native_module(
+    fn get_native_module(
         &self,
         name: &NativeModuleName,
     ) -> Result<&Exports, RuntimeErrorKind> {
-        self.modules
-            .get(name)
-            .ok_or_else(|| RuntimeErrorKind::UnknownModule {
-                name: name.clone(),
-            })
+        self.engine.modules.get(name).ok_or_else(|| {
+            RuntimeErrorKind::UnknownModule { name: name.clone() }
+        })
     }
 }
 

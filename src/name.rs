@@ -62,8 +62,9 @@ impl FromStr for Identifier {
     }
 }
 
-/// The name of a native module registered with the PS engine. Native module
-/// names must adhere to these rules:
+/// Name of a native module registered with the engine
+///
+/// Native module names must adhere to these rules:
 /// - Allowed characters are `a-z`, `A-Z`, `0-9`, `_` and `-`
 /// - Must start with a letter `a-z` or `A-Z`
 /// - Must be at least one character long

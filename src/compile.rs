@@ -42,7 +42,11 @@ pub fn compile_ast(module: Module) -> Program {
     .end()
 }
 
-/// An executable program. This is produced by [`compile`]
+/// A compiled program
+///
+/// This is produced by [`compile`] and contains all the static information
+/// needed to run a program. It is not itself executable though; that requires
+/// a [`Process`].
 #[derive(Debug)]
 pub struct Program {
     sources: SourceTable,

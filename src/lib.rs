@@ -81,12 +81,14 @@ mod test_util;
 mod util;
 pub mod value;
 
+pub use crate::{error::Error, value::Value};
+// A bug in rustdoc shows re-exports from private modules if they're grouped
+// with re-exports from public modules. Separate these out so they're ONLY
+// inlined.
 pub use crate::{
-    error::Error,
     execute::{Exports, Process},
     name::NativeModuleName,
     source::Source,
-    value::Value,
 };
 
 use crate::{
@@ -96,8 +98,7 @@ use crate::{
     execute::GlobalEnvironment,
     stdlib::stdlib,
 };
-use indexmap::IndexMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 /// Main entrypoint for executing and evaluating PetitScript programs
 ///
@@ -107,16 +108,19 @@ use std::sync::Arc;
 /// shared among many processes cheaply through the joys of reference counting.
 ///
 /// See [the crate root](crate) for a usage example.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Engine {
-    /// Modules registered by the user that can be imported into any script.
+    /// Modules registered by the user that can be imported into any script
+    ///
     /// This is the only way to provide named module imports. All other imports
     /// must be by relative path.
-    modules: IndexMap<NativeModuleName, Exports>,
-    /// Global values available to all code execution. This includes only the
-    /// standard library, and cannot be modified after engine initialization.
-    /// User-defined natives can only be exposed through modules. As such, we
-    /// can use refcounting to share this among all processes and threads.
+    modules: Arc<HashMap<NativeModuleName, Exports>>,
+    /// Global values available to all code execution
+    ///
+    /// This includes only the global library (which for the default engine is
+    /// just the [standard library](stdlib)). User-defined natives can only be
+    /// exposed through modules. As such, we can use refcounting to share this
+    /// among all processes and threads.
     globals: Arc<GlobalEnvironment>,
 }
 
@@ -201,7 +205,7 @@ impl Engine {
 
     /// Create a new process to execute a compiled program
     fn spawn(&self, program: Program) -> Process {
-        Process::new(self.modules.clone(), Arc::clone(&self.globals), program)
+        Process::new(self.clone(), program)
     }
 }
 
@@ -224,7 +228,7 @@ impl Default for Engine {
 #[derive(Debug)]
 pub struct EngineBuilder {
     // See Engine for field descriptions
-    modules: IndexMap<NativeModuleName, Exports>,
+    modules: HashMap<NativeModuleName, Exports>,
     globals: GlobalEnvironment,
 }
 
@@ -274,7 +278,7 @@ impl EngineBuilder {
     /// Build the engine with the defined configuration
     pub fn build(self) -> Engine {
         Engine {
-            modules: self.modules,
+            modules: Arc::new(self.modules),
             globals: self.globals.into(),
         }
     }

@@ -10,6 +10,7 @@ mod transform;
 use crate::{
     Source,
     ast::Module,
+    compile::Modules,
     error::{ParseError, ParseErrorKind, ParseErrors},
     source::{SourceId, SourceTable, Span, SpanTable},
 };
@@ -17,7 +18,7 @@ use oxc_allocator::Allocator;
 use oxc_diagnostics::OxcDiagnostic;
 use oxc_parser::{Parser, ParserReturn};
 use oxc_span::SourceType;
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 /// File extensions that can be imported as a local module
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
@@ -30,21 +31,37 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &["js", "ts"];
 /// parsed module, this returns a debug table of source spans for each AST node.
 pub fn parse(
     sources: &mut SourceTable,
-) -> Result<(Module, SpanTable), ParseErrors> {
+) -> Result<(Modules, SpanTable), ParseErrors> {
     let source_id = sources.root_id();
     let mut spans = SpanTable::default();
     let mut context = ParseContext {
         sources,
         current_source_id: source_id,
         next_node_id: &mut 0,
-        spans: &mut spans,
+        unparsed_modules: vec![],
         errors: vec![],
+        spans: &mut spans,
     };
-    let module = parse_module(&mut context);
+    // Parse the root
+    let root_module = parse_module(&mut context);
+    // Parse all imported modules until there's nothing left to parse
+    // TODO detect import cycles here
+    let mut imported_modules = HashMap::new();
+    while let Some(source_id) = context.unparsed_modules.pop() {
+        context.current_source_id = source_id;
+        let module = parse_module(&mut context);
+        imported_modules.insert(source_id, module);
+    }
 
     // If any errors occurred, the returned module is invalid
     if context.errors.is_empty() {
-        Ok((module, spans))
+        Ok((
+            Modules {
+                root: root_module,
+                imported: imported_modules,
+            },
+            spans,
+        ))
     } else {
         Err(ParseErrors {
             errors: context.errors,
@@ -112,17 +129,30 @@ struct ParseContext<'a> {
     /// reference so we can share it between contexts of different sources,
     /// allowing node IDs to be unique across the entire AST.
     next_node_id: &'a mut u32,
+    /// FILO queue of imported local modules that have yet to be parsed
+    ///
+    /// Imports push onto this queue and the root parse operation pops off
+    /// until the queue is empty. This does *not* include the module currently
+    /// being parsed.
+    unparsed_modules: Vec<SourceId>,
+    /// TODO explain error collection
+    errors: Vec<ParseError>,
     /// A map of each transformed node's source span. This will contain an
     /// entry for every node ID that's been handed out.
     spans: &'a mut SpanTable,
-    /// TODO explain error collection
-    errors: Vec<ParseError>,
 }
 
 impl ParseContext<'_> {
     /// Current source being parsed
     fn current_source(&self) -> &Source {
         self.sources.get(self.current_source_id)
+    }
+
+    /// Insert a new source into the table and mark it to be parsed later
+    fn insert_source(&mut self, source: Source) -> SourceId {
+        let id = self.sources.insert(source);
+        self.unparsed_modules.push(id);
+        id
     }
 
     /// Map an [`oxc_span::Span`] to a PetitScript [`Span`]
@@ -239,6 +269,7 @@ mod tests {
     fn parse_test(source: &'static str) -> Result<Module, ParseErrors> {
         let mut source_table = SourceTable::default();
         source_table.insert(source.into());
-        parse(&mut source_table).map(|(module, _)| module)
+        let modules = parse(&mut source_table).map(|(module, _)| module)?;
+        Ok(modules.root)
     }
 }

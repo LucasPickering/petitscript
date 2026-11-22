@@ -125,7 +125,7 @@ pub use crate::name::Identifier;
 pub use build::{IntoExpression, IntoNode, IntoStatement};
 pub use walk::{AstVisitor, IdentifierPosition, Walk};
 
-use crate::name::NativeModuleName;
+use crate::{name::NativeModuleName, source::SourceId};
 use std::{
     cell::Cell,
     fmt::{self, Debug},
@@ -394,7 +394,9 @@ impl Node for ImportNamed {
     }
 }
 
-/// Source for an imported module, i.e. the string after `from`
+/// Source string for an imported module
+///
+/// `'source'` in `import default from 'source'`.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ImportModule {
@@ -420,7 +422,14 @@ pub enum ImportModuleKind {
     ///
     /// The imported file will be parsed during the parse of the parent, so we
     /// end up with a separate AST to be executed.
-    Local(Module),
+    Local {
+        /// Path to the imported module, relative to the importing module
+        ///
+        /// This will be the exact string specified in the source code.
+        name: String,
+        /// TODO
+        source: SourceId,
+    },
 }
 
 /// Export a name or value: `export const ...` or `export default ...`

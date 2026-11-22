@@ -131,9 +131,10 @@ impl Execute for ImportDeclaration {
 impl Execute for ImportModule {
     type Output<'world> = Exports;
 
-    /// Resolve a module name/path into its exports. For native modules this
-    /// just grabs the exports from the registry. For paths, it will execute
-    /// the external program
+    /// Resolve a module name/path into its exports
+    ///
+    /// For native modules this just grabs the exports from the registry. For
+    /// paths, it will execute the external program.
     fn exec(&self, state: &mut Fiber) -> Result<Exports, RuntimeError> {
         match &self.kind {
             ImportModuleKind::Native(name) => state
@@ -143,9 +144,14 @@ impl Execute for ImportModule {
                 // gets a lot more complicated if we don't
                 .cloned()
                 .map_err(|error| state.trace_error(error, self)),
-            ImportModuleKind::Local(ast) => {
+            ImportModuleKind::Local { source, .. } => {
+                let module = state
+                    .program()
+                    .get_module(*source)
+                    .expect("TODO error - miscompiled program");
+                // Spawn another fiber
                 let mut fiber = state.world().create_fiber();
-                ast.exec(&mut fiber)?;
+                module.exec(&mut fiber)?;
                 let exports = fiber.into_exports().unwrap();
                 Ok(exports)
             }

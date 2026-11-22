@@ -17,11 +17,11 @@ fn display_round_trip() {
     let parsed = source.parse().unwrap_or_else(|error| panic!("{error:#}"));
     // This line is what we're testing!! The source codes won't be textually
     // equal, but they should be semantically equal
-    let stringified = parsed.module().to_string();
+    let stringified = parsed.root().to_string();
     let reparsed = Source::from(stringified.clone())
         .parse()
         .unwrap_or_else(|error| panic!("{error:#}"));
     NodeId::with_all_equal(|| {
-        assert_eq!(parsed.module(), reparsed.module(), "{stringified}");
+        assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
     });
 }

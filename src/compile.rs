@@ -7,11 +7,12 @@ pub use parse::SUPPORTED_EXTENSIONS;
 
 use crate::{
     Source,
-    ast::{Module, Walk},
+    ast::{AstVisitor, Module, Walk},
     compile::function::{CaptureFunctions, LabelFunctions},
     error::ParseErrors,
-    source::{SourceTable, SpanTable},
+    source::{SourceId, SourceTable, SpanTable},
 };
+use std::collections::HashMap;
 
 /// A compiled program
 ///
@@ -22,8 +23,8 @@ use crate::{
 /// TODO example for how to mutate a program - modify the module and recompile.
 #[derive(Debug)]
 pub struct Program {
-    /// Program AST
-    module: Module,
+    /// Compiled source code
+    modules: Modules,
     /// Source(s) that were parsed to make this program
     sources: SourceTable,
     /// A debug table of source spans for each node. This will help us produce
@@ -50,9 +51,13 @@ impl Program {
     /// rather than by parsing source code. This is infallible
     /// because parsing is the only fallible part of the compilation pipeline.
     pub fn compile(module: Module) -> Self {
+        let modules = Modules {
+            root: module,
+            imported: HashMap::new(),
+        };
         Compiler {
             program: ParsedAst {
-                module,
+                modules,
                 spans: SpanTable::default(),
             },
             sources: SourceTable::default(), // No source code to map here
@@ -63,8 +68,8 @@ impl Program {
     }
 
     /// TODO
-    pub fn module(&self) -> &Module {
-        &self.module
+    pub fn root(&self) -> &Module {
+        &self.modules.root
     }
 
     /// TODO
@@ -75,6 +80,36 @@ impl Program {
     /// TODO
     pub(crate) fn spans(&self) -> &SpanTable {
         &self.spans
+    }
+
+    /// Get a local module by its source ID
+    pub(crate) fn get_module(&self, source: SourceId) -> Option<&Module> {
+        self.modules.imported.get(&source)
+    }
+}
+
+/// All the modules that comprise a program
+///
+/// All modules are loaded during parsing. After that point, each module is
+/// independent for the rest of the compilation pipeline.
+#[derive(Debug)]
+struct Modules {
+    /// Entrypoint module
+    root: Module,
+    /// Additional local modules, each keyed by its source
+    ///
+    /// These modules are all imported by `import ... from './local'`. All
+    /// imported modules are flattened into this list.
+    imported: HashMap<SourceId, Module>,
+}
+
+impl Modules {
+    /// Apply an AST visitor to each module in the collection
+    fn walk_all(&mut self, visitor: &mut dyn AstVisitor) {
+        self.root.walk(visitor);
+        for module in self.imported.values_mut() {
+            module.walk(visitor);
+        }
     }
 }
 
@@ -89,19 +124,19 @@ struct Compiler<T> {
 
 /// AST that has been parsed, but had no transformations applied
 struct ParsedAst {
-    module: Module,
+    modules: Modules,
     spans: SpanTable,
 }
 
 /// AST after function labelling
 struct LabelledAst {
-    module: Module,
+    modules: Modules,
     spans: SpanTable,
 }
 
 /// AST after function capture
 struct CapturedAst {
-    module: Module,
+    modules: Modules,
     spans: SpanTable,
 }
 
@@ -117,10 +152,10 @@ impl Compiler<()> {
 
     /// Parse source code into an AST
     fn parse(mut self) -> Result<Compiler<ParsedAst>, ParseErrors> {
-        let (module, spans) = parse::parse(&mut self.sources)?;
+        let (modules, spans) = parse::parse(&mut self.sources)?;
         Ok(Compiler {
             sources: self.sources,
-            program: ParsedAst { module, spans },
+            program: ParsedAst { modules, spans },
         })
     }
 }
@@ -131,12 +166,12 @@ impl Compiler<ParsedAst> {
     /// This is just for for debuggability and convenience, and has no semantic
     /// impact on the program.
     fn label(self) -> Compiler<LabelledAst> {
-        let mut module = self.program.module;
-        module.walk(&mut LabelFunctions);
+        let mut modules = self.program.modules;
+        modules.walk_all(&mut LabelFunctions);
         Compiler {
             sources: self.sources,
             program: LabelledAst {
-                module,
+                modules,
                 spans: self.program.spans,
             },
         }
@@ -146,12 +181,12 @@ impl Compiler<ParsedAst> {
 impl Compiler<LabelledAst> {
     /// Calculate captured variables in each function definition
     fn capture(self) -> Compiler<CapturedAst> {
-        let mut module = self.program.module;
-        module.walk(&mut CaptureFunctions::new());
+        let mut modules = self.program.modules;
+        modules.walk_all(&mut CaptureFunctions::new());
         Compiler {
             sources: self.sources,
             program: CapturedAst {
-                module,
+                modules,
                 spans: self.program.spans,
             },
         }
@@ -161,8 +196,8 @@ impl Compiler<LabelledAst> {
 impl Compiler<CapturedAst> {
     fn end(self) -> Program {
         Program {
+            modules: self.program.modules,
             sources: self.sources,
-            module: self.program.module,
             spans: self.program.spans,
         }
     }

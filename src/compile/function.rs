@@ -222,7 +222,7 @@ mod tests {
     /// labelled with that name.
     #[test]
     fn function_label() {
-        let LabelledAst { module, .. } = Compiler::new(
+        let LabelledAst { modules, .. } = Compiler::new(
             "
         const f = () => {};
         const o = {g: () => {}};
@@ -257,13 +257,13 @@ mod tests {
             expected_statement_2,
             expected_statement_3,
         ]);
-        NodeId::with_all_equal(|| assert_eq!(module, expected));
+        NodeId::with_all_equal(|| assert_eq!(modules.root, expected));
     }
 
     /// Test closure capturing
     #[test]
     fn function_capture() {
-        let CapturedAst { module, .. } = Compiler::new(
+        let CapturedAst { modules, .. } = Compiler::new(
             "
             import { add } from 'math';
 
@@ -334,6 +334,6 @@ mod tests {
             )
             .into_stmt(),
         ]);
-        NodeId::with_all_equal(|| assert_eq!(module, expected));
+        NodeId::with_all_equal(|| assert_eq!(modules.root, expected));
     }
 }

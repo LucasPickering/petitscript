@@ -4,11 +4,11 @@ use crate::ast::{
     Declaration, ExportDeclaration, ExportDeclarationKind, Expression,
     ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
     FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
-    ImportModuleKind, ImportNamed, Literal, Module, ObjectLiteral,
-    ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
-    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
-    TemplateLiteral, TernaryConditional, UnaryOperation, Variable,
+    ImportNamed, Literal, Module, ObjectLiteral, ObjectPatternElement,
+    ObjectProperty, ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
+    PropertyName, PropertyNameKind, Statement, StatementKind, TemplateChunk,
+    TemplateChunkKind, TemplateLiteral, TernaryConditional, UnaryOperation,
+    Variable,
 };
 use std::ops::DerefMut;
 
@@ -535,14 +535,8 @@ impl Walk for ImportNamed {
 impl Walk for ImportModule {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_import_module(self);
-        match &mut self.kind {
-            ImportModuleKind::Native(_) => {
-                // Nothing to do here. We could add a visit_module_name but
-                // I don't think it would have any value
-            }
-            // woo baby a whole nested module!!
-            ImportModuleKind::Local(module) => module.walk(visitor),
-        }
+        // Nothing to do here. We could add a visit_module_name but I don't
+        // think it would have any value
         visitor.exit_import_module(self);
     }
 }

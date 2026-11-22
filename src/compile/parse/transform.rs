@@ -19,10 +19,7 @@ use crate::{
         TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
         Variable,
     },
-    compile::{
-        SUPPORTED_EXTENSIONS,
-        parse::{ParseContext, parse_module},
-    },
+    compile::{SUPPORTED_EXTENSIONS, parse::ParseContext},
     error::{ParseError, ParseErrorKind, Unsupported},
     source::Span,
     util::OptionExt,
@@ -31,7 +28,6 @@ use oxc_ast::ast::{self as oxc};
 use oxc_span::GetSpan;
 use std::{
     ffi::OsStr,
-    mem,
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -375,28 +371,20 @@ impl Transform for oxc::ImportDeclaration<'_> {
             Ok(name) => ImportModuleKind::Native(name),
             Err(error) => {
                 // We're importing a file path. Resolve it to an absolute path
-                let module_name = error.name;
-                let source =
-                    resolve_module(&module_name, context.current_source())
-                        .and_then(|path| {
-                            // Load source code
-                            Source::file(path).map_err(ParseErrorKind::from)
-                        })
-                        .map_err(|error| {
-                            context.register_error(&self.source, error)
-                        })?;
-
-                // Load the module. Swap out the source ID in the context
-                let new_source_id = context.sources.insert(source);
-                let old_source_id =
-                    mem::replace(&mut context.current_source_id, new_source_id);
-                // If this fails, its errors will be registered in the context
-                // already so we can just continue and see if there are any more
-                // errors.
-                let module = parse_module(context);
-                context.current_source_id = old_source_id;
-
-                ImportModuleKind::Local(module)
+                let name = error.name;
+                let source = resolve_module(&name, context.current_source())
+                    .and_then(|path| {
+                        // Load source code
+                        Source::file(path).map_err(ParseErrorKind::from)
+                    })
+                    .map_err(|error| {
+                        context.register_error(&self.source, error)
+                    })?;
+                ImportModuleKind::Local {
+                    name,
+                    // Store this source and it will be parsed later
+                    source: context.insert_source(source),
+                }
             }
         };
         let module = ImportModule {

@@ -192,7 +192,7 @@ impl DisplayIndent for &ImportModule {
             ImportModuleKind::Native(name) => {
                 ("'", name.as_str(), "'").fmt(ind)
             }
-            ImportModuleKind::Local(path) => ("'", path, "'").fmt(ind),
+            ImportModuleKind::Local { name, .. } => ("'", name, "'").fmt(ind),
         }
     }
 }

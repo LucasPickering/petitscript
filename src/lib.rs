@@ -35,7 +35,7 @@
 //! - Try/catch
 //! - Async
 //!
-//! ## Examples
+//! # Examples
 //!
 //! The simplest example of parsing and executing some PetitScript code:
 //!
@@ -60,7 +60,7 @@
 //! - TODO app data
 //! - TODO value provenance (source span tracking)
 //!
-//! ## Immutable Semantics
+//! # Immutable Semantics
 //!
 //! TODO
 
@@ -169,7 +169,7 @@ impl Engine {
     /// you're just executing code, you should call [`Engine::compile`] to get
     /// the compiled process in a single step.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Return an error if the program is syntactically invalid.
     pub fn parse(
@@ -181,7 +181,7 @@ impl Engine {
 
     /// Parse and compile some source code into an executable [`Process`]
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Return an error if the program is syntactically invalid. PetitScript has
     /// no static checks beyond imports and parsing, so [`ParseErrors`] is the

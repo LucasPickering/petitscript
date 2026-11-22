@@ -464,7 +464,7 @@ impl Transform for oxc::ImportSpecifier<'_> {
 /// This will resolve relative paths to be relative to the importing module.
 /// This does not guarantee the file is actually present!
 ///
-/// ## Errors
+/// # Errors
 ///
 /// Error if the source does not allow local imports (e.g. in-memory string
 /// source) or the imported path is not an allowed extension.

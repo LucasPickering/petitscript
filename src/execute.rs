@@ -70,7 +70,7 @@ impl Process {
     /// piece of app data per type**. See [set_app_data](Self::set_app_data) for
     /// examples.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Return [`UnknownAppData`] if there is no app data of type `T`.
     pub fn app_data<T: Any + Send + Sync>(&self) -> Result<&T, UnknownAppData> {
@@ -87,7 +87,7 @@ impl Process {
     ///
     /// TODO example code
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Return [`DuplicateAppData`] if there is already app data of type
     /// `T` registered.
@@ -100,7 +100,7 @@ impl Process {
 
     /// Execute the loaded program and return its exported values
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// TODO
     pub fn execute(&self) -> Result<Exports, RuntimeError> {
@@ -114,7 +114,7 @@ impl Process {
     ///
     /// TODO what happens if you pass it a function from another process?
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// TODO
     pub fn call(

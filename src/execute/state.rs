@@ -162,7 +162,7 @@ impl<'process> ThreadState<'process> {
 
     /// Execute a function within a new frame on the stack
     ///
-    /// ## Arguments
+    /// # Arguments
     ///
     /// - `scope` - New scope for the function execution
     /// - `call_site` - Source location from which this function was invoked

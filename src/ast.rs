@@ -8,7 +8,7 @@
 //! eliminated by the parser, and many other components are simplified from the
 //! formal ECMAScript AST definitions.
 //!
-//! ## Node IDs
+//! # Node IDs
 //!
 //! Each AST node gets a unique ID, which is used to associate it with metadata
 //! stored outside the AST (e.g. source spans). These IDs are stored inline in
@@ -43,13 +43,13 @@
 //! - ASTs parsed from source code
 //! - ASTs generated programatically
 //!
-//! ## Collection Types
+//! # Collection Types
 //!
 //! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
 //! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
 //! allocate more memory than needed.
 //!
-//! ## Building ASTs
+//! # Building ASTs
 //!
 //! In addition to being constructed via parsing, ASTs can also be constructed
 //! manually. This is useful for building assertions in test cases, but can
@@ -1092,7 +1092,7 @@ impl Node for IdentifierNode {
 ///
 /// These IDs are not globally unique, just within a single AST.
 ///
-/// ## Equality
+/// # Equality
 ///
 /// This type uses simple equality checking by default, which is important for
 /// its usage as map keys. However, it can be annoying when doing test
@@ -1129,7 +1129,7 @@ impl NodeId {
     /// Use this for test assertions and other comparisons that want to ignore
     /// node ID equality. The override will be set *only* while in `f`.
     ///
-    /// ## Examples
+    /// # Examples
     ///
     /// ```
     /// # use petitscript::ast::{Expression, NodeId};

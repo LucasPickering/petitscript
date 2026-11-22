@@ -18,7 +18,7 @@ use std::{
 /// programs should generally be small. Storing it makes error reporting later
 /// much easier.
 ///
-/// ## Cloning
+/// # Cloning
 ///
 /// Cloning is cheap because source code is stored via `Arc<str>`.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -69,7 +69,7 @@ impl Source {
     ///
     /// Return `None` if the source isn't a file.
     ///
-    /// ## Relative (Local) Imports
+    /// # Relative (Loca Imports
     ///
     /// Imported local modules (`import ... from './other.js'`) from this source
     /// will be performed relative to this path. Sources that don't have a
@@ -127,7 +127,7 @@ pub(crate) struct SourceTable(HashMap<SourceId, Source>);
 impl SourceTable {
     /// Get the ID of the first source in the table
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panic if the table is empty.
     pub fn root_id(&self) -> SourceId {
@@ -140,7 +140,7 @@ impl SourceTable {
 
     /// Get a source by its unique ID
     ///
-    /// ## Panics
+    /// # Panics
     ///
     /// Panic if the ID isn't in the table. Any ID returned by
     /// [`SourceTable::insert`] will be valid for that table.

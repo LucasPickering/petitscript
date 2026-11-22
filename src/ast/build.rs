@@ -2,7 +2,7 @@
 //!
 //! See example in the parent module.
 //!
-//! ## Functions vs Methods
+//! # Functions vs Methods
 //!
 //! Anything that creates a new AST node uses an associated function (e.g.
 //! [`Declaration::new`]). Combinator methods are only used to modify a node

@@ -78,7 +78,7 @@ static_assertions::assert_impl_all!(Error: Send, Sync);
 /// indicating the file and location of the offending code.
 ///
 ///
-/// ## Display
+/// # Display
 ///
 /// The default [`Display`] implementation for this type just prints the
 /// number of parse errors. This ensures the message is concise and fits on one
@@ -491,7 +491,7 @@ impl Display for Unsupported {
 /// Use [`RuntimeError::to_report`] to get a pretty version of the error and
 /// trace.
 ///
-/// ## Display
+/// # Display
 ///
 /// The default [`Display`] implementation for this type just prints the error
 /// message. This ensures the message is concise and fits on one line. To

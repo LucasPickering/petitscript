@@ -54,24 +54,25 @@ impl<'a, 'f> Indenter<'a, 'f> {
 /// The indenter allows the implementation to increase indentation (when
 /// entering a new block), decrease it (when exiting a block), and insert
 /// indentation (on a new line).
+///
+/// `fmt` takes an owned `self` so that it can be implemented for iterators. For
+/// AST types, implement this on `&T`.
 trait DisplayIndent {
     /// Format this value into the output, possibly with indentation
     ///
     /// Normally I like full words for variable names, but I cannot spell
     /// `indenter` correctly so I abbreviated it :)
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result;
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result;
 }
 
-impl DisplayIndent for Module {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        Repeat::new(&self.statements, "\n")
-            .with_last_delimiter()
-            .fmt(ind)
+impl DisplayIndent for &Module {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        Repeat::new(&self.statements, "\n").with_trailing().fmt(ind)
     }
 }
 
-impl DisplayIndent for Statement {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Statement {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             StatementKind::Empty => ";".fmt(ind),
             StatementKind::Block(block) => block.fmt(ind),
@@ -91,26 +92,26 @@ impl DisplayIndent for Statement {
     }
 }
 
-impl DisplayIndent for Block {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Block {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("{", Indent::new(&self.statements, ""), "}").fmt(ind)
     }
 }
 
-impl DisplayIndent for Declaration {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Declaration {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("const ", Repeat::new(&self.variables, ", "), ";").fmt(ind)
     }
 }
 
-impl DisplayIndent for Variable {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Variable {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (&self.binding, self.init.as_ref().map(|init| (" = ", init))).fmt(ind)
     }
 }
 
-impl DisplayIndent for FunctionDefinition {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &FunctionDefinition {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         // Print as arrow syntax because it's easier
         (
             "(",
@@ -122,8 +123,8 @@ impl DisplayIndent for FunctionDefinition {
     }
 }
 
-impl DisplayIndent for FunctionParameter {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &FunctionParameter {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (
             if self.varargs { Some("...") } else { None },
             &self.variable,
@@ -132,10 +133,10 @@ impl DisplayIndent for FunctionParameter {
     }
 }
 
-impl DisplayIndent for FunctionBody {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &FunctionBody {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Expression(expression) => {
+            FunctionBody::Expression(expression) => {
                 if let ExpressionKind::Literal(Literal::Object(
                     object_literal,
                 )) = &expression.kind
@@ -147,37 +148,35 @@ impl DisplayIndent for FunctionBody {
                     expression.fmt(ind)
                 }
             }
-            Self::Block(block) => block.fmt(ind),
+            FunctionBody::Block(block) => block.fmt(ind),
         }
     }
 }
 
-impl DisplayIndent for If {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &If {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("if (", &self.condition, ") ", &self.body, &self.else_body).fmt(ind)
     }
 }
 
-impl DisplayIndent for ImportDeclaration {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        (
-            "import ",
-            self.default.as_ref().map(|default| (default, ", ")),
+impl DisplayIndent for &ImportDeclaration {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        // Only include the comma if both parts are present
+        let parts = Pair::new(
+            self.default.as_ref(),
             if self.named.is_empty() {
                 None
             } else {
                 Some(("{ ", Repeat::new(&self.named, ", "), " } "))
             },
-            " from ",
-            &self.module,
-            ";",
-        )
-            .fmt(ind)
+            ", ",
+        );
+        ("import ", parts, " from ", &self.module, ";").fmt(ind)
     }
 }
 
-impl DisplayIndent for ImportNamed {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ImportNamed {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         // If the local ident doesn't match the imported, include a rename
         if self.local.as_str() == self.imported.as_str() {
             self.imported.fmt(ind)
@@ -187,8 +186,8 @@ impl DisplayIndent for ImportNamed {
     }
 }
 
-impl DisplayIndent for ImportModule {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ImportModule {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             ImportModuleKind::Native(name) => {
                 ("'", name.as_str(), "'").fmt(ind)
@@ -198,8 +197,8 @@ impl DisplayIndent for ImportModule {
     }
 }
 
-impl DisplayIndent for ExportDeclaration {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ExportDeclaration {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             ExportDeclarationKind::Declaration(declaration) => {
                 ("export ", declaration).fmt(ind)
@@ -211,8 +210,8 @@ impl DisplayIndent for ExportDeclaration {
     }
 }
 
-impl DisplayIndent for Expression {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Expression {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             ExpressionKind::Parenthesized(expression) => {
                 ("(", expression, ")").fmt(ind)
@@ -231,27 +230,27 @@ impl DisplayIndent for Expression {
     }
 }
 
-impl DisplayIndent for IdentifierNode {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &IdentifierNode {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.as_str().fmt(ind)
     }
 }
 
-impl DisplayIndent for Identifier {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Identifier {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.as_str().fmt(ind)
     }
 }
 
-impl DisplayIndent for Literal {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Literal {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Undefined => "undefined".fmt(ind),
-            Self::Null => "null".fmt(ind),
-            Self::Boolean(b) => b.fmt(ind),
-            Self::Float(float) => float.fmt(ind),
-            Self::Int(int) => int.fmt(ind),
-            Self::String(s) => {
+            Literal::Undefined => "undefined".fmt(ind),
+            Literal::Null => "null".fmt(ind),
+            Literal::Boolean(b) => b.fmt(ind),
+            Literal::Float(float) => float.fmt(ind),
+            Literal::Int(int) => int.fmt(ind),
+            Literal::String(s) => {
                 // If any invalid chars are in the string, use a template
                 // literal because they're more forgiving
                 // TODO escape with \ instead. Requires fixes to the parser
@@ -262,20 +261,20 @@ impl DisplayIndent for Literal {
                     ("\"", s, "\"").fmt(ind)
                 }
             }
-            Self::Array(array_literal) => array_literal.fmt(ind),
-            Self::Object(object_literal) => object_literal.fmt(ind),
+            Literal::Array(array_literal) => array_literal.fmt(ind),
+            Literal::Object(object_literal) => object_literal.fmt(ind),
         }
     }
 }
 
-impl DisplayIndent for TemplateLiteral {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &TemplateLiteral {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("`", Repeat::new(&self.chunks, ""), "`").fmt(ind)
     }
 }
 
-impl DisplayIndent for TemplateChunk {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &TemplateChunk {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             // TODO escape backticks in here
             TemplateChunkKind::Literal(literal) => literal.fmt(ind),
@@ -288,14 +287,14 @@ impl DisplayIndent for TemplateChunk {
     }
 }
 
-impl DisplayIndent for ArrayLiteral {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ArrayLiteral {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("[", Repeat::new(&self.elements, ", "), "]").fmt(ind)
     }
 }
 
-impl DisplayIndent for ArrayElement {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ArrayElement {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         if self.spread {
             ("...", &self.expression).fmt(ind)
         } else {
@@ -304,14 +303,14 @@ impl DisplayIndent for ArrayElement {
     }
 }
 
-impl DisplayIndent for ObjectLiteral {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ObjectLiteral {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         ("{", Indent::new(&self.properties, ","), "}").fmt(ind)
     }
 }
 
-impl DisplayIndent for ObjectProperty {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ObjectProperty {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             ObjectPropertyKind::Property {
                 property,
@@ -324,23 +323,23 @@ impl DisplayIndent for ObjectProperty {
     }
 }
 
-impl DisplayIndent for FunctionCall {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &FunctionCall {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (&self.function, "(", Repeat::new(&self.arguments, ", "), ")").fmt(ind)
     }
 }
 
-impl DisplayIndent for Argument {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Argument {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Expression(expression) => expression.fmt(ind),
-            Self::Spread(expression) => ("...", expression).fmt(ind),
+            Argument::Expression(expression) => expression.fmt(ind),
+            Argument::Spread(expression) => ("...", expression).fmt(ind),
         }
     }
 }
 
-impl DisplayIndent for PropertyAccess {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &PropertyAccess {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.property.kind {
             PropertyNameKind::Identifier(literal) => {
                 (&self.object, ".", literal).fmt(ind)
@@ -352,58 +351,58 @@ impl DisplayIndent for PropertyAccess {
     }
 }
 
-impl DisplayIndent for OptionalPropertyAccess {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &OptionalPropertyAccess {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (&self.object, "?.", &self.property).fmt(ind)
     }
 }
 
-impl DisplayIndent for UnaryOperation {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &UnaryOperation {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (&self.operator, &self.expression).fmt(ind)
     }
 }
 
-impl DisplayIndent for UnaryOperator {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &UnaryOperator {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::BooleanNot => "!".fmt(ind),
-            Self::Plus => "+".fmt(ind),
-            Self::Minus => "-".fmt(ind),
-            Self::Typeof => "typeof ".fmt(ind),
+            UnaryOperator::BooleanNot => "!".fmt(ind),
+            UnaryOperator::Plus => "+".fmt(ind),
+            UnaryOperator::Minus => "-".fmt(ind),
+            UnaryOperator::Typeof => "typeof ".fmt(ind),
         }
     }
 }
 
-impl DisplayIndent for BinaryOperation {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &BinaryOperation {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (&self.lhs, " ", &self.operator, " ", &self.rhs).fmt(ind)
     }
 }
 
-impl DisplayIndent for BinaryOperator {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &BinaryOperator {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
-            Self::Add => "+".fmt(ind),
-            Self::Sub => "-".fmt(ind),
-            Self::Mul => "*".fmt(ind),
-            Self::Div => "/".fmt(ind),
-            Self::Mod => "%".fmt(ind),
-            Self::LogicalAnd => "&&".fmt(ind),
-            Self::LogicalOr => "||".fmt(ind),
-            Self::Equal => "===".fmt(ind),
-            Self::NotEqual => "!==".fmt(ind),
-            Self::LessThan => "<".fmt(ind),
-            Self::GreaterThan => ">".fmt(ind),
-            Self::LessThanEqual => "<=".fmt(ind),
-            Self::GreaterThanEqual => ">=".fmt(ind),
-            Self::NullishCoalesce => "??".fmt(ind),
+            BinaryOperator::Add => "+".fmt(ind),
+            BinaryOperator::Sub => "-".fmt(ind),
+            BinaryOperator::Mul => "*".fmt(ind),
+            BinaryOperator::Div => "/".fmt(ind),
+            BinaryOperator::Mod => "%".fmt(ind),
+            BinaryOperator::LogicalAnd => "&&".fmt(ind),
+            BinaryOperator::LogicalOr => "||".fmt(ind),
+            BinaryOperator::Equal => "===".fmt(ind),
+            BinaryOperator::NotEqual => "!==".fmt(ind),
+            BinaryOperator::LessThan => "<".fmt(ind),
+            BinaryOperator::GreaterThan => ">".fmt(ind),
+            BinaryOperator::LessThanEqual => "<=".fmt(ind),
+            BinaryOperator::GreaterThanEqual => ">=".fmt(ind),
+            BinaryOperator::NullishCoalesce => "??".fmt(ind),
         }
     }
 }
 
-impl DisplayIndent for TernaryConditional {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &TernaryConditional {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (
             &self.condition,
             " ? ",
@@ -415,8 +414,8 @@ impl DisplayIndent for TernaryConditional {
     }
 }
 
-impl DisplayIndent for PropertyName {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &PropertyName {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             PropertyNameKind::Identifier(identifier) => identifier.fmt(ind),
             PropertyNameKind::Expression(expression) => {
@@ -426,8 +425,8 @@ impl DisplayIndent for PropertyName {
     }
 }
 
-impl DisplayIndent for Binding {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Binding {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         /// Helper to format an element OR a `...rest` pattern
         enum OrRest<E, R> {
             Element(E),
@@ -439,7 +438,7 @@ impl DisplayIndent for Binding {
             E: DisplayIndent,
             R: DisplayIndent,
         {
-            fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+            fn fmt(self, ind: &mut Indenter) -> fmt::Result {
                 match self {
                     Self::Element(element) => element.fmt(ind),
                     Self::Rest(binding) => ("...", binding).fmt(ind),
@@ -450,31 +449,25 @@ impl DisplayIndent for Binding {
         match &self.kind {
             BindingKind::Identifier(identifier) => identifier.fmt(ind),
             BindingKind::Object { properties, rest } => {
-                // Attach the ...rest to the end of the chain. The Vec
-                // allocation is a little lame, but the alternative is to have
-                // Repeat accept an iterator. That opens a giant can of worms
-                // with the type system, not worth it.
-                let properties = &properties
+                let properties = properties
                     .iter()
                     .map(OrRest::Element)
-                    .chain(rest.as_ref().map(OrRest::Rest))
-                    .collect::<Vec<_>>();
+                    .chain(rest.as_ref().map(OrRest::Rest));
                 ("{ ", Repeat::new(properties, ", "), " }").fmt(ind)
             }
             BindingKind::Array { elements, rest } => {
-                let elements = &elements
+                let elements = elements
                     .iter()
                     .map(OrRest::Element)
-                    .chain(rest.as_ref().map(OrRest::Rest))
-                    .collect::<Vec<_>>();
+                    .chain(rest.as_ref().map(OrRest::Rest));
                 ("[", Repeat::new(elements, ", "), "]").fmt(ind)
             }
         }
     }
 }
 
-impl DisplayIndent for ObjectPatternElement {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ObjectPatternElement {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         let init = self.init.as_ref().map(|init| (" = ", init));
         match (&self.key.kind, &self.binding.kind) {
             // Use shorthand where available
@@ -487,8 +480,8 @@ impl DisplayIndent for ObjectPatternElement {
     }
 }
 
-impl DisplayIndent for ArrayPatternElement {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &ArrayPatternElement {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             ArrayPatternElementKind::Identifier { binding, init } => {
                 let init = init.as_ref().map(|init| (" = ", init));
@@ -500,37 +493,75 @@ impl DisplayIndent for ArrayPatternElement {
     }
 }
 
-/// Print a sequence of values separated by a delimiter
+/// Delimited pair of options
 ///
-/// By default, the delimiter is *not* emitted after the last element. Call
-/// [`Repeat::with_last_delimiter`] to emit it.
-struct Repeat<'a, T> {
-    items: &'a [T],
+/// If either is missing, the comma won't be included.
+struct Pair<'a, T, U> {
+    left: Option<T>,
+    right: Option<U>,
     delimiter: &'a str,
-    /// Emit the delimiter after the final item?
-    include_last_delimiter: bool,
 }
 
-impl<'a, T> Repeat<'a, T> {
-    fn new(items: &'a [T], delimiter: &'a str) -> Self {
+impl<'a, T, U> Pair<'a, T, U> {
+    fn new(left: Option<T>, right: Option<U>, delimiter: &'a str) -> Self {
+        Self {
+            left,
+            right,
+            delimiter,
+        }
+    }
+}
+
+impl<T: DisplayIndent, U: DisplayIndent> DisplayIndent for Pair<'_, T, U> {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        match (self.left, self.right) {
+            (None, None) => "".fmt(ind),
+            (Some(left), None) => left.fmt(ind),
+            (None, Some(right)) => right.fmt(ind),
+            (Some(left), Some(right)) => (left, self.delimiter, right).fmt(ind),
+        }
+    }
+}
+
+/// Print a sequence of values separated by a delimiter
+///
+/// `I` is typically `&[T]`.
+///
+/// By default, the delimiter is *not* emitted after the last element. Call
+/// [`Repeat::with_trailing`] to emit it.
+struct Repeat<'a, I> {
+    items: I,
+    delimiter: &'a str,
+    /// Emit the delimiter after the final item?
+    include_trailing: bool,
+}
+
+impl<'a, I> Repeat<'a, I> {
+    fn new(items: I, delimiter: &'a str) -> Self {
         Self {
             items,
             delimiter,
-            include_last_delimiter: false,
+            include_trailing: false,
         }
     }
 
-    fn with_last_delimiter(mut self) -> Self {
-        self.include_last_delimiter = true;
+    fn with_trailing(mut self) -> Self {
+        self.include_trailing = true;
         self
     }
 }
 
-impl<T: DisplayIndent> DisplayIndent for Repeat<'_, T> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        for (i, item) in self.items.iter().enumerate() {
+impl<I> DisplayIndent for Repeat<'_, I>
+where
+    I: IntoIterator,
+    I::Item: DisplayIndent,
+{
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        let mut iter = self.items.into_iter().peekable();
+        // for loop doesn't work with peekable()
+        while let Some(item) = iter.next() {
             item.fmt(ind)?;
-            if self.include_last_delimiter || i < self.items.len() - 1 {
+            if self.include_trailing || iter.peek().is_some() {
                 self.delimiter.fmt(ind)?;
             }
         }
@@ -541,8 +572,8 @@ impl<T: DisplayIndent> DisplayIndent for Repeat<'_, T> {
 /// Print a newline and subsequent indentation
 struct Newline;
 
-impl DisplayIndent for Newline {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Newline {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         // Every new line should start with indentation
         writeln!(ind.formatter)?;
         ind.indent()
@@ -555,88 +586,99 @@ impl DisplayIndent for Newline {
 /// before the first item and after the last. The delimiter will be printed
 /// after each item *including the last*. This includes the final delimiter
 /// because the trailing comma is nice on object literals.
-struct Indent<'a, T> {
-    items: &'a [T],
+///
+/// `I` is typically `&[T]`.
+struct Indent<'a, I> {
+    items: I,
     delimiter: &'a str,
 }
 
-impl<'a, T> Indent<'a, T> {
-    fn new(items: &'a [T], delimiter: &'a str) -> Self {
+impl<'a, I> Indent<'a, I> {
+    fn new(items: I, delimiter: &'a str) -> Self {
         Self { items, delimiter }
     }
 }
 
-impl<T: DisplayIndent> DisplayIndent for Indent<'_, T> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        // Shortcut to prevent newlines in empty collections/blocks
-        if self.items.is_empty() {
-            return Ok(());
-        }
-
+impl<I> DisplayIndent for Indent<'_, I>
+where
+    I: IntoIterator,
+    I::Item: DisplayIndent,
+{
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        let mut empty = true;
         ind.indent_level += 1;
         for item in self.items {
+            empty = false;
             Newline.fmt(ind)?;
             item.fmt(ind)?;
             write!(ind.formatter, "{}", self.delimiter)?;
         }
         ind.indent_level -= 1;
         // Add a final newline after the last element. This should be back at
-        // the original indentation
-        Newline.fmt(ind)?;
+        // the original indentation. Prevent newlines in empty blocks.
+        if !empty {
+            Newline.fmt(ind)?;
+        }
         Ok(())
     }
 }
 
-impl<T: DisplayIndent> DisplayIndent for &T {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
-        (*self).fmt(ind)
-    }
-}
-
-impl<T: DisplayIndent> DisplayIndent for Box<T> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl<T> DisplayIndent for &Box<T>
+where
+    for<'a> &'a T: DisplayIndent,
+{
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (**self).fmt(ind)
     }
 }
 
 impl DisplayIndent for bool {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
 
 impl DisplayIndent for i64 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
 
 impl DisplayIndent for f64 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
 
 impl DisplayIndent for &str {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
 
-impl DisplayIndent for String {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &String {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
 
-impl DisplayIndent for Cow<'_, str> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+impl DisplayIndent for &Cow<'_, str> {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
+    }
+}
+
+impl<T> DisplayIndent for &Option<T>
+where
+    for<'a> &'a T: DisplayIndent,
+{
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        self.as_ref().fmt(ind)
     }
 }
 
 impl<T: DisplayIndent> DisplayIndent for Option<T> {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
             Some(value) => value.fmt(ind),
             None => Ok(()),
@@ -650,7 +692,7 @@ where
     T0: DisplayIndent,
     T1: DisplayIndent,
 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.0.fmt(ind)?;
         self.1.fmt(ind)?;
         Ok(())
@@ -663,7 +705,7 @@ where
     T1: DisplayIndent,
     T2: DisplayIndent,
 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.0.fmt(ind)?;
         self.1.fmt(ind)?;
         self.2.fmt(ind)?;
@@ -678,7 +720,7 @@ where
     T2: DisplayIndent,
     T3: DisplayIndent,
 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.0.fmt(ind)?;
         self.1.fmt(ind)?;
         self.2.fmt(ind)?;
@@ -695,7 +737,7 @@ where
     T3: DisplayIndent,
     T4: DisplayIndent,
 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.0.fmt(ind)?;
         self.1.fmt(ind)?;
         self.2.fmt(ind)?;
@@ -714,7 +756,7 @@ where
     T4: DisplayIndent,
     T5: DisplayIndent,
 {
-    fn fmt(&self, ind: &mut Indenter) -> fmt::Result {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         self.0.fmt(ind)?;
         self.1.fmt(ind)?;
         self.2.fmt(ind)?;

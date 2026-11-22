@@ -16,16 +16,21 @@ use crate::{
 use indexmap::{IndexMap, map::Entry};
 use std::{collections::VecDeque, sync::Arc};
 
-/// TODO
+/// Running invocation of a [`Process`]
+///
+/// A fiber can be spawned at a program's entrypoint, or by invoking a function
+/// that was previously returned from the process. This is an internal concept.
+/// Because fibers are not interruptible, they exist only for the duration of
+/// a single external invocation.
 #[derive(Debug)]
-pub(super) struct ThreadState<'process> {
+pub(super) struct Fiber<'process> {
     // TODO comments
     process: &'process Process,
     call_stack: CallStack,
     exports: Option<Exports>,
 }
 
-impl<'process> ThreadState<'process> {
+impl<'process> Fiber<'process> {
     /// TODO
     pub fn new(
         globals: Arc<GlobalEnvironment>,
@@ -85,7 +90,7 @@ impl<'process> ThreadState<'process> {
         Ok(())
     }
 
-    /// Move the exported values out of this thread state
+    /// Move the exported values out of this fiber
     pub fn into_exports(self) -> Option<Exports> {
         self.exports
     }

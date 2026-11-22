@@ -121,7 +121,7 @@ pub struct Engine {
     /// This includes only the global library (which for the default engine is
     /// just the [standard library](stdlib)). User-defined natives can only be
     /// exposed through modules. As such, we can use refcounting to share this
-    /// among all processes and threads.
+    /// among all processes and fibers.
     globals: Arc<GlobalEnvironment>,
 }
 

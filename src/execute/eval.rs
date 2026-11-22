@@ -9,7 +9,7 @@ use crate::{
         TemplateChunkKind, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{RuntimeError, RuntimeErrorKind, ValueError},
-    execute::{ThreadState, exec::Execute, state::Location},
+    execute::{Fiber, exec::Execute, state::Location},
     value::{
         Array, Number, Object, Value, ValueType,
         function::{Function, FunctionInner},
@@ -24,12 +24,12 @@ pub trait Evaluate: Node {
     /// originated. We use `Traced<RuntimeError,Span>` instead of
     /// `Error::Runtime` because we don't have the context needed here to
     /// qualify the spans.
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError>;
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         match &self.kind {
             ExpressionKind::Parenthesized(expression) => expression.eval(state),
             ExpressionKind::Literal(literal) => match literal {
@@ -67,7 +67,7 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let mut array = Array::default();
         for element in &self.elements {
             let value = element.expression.eval(state)?;
@@ -86,7 +86,7 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let mut object = Object::default();
         for property in &self.properties {
             match &property.kind {
@@ -114,7 +114,7 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for PropertyName {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         match &self.kind {
             // {field: "value"}
             // Shorthand syntax unpacks to {field: field} in parsing
@@ -128,7 +128,7 @@ impl Evaluate for PropertyName {
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         self.chunks
             .iter()
             .map(|chunk| match &chunk.kind {
@@ -149,7 +149,7 @@ impl Evaluate for TemplateLiteral {
 }
 
 impl Evaluate for FunctionDefinition {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let scope = state.scope();
         let captures = scope
             .captures(&self.captures)
@@ -162,7 +162,7 @@ impl Evaluate for FunctionDefinition {
 /// This is implemented on `FunctionCall` so we can access our own node
 /// ID to add to the call stack
 impl Evaluate for FunctionCall {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let function = self.function.eval(state)?;
         match function {
             Value::Function(function) => {
@@ -205,7 +205,7 @@ impl Evaluate for FunctionCall {
 
 /// Property access: `.` or `[...]`
 impl Evaluate for PropertyAccess {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let target = self.object.eval(state)?;
         let property = self.property.eval(state)?;
         get_property(state, target, property)
@@ -215,7 +215,7 @@ impl Evaluate for PropertyAccess {
 
 /// Optional object/array property access: `?.` or `?.[...]`
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         match self.object.eval(state)? {
             // Do NOT evaluate the property expression if the target is
             // null/undefined
@@ -238,7 +238,7 @@ impl Evaluate for OptionalPropertyAccess {
 /// This will first check the value itself (for arrays/objects), then check
 /// its prototype. Error if `target` is `null`/`undefined`.
 fn get_property(
-    state: &mut ThreadState<'_>,
+    state: &mut Fiber<'_>,
     target: Value,
     property: Value,
 ) -> Result<Value, RuntimeErrorKind> {
@@ -260,7 +260,7 @@ fn get_property(
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let value = self.expression.eval(state)?;
         match self.operator {
             UnaryOperator::BooleanNot => Ok(!value),
@@ -274,7 +274,7 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(&self, state: &mut ThreadState<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let lhs = self.lhs.eval(state)?;
         let rhs = self.rhs.eval(state)?;
         match self.operator {
@@ -305,7 +305,7 @@ impl Function {
     /// track this for the stack trace.
     pub(super) fn call(
         &self,
-        state: &mut ThreadState<'_>,
+        state: &mut Fiber<'_>,
         location: Location,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
@@ -350,7 +350,7 @@ impl Function {
 
     /// Bind argument values to parameters in the current scope
     fn bind_arguments(
-        state: &mut ThreadState,
+        state: &mut Fiber,
         parameters: &[FunctionParameter],
         arguments: Vec<Value>,
     ) -> Result<(), RuntimeError> {

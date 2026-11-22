@@ -8,7 +8,7 @@ use crate::{
         Module, Node, Statement, StatementKind, Variable,
     },
     error::{RuntimeError, RuntimeErrorKind},
-    execute::{ThreadState, eval::Evaluate},
+    execute::{Fiber, eval::Evaluate},
     util::OptionExt,
     value::Value,
 };
@@ -24,14 +24,14 @@ pub trait Execute: Node {
     /// Execute the statement, modifying state appropriately
     fn exec<'process>(
         &self,
-        state: &mut ThreadState<'process>,
+        state: &mut Fiber<'process>,
     ) -> Result<Self::Output<'process>, RuntimeError>;
 }
 
 impl Execute for Module {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         exec_all(state, &self.statements)?;
         Ok(())
     }
@@ -41,10 +41,7 @@ impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
     type Output<'process> = Option<Return>;
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<Return>, RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         match &self.kind {
             StatementKind::Empty => Ok(None),
             StatementKind::Block(block) => {
@@ -87,10 +84,7 @@ impl Execute for Statement {
 impl Execute for Block {
     type Output<'process> = Option<Return>;
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<Return>, RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         for statement in &self.statements {
             if let Some(terminate) = statement.exec(state)? {
                 return Ok(Some(terminate));
@@ -103,7 +97,7 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         let mut exports = self.module.exec(state)?;
 
         if let Some(name) = &self.default {
@@ -140,7 +134,7 @@ impl Execute for ImportModule {
     /// Resolve a module name/path into its exports. For native modules this
     /// just grabs the exports from the registry. For paths, it will execute
     /// the external program
-    fn exec(&self, state: &mut ThreadState) -> Result<Exports, RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<Exports, RuntimeError> {
         match &self.kind {
             ImportModuleKind::Native(name) => state
                 .process()
@@ -150,9 +144,9 @@ impl Execute for ImportModule {
                 .cloned()
                 .map_err(|error| state.trace_error(error, self)),
             ImportModuleKind::Local(ast) => {
-                let mut thread_state = state.process().create_thread();
-                ast.exec(&mut thread_state)?;
-                let exports = thread_state.into_exports().unwrap();
+                let mut fiber = state.process().create_fiber();
+                ast.exec(&mut fiber)?;
+                let exports = fiber.into_exports().unwrap();
                 Ok(exports)
             }
         }
@@ -162,7 +156,7 @@ impl Execute for ImportModule {
 impl Execute for ExportDeclaration {
     type Output<'process> = ();
 
-    fn exec(&self, state: &mut ThreadState) -> Result<(), RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         match &self.kind {
             ExportDeclarationKind::Declaration(declaration) => {
                 for name in declaration.exec(state)? {
@@ -185,10 +179,7 @@ impl Execute for ExportDeclaration {
 impl Execute for If {
     type Output<'process> = Option<Return>;
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Option<Return>, RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         if self.condition.eval(state)?.to_bool() {
             self.body.exec(state)
         } else if let Some(statement) = &self.else_body {
@@ -203,10 +194,7 @@ impl Execute for Declaration {
     /// Return the list of declared names
     type Output<'process> = Vec<String>;
 
-    fn exec(
-        &self,
-        state: &mut ThreadState,
-    ) -> Result<Vec<String>, RuntimeError> {
+    fn exec(&self, state: &mut Fiber) -> Result<Vec<String>, RuntimeError> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
@@ -223,7 +211,7 @@ impl Execute for Variable {
 
     fn exec<'process>(
         &self,
-        state: &mut ThreadState<'process>,
+        state: &mut Fiber<'process>,
     ) -> Result<Self::Output<'process>, RuntimeError> {
         let value = self
             .init
@@ -240,7 +228,7 @@ impl Execute for FunctionBody {
 
     fn exec<'process>(
         &self,
-        state: &mut ThreadState<'process>,
+        state: &mut Fiber<'process>,
     ) -> Result<Self::Output<'process>, RuntimeError> {
         match self {
             Self::Expression(expression) => expression.eval(state),
@@ -259,7 +247,7 @@ pub struct Return(Option<Value>);
 
 /// Execute all nodes in a sequence, in order
 fn exec_all(
-    state: &mut ThreadState,
+    state: &mut Fiber,
     statements: &[Statement],
 ) -> Result<Option<Return>, RuntimeError> {
     for statement in statements {

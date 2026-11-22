@@ -15,7 +15,7 @@ use crate::{
     error::{DuplicateAppData, RuntimeError, RuntimeErrorKind, UnknownAppData},
     execute::{
         exec::Execute,
-        state::{Location, ThreadState},
+        state::{Fiber, Location},
     },
     name::NativeModuleName,
     value::{FromPetitArgs, IntoPetitResult, Value, function::Function},
@@ -104,10 +104,10 @@ impl Process {
     ///
     /// TODO
     pub fn execute(&self) -> Result<Exports, RuntimeError> {
-        let mut thread_state = self.create_thread();
-        self.program.module().exec(&mut thread_state)?;
+        let mut fiber = self.create_fiber();
+        self.program.module().exec(&mut fiber)?;
         // Exporting is available here because we're in the root scope
-        Ok(thread_state.into_exports().unwrap())
+        Ok(fiber.into_exports().unwrap())
     }
 
     /// Call a function that originated from this process
@@ -123,14 +123,14 @@ impl Process {
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
         // Exporting is NOT allowed here, because we're not in the root scope
-        let mut thread_state =
-            ThreadState::new(Arc::clone(&self.engine.globals), self, false);
-        function.call(&mut thread_state, Location::Native, arguments)
+        let mut fiber =
+            Fiber::new(Arc::clone(&self.engine.globals), self, false);
+        function.call(&mut fiber, Location::Native, arguments)
     }
 
-    /// Create a new thread to evaluate a module
-    fn create_thread(&self) -> ThreadState<'_> {
-        ThreadState::new(self.engine.globals.clone(), self, true)
+    /// Create a new fiber to execute a module
+    fn create_fiber(&self) -> Fiber<'_> {
+        Fiber::new(self.engine.globals.clone(), self, true)
     }
 
     /// Look up a native module by name

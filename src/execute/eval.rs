@@ -317,7 +317,7 @@ impl Function {
                 // Put all declarations in a new frame. This will init a clean
                 // scope from the globals. We'll add captures and args to that
                 state.with_frame(
-                    state.process().engine.globals.clone().scope(),
+                    state.world().engine.globals.clone().scope(),
                     location,
                     self.name().map(String::from),
                     |state| {
@@ -336,14 +336,14 @@ impl Function {
                 )
             }
             FunctionInner::Native { function, .. } => function
-                .call(state.process(), arguments)
+                .call(state.world(), arguments)
                 .map_err(|error| state.trace_error(error, location)),
             FunctionInner::Bound {
                 function, receiver, ..
             } => function
                 // Clone is necessary on receiver because there could be
                 // multiple references to `this.f`
-                .call(state.process(), Value::clone(receiver), arguments)
+                .call(state.world(), Value::clone(receiver), arguments)
                 .map_err(|error| state.trace_error(error, location)),
         }
     }

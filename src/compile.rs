@@ -46,7 +46,7 @@ pub fn compile_ast(module: Module) -> Program {
 ///
 /// This is produced by [`compile`] and contains all the static information
 /// needed to run a program. It is not itself executable though; that requires
-/// a [`Process`].
+/// a [`World`].
 #[derive(Debug)]
 pub struct Program {
     sources: SourceTable,

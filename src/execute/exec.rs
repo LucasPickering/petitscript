@@ -19,17 +19,17 @@ pub trait Execute: Node {
     ///
     /// Execution does *not* emit a value within the semantics of PS. The
     /// [Execute::Output] return type facilitates control flow (e.g. `return`).
-    type Output<'process>;
+    type Output<'world>;
 
     /// Execute the statement, modifying state appropriately
-    fn exec<'process>(
+    fn exec<'world>(
         &self,
-        state: &mut Fiber<'process>,
-    ) -> Result<Self::Output<'process>, RuntimeError>;
+        state: &mut Fiber<'world>,
+    ) -> Result<Self::Output<'world>, RuntimeError>;
 }
 
 impl Execute for Module {
-    type Output<'process> = ();
+    type Output<'world> = ();
 
     fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         exec_all(state, &self.statements)?;
@@ -39,7 +39,7 @@ impl Execute for Module {
 
 impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
-    type Output<'process> = Option<Return>;
+    type Output<'world> = Option<Return>;
 
     fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         match &self.kind {
@@ -82,7 +82,7 @@ impl Execute for Statement {
 }
 
 impl Execute for Block {
-    type Output<'process> = Option<Return>;
+    type Output<'world> = Option<Return>;
 
     fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         for statement in &self.statements {
@@ -95,7 +95,7 @@ impl Execute for Block {
 }
 
 impl Execute for ImportDeclaration {
-    type Output<'process> = ();
+    type Output<'world> = ();
 
     fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         let mut exports = self.module.exec(state)?;
@@ -129,7 +129,7 @@ impl Execute for ImportDeclaration {
 }
 
 impl Execute for ImportModule {
-    type Output<'process> = Exports;
+    type Output<'world> = Exports;
 
     /// Resolve a module name/path into its exports. For native modules this
     /// just grabs the exports from the registry. For paths, it will execute
@@ -137,14 +137,14 @@ impl Execute for ImportModule {
     fn exec(&self, state: &mut Fiber) -> Result<Exports, RuntimeError> {
         match &self.kind {
             ImportModuleKind::Native(name) => state
-                .process()
+                .world()
                 .get_native_module(name)
                 // The clone is not strictly necessary, but the consuming logic
                 // gets a lot more complicated if we don't
                 .cloned()
                 .map_err(|error| state.trace_error(error, self)),
             ImportModuleKind::Local(ast) => {
-                let mut fiber = state.process().create_fiber();
+                let mut fiber = state.world().create_fiber();
                 ast.exec(&mut fiber)?;
                 let exports = fiber.into_exports().unwrap();
                 Ok(exports)
@@ -154,7 +154,7 @@ impl Execute for ImportModule {
 }
 
 impl Execute for ExportDeclaration {
-    type Output<'process> = ();
+    type Output<'world> = ();
 
     fn exec(&self, state: &mut Fiber) -> Result<(), RuntimeError> {
         match &self.kind {
@@ -177,7 +177,7 @@ impl Execute for ExportDeclaration {
 }
 
 impl Execute for If {
-    type Output<'process> = Option<Return>;
+    type Output<'world> = Option<Return>;
 
     fn exec(&self, state: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
         if self.condition.eval(state)?.to_bool() {
@@ -192,7 +192,7 @@ impl Execute for If {
 
 impl Execute for Declaration {
     /// Return the list of declared names
-    type Output<'process> = Vec<String>;
+    type Output<'world> = Vec<String>;
 
     fn exec(&self, state: &mut Fiber) -> Result<Vec<String>, RuntimeError> {
         // Track the list of declared names
@@ -207,12 +207,12 @@ impl Execute for Declaration {
 
 impl Execute for Variable {
     /// Return the list of declared names
-    type Output<'process> = Vec<String>;
+    type Output<'world> = Vec<String>;
 
-    fn exec<'process>(
+    fn exec<'world>(
         &self,
-        state: &mut Fiber<'process>,
-    ) -> Result<Self::Output<'process>, RuntimeError> {
+        state: &mut Fiber<'world>,
+    ) -> Result<Self::Output<'world>, RuntimeError> {
         let value = self
             .init
             .as_ref()
@@ -224,12 +224,12 @@ impl Execute for Variable {
 
 impl Execute for FunctionBody {
     /// Function return value
-    type Output<'process> = Value;
+    type Output<'world> = Value;
 
-    fn exec<'process>(
+    fn exec<'world>(
         &self,
-        state: &mut Fiber<'process>,
-    ) -> Result<Self::Output<'process>, RuntimeError> {
+        state: &mut Fiber<'world>,
+    ) -> Result<Self::Output<'world>, RuntimeError> {
         match self {
             Self::Expression(expression) => expression.eval(state),
             Self::Block(block) => match block.exec(state)? {

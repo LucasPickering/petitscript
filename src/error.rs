@@ -528,8 +528,8 @@ impl RuntimeError {
     /// ```
     /// # use petitscript::Engine;
     /// let engine = Engine::default();
-    /// let process = engine.compile("f()").unwrap();
-    /// let error = process.execute().unwrap_err();
+    /// let world = engine.compile("f()").unwrap();
+    /// let error = world.execute().unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
     /// eprintln!("{}", renderer.render(&[error.to_report()]));
     /// ```
@@ -821,7 +821,7 @@ pub struct ModuleNameError {
 
 /// User requested app data of a type that has not been set
 ///
-/// See [`Process::app_data`](crate::Process::app_data).
+/// See [`World::app_data`](crate::World::app_data).
 #[derive(Debug, thiserror::Error)]
 #[error("no app data of type `{type_name}` is registered")]
 pub struct UnknownAppData {
@@ -830,7 +830,7 @@ pub struct UnknownAppData {
 
 /// Attempted to register two values of the same type as app data
 ///
-/// See [`Process::app_data`](crate::Process::app_data).
+/// See [`World::app_data`](crate::World::app_data).
 #[derive(Debug, thiserror::Error)]
 #[error("multiple app data values of type `{type_name}` were registered")]
 pub struct DuplicateAppData {

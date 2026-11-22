@@ -110,8 +110,8 @@
 //!
 //! // You can also run the code directly:
 //! let engine = Engine::new();
-//! let process = engine.compile_ast(module);
-//! let exports = process.execute().unwrap();
+//! let world = engine.compile_ast(module);
+//! let exports = world.execute().unwrap();
 //! assert_eq!(exports, Exports::new(Some(6), [("x", 3)]));
 //! ```
 

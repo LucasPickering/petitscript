@@ -28,24 +28,25 @@ use std::{
     sync::Arc,
 };
 
-/// TODO rename this - a process implies it's running, which is not true. It
-/// only runs on demand.
+/// Instantiated [`Program`] that can be executed
+///
+/// TODO
 #[derive(Clone, Debug)]
-pub struct Process {
-    /// Engine that compiled this program
+pub struct World {
+    /// Engine to execute under
     ///
-    /// This provides globals and native modules
+    /// This provides globals and native modules.
     engine: Engine,
     /// Program we'll be executing
     program: Arc<Program>,
-    /// Arbitrary user-defined data attached to this process
+    /// Arbitrary user-defined data attached to this world
     app_data: AppData,
 }
 
 #[cfg(test)]
-static_assertions::assert_impl_all!(Process: Send, Sync);
+static_assertions::assert_impl_all!(World: Send, Sync);
 
-impl Process {
+impl World {
     /// TODO
     pub(crate) fn new(engine: Engine, program: Program) -> Self {
         Self {
@@ -64,7 +65,7 @@ impl Process {
         self.program.sources().iter()
     }
 
-    /// Get user-defined app data attached to the process
+    /// Get user-defined app data attached to the world
     ///
     /// App data is stored and fetched by type, meaning **there can only be one
     /// piece of app data per type**. See [set_app_data](Self::set_app_data) for
@@ -77,10 +78,10 @@ impl Process {
         self.app_data.get()
     }
 
-    /// Attach arbitrary data of a statically known type to this process
+    /// Attach arbitrary data of a statically known type to this world
     ///
     /// This data will be accessible to all subsequent executions of this
-    /// process. This makes it easy to pass data to native functions.
+    /// world. This makes it easy to pass data to native functions.
     ///
     /// App data is keyed by its type, meaning **only one instance of any given
     /// type can be stored.**
@@ -110,9 +111,9 @@ impl Process {
         Ok(fiber.into_exports().unwrap())
     }
 
-    /// Call a function that originated from this process
+    /// Call a function that originated from this world
     ///
-    /// TODO what happens if you pass it a function from another process?
+    /// TODO what happens if you pass it a function from another world?
     ///
     /// # Errors
     ///
@@ -146,7 +147,7 @@ impl Process {
 
 /// Values exported from a module
 ///
-/// This is the output of executing a process.
+/// This is the output of executing a world.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Exports {
     /// Default exported value
@@ -200,8 +201,8 @@ impl Exports {
 
     /// Create a native function and export it with the given name
     ///
-    /// The given function must take two arguments: `(process, args)`. `process`
-    /// is the [`Process`] executing the function, and `args` is a list of
+    /// The given function must take two arguments: `(world, args)`. `world`
+    /// is the [`World`] executing the function, and `args` is a list of
     /// arguments passed by the caller.
     ///
     /// `args` must implement [`FromPetitArgs`], which is implemented for tuples
@@ -217,7 +218,7 @@ impl Exports {
     /// use petitscript::{Exports, Value, error::ValueError, value::Number};
     ///
     /// let mut module = Exports::default();
-    /// // All functions take two arguments: process and args. Use tuples to
+    /// // All functions take two arguments: world and args. Use tuples to
     /// // unpack the args
     /// module.export_fn("args0", |_, ()| Value::Null);
     /// module.export_fn("args1", |_, (arg,): (Value,)| arg);
@@ -243,7 +244,7 @@ impl Exports {
         name: impl Into<String>,
         function: F,
     ) where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {
@@ -266,13 +267,13 @@ impl Display for Exports {
     }
 }
 
-/// Arbitrary data that a user can attach to a process. Multiple pieces of data
-/// can be attached, but data is retrieved by its type, meaning **only one entry
-/// can existing for any type**.
+/// Arbitrary data that a user can attach to a world
+///
+/// Multiple pieces of data can be attached, but data is retrieved by its type,
+/// meaning **only one entry can existing for any type**.
 #[derive(Clone, Debug, Default)]
 struct AppData(
-    /// Inner arc is necessary so app data can be shared when a process is
-    /// cloned
+    /// Inner arc is necessary so app data can be shared when a world is cloned
     HashMap<TypeId, Arc<dyn Any + Send + Sync>>,
 );
 

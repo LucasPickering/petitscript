@@ -1,7 +1,7 @@
 //! Program state management
 
 use crate::{
-    Process, RuntimeErrorKind,
+    RuntimeErrorKind, World,
     ast::{ArrayPatternElementKind, Binding, BindingKind, Node, NodeId},
     compile::Program,
     error::{RuntimeError, StackTraceFrame},
@@ -16,29 +16,29 @@ use crate::{
 use indexmap::{IndexMap, map::Entry};
 use std::{collections::VecDeque, sync::Arc};
 
-/// Running invocation of a [`Process`]
+/// Running invocation of a [`World`]
 ///
 /// A fiber can be spawned at a program's entrypoint, or by invoking a function
-/// that was previously returned from the process. This is an internal concept.
+/// that was previously returned from the world. This is an internal concept.
 /// Because fibers are not interruptible, they exist only for the duration of
 /// a single external invocation.
 #[derive(Debug)]
-pub(super) struct Fiber<'process> {
+pub(super) struct Fiber<'world> {
     // TODO comments
-    process: &'process Process,
+    world: &'world World,
     call_stack: CallStack,
     exports: Option<Exports>,
 }
 
-impl<'process> Fiber<'process> {
+impl<'world> Fiber<'world> {
     /// TODO
     pub fn new(
         globals: Arc<GlobalEnvironment>,
-        process: &'process Process,
+        world: &'world World,
         can_export: bool,
     ) -> Self {
         Self {
-            process,
+            world,
             call_stack: CallStack::new(globals),
             // Function invocations cannot export, since they're not at the root
             // scope
@@ -51,13 +51,13 @@ impl<'process> Fiber<'process> {
     }
 
     /// TODO
-    pub fn process(&self) -> &'process Process {
-        self.process
+    pub fn world(&self) -> &'world World {
+        self.world
     }
 
     /// Get the program being executed
     pub fn program(&self) -> &Program {
-        &self.process.program
+        &self.world.program
     }
 
     /// Set a named export value
@@ -306,8 +306,8 @@ impl<'process> Fiber<'process> {
 /// scope.
 ///
 /// Invariant: A call stack can never be empty! The root scope is always the
-/// bottom frame of the stack. For root processes, this is the root scope of
-/// the program. For function calls, it's the scope of the entrypoint function.
+/// bottom frame of the stack. For root fibers, this is the root scope of the
+/// program. For function calls, it's the scope of the entrypoint function.
 #[derive(Debug)]
 pub struct CallStack(Vec<CallFrame>);
 

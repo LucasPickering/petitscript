@@ -2,7 +2,7 @@
 //! module, not exposed to users.
 
 use crate::{
-    Process, RuntimeErrorKind,
+    RuntimeErrorKind, World,
     ast::Identifier,
     value::{
         FromPetitArgs, Function, IntoPetitResult, Value, ValueType,
@@ -45,10 +45,11 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// Are we in the root scope of the process? The root scope is the topmost
-    /// lexical scope in a source file. It is always the _second_ scope in the
-    /// chain (after the global scope), and is the only scope that allows
-    /// exports.
+    /// Are we in the root scope of the fiber?
+    ///
+    /// The root scope is the topmost lexical scope in a source file. It is
+    /// always the _second_ scope in the chain (after the global scope), and
+    /// is the only scope that allows exports.
     pub fn is_root(&self) -> bool {
         self.stack.is_empty()
     }
@@ -154,10 +155,12 @@ impl Display for Scope {
     }
 }
 
-/// The global immutable environment. This is defined one when an engine is
-/// initialized and shared among all processes and threads. The global
-/// environment includes only the PetitScript standard library. All
-/// user-provided native functions must be defined in separate modules.
+/// Global immutable environment
+///
+/// This is defined one when an engine is initialized and shared among all
+/// worlds and fibers. The global environment includes only the PetitScript
+/// standard library. All user-provided native functions must be defined in
+/// separate modules.
 ///
 /// After construction, this should always be wrapped in an `Arc` so it can be
 /// shared cheaply.
@@ -187,7 +190,7 @@ impl GlobalEnvironment {
         name: impl Into<String>,
         function: F,
     ) where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {

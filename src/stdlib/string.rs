@@ -2,14 +2,14 @@
 //! module and its prototype
 
 use crate::{
+    Value, World,
     execute::Prototype,
-    value::{function::BoundFunction, PetitString},
-    Process, Value,
+    value::{PetitString, function::BoundFunction},
 };
 
 /// Coerce a value to a string
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/String
-pub fn constructor(_: &Process, value: Value) -> PetitString {
+pub fn constructor(_: &World, value: Value) -> PetitString {
     value.to_string()
 }
 
@@ -24,18 +24,18 @@ pub fn prototype() -> Prototype {
 
 /// `String.trim`
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/trim
-fn trim(_: &Process, this: PetitString, _: ()) -> String {
+fn trim(_: &World, this: PetitString, _: ()) -> String {
     this.trim().to_owned()
 }
 
 /// `String.trimStart`
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/trimStart
-fn trim_start(_: &Process, this: PetitString, _: ()) -> String {
+fn trim_start(_: &World, this: PetitString, _: ()) -> String {
     this.trim_start().to_owned()
 }
 
 /// `String.trimEnd`
 /// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/trimEnd
-fn trim_end(_: &Process, this: PetitString, _: ()) -> String {
+fn trim_end(_: &World, this: PetitString, _: ()) -> String {
     this.trim_end().to_owned()
 }

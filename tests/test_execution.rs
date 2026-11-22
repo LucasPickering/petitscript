@@ -1,12 +1,12 @@
 use indexmap::IndexMap;
 use petitscript::{
-    Engine, Exports, Process, Source, Value, error::RuntimeError, value::Number,
+    Engine, Exports, Source, Value, World, error::RuntimeError, value::Number,
 };
 use pretty_assertions::assert_eq;
 use std::{path::Path, sync::LazyLock};
 use test_case::test_case;
 
-fn add(_: &Process, (a, b): (Number, Number)) -> Number {
+fn add(_: &World, (a, b): (Number, Number)) -> Number {
     a + b
 }
 
@@ -133,8 +133,8 @@ fn execute(path: impl AsRef<Path>) -> Result<Value, RuntimeError> {
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());
     let source = Source::file(path).unwrap();
-    let process = ENGINE.compile(source).unwrap();
-    let exports = process.execute()?;
+    let world = ENGINE.compile(source).unwrap();
+    let exports = world.execute()?;
 
     assert_eq!(
         exports.named,

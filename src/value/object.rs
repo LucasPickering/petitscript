@@ -1,5 +1,5 @@
 use crate::{
-    Process,
+    World,
     value::{FromPetitArgs, Function, IntoPetitResult, Value},
 };
 use indexmap::IndexMap;
@@ -57,7 +57,7 @@ impl Object {
         function: F,
     ) -> Self
     where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {

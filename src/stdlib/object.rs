@@ -1,7 +1,7 @@
 //! Standard library functions related to objects.
 
 use crate::{
-    Process, Value,
+    World, Value,
     value::{Array, Object, PetitString},
 };
 
@@ -18,7 +18,7 @@ pub fn module() -> Object {
 /// value]]`
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/entries>
-fn entries(_: &Process, object: Object) -> Array {
+fn entries(_: &World, object: Object) -> Array {
     object
         .into_iter()
         .map(|(k, v)| Array::from([k.into(), v]).into())
@@ -28,20 +28,20 @@ fn entries(_: &Process, object: Object) -> Array {
 /// `Object.hasOwn`: check if an object contains a key
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwn>
-fn has_own(_: &Process, (object, key): (Object, PetitString)) -> bool {
+fn has_own(_: &World, (object, key): (Object, PetitString)) -> bool {
     object.get(&key).is_some()
 }
 
 /// `Object.keys`: get the keys of an object as an array
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys>
-fn keys(_: &Process, object: Object) -> Array {
+fn keys(_: &World, object: Object) -> Array {
     object.into_keys().map(Value::from).collect()
 }
 
 /// `Object.values`: get the values of an object as an array
 ///
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/values>
-fn values(_: &Process, object: Object) -> Array {
+fn values(_: &World, object: Object) -> Array {
     object.into_values().collect()
 }

@@ -1,5 +1,5 @@
 use crate::{
-    Process,
+    World,
     ast::{FunctionDefinition, Identifier},
     error::RuntimeErrorKind,
     value::{FromPetit, IntoPetit, Value},
@@ -43,7 +43,7 @@ impl Function {
     /// or [`Exports::export_fn`](crate::Exports::export_fn).
     pub fn native<F, Args, Out>(name: String, function: F) -> Self
     where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {
@@ -215,7 +215,7 @@ impl FromIterator<(String, Value)> for Captures {
 pub struct NativeFunction(
     #[expect(clippy::type_complexity)]
     Arc<
-        dyn Fn(&Process, Vec<Value>) -> Result<Value, RuntimeErrorKind>
+        dyn Fn(&World, Vec<Value>) -> Result<Value, RuntimeErrorKind>
             + Send
             + Sync,
     >,
@@ -225,15 +225,15 @@ impl NativeFunction {
     /// TODO
     fn new<F, Args, Out>(f: F) -> Self
     where
-        F: 'static + Fn(&Process, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function = move |process: &Process, args: Vec<Value>| {
+        let function = move |world: &World, args: Vec<Value>| {
             // TODO add error context
             let args = Args::from_petit_args(args)?;
-            let output = f(process, args).into_petit_result()?;
+            let output = f(world, args).into_petit_result()?;
             output.into_petit().map_err(RuntimeErrorKind::Value)
         };
         Self(Arc::new(function))
@@ -242,10 +242,10 @@ impl NativeFunction {
     /// Invoke this function
     pub(crate) fn call(
         &self,
-        process: &Process,
+        world: &World,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeErrorKind> {
-        (self.0)(process, arguments)
+        (self.0)(world, arguments)
     }
 }
 
@@ -271,7 +271,7 @@ impl PartialEq for NativeFunction {
 pub(crate) struct BoundFunction(
     #[expect(clippy::type_complexity)]
     Arc<
-        dyn Fn(&Process, Value, Vec<Value>) -> Result<Value, RuntimeErrorKind>
+        dyn Fn(&World, Value, Vec<Value>) -> Result<Value, RuntimeErrorKind>
             + Send
             + Sync,
     >,
@@ -281,31 +281,30 @@ impl BoundFunction {
     /// TODO
     pub(crate) fn new<F, This, Args, Out>(f: F) -> Self
     where
-        F: 'static + Fn(&Process, This, Args) -> Out + Send + Sync,
+        F: 'static + Fn(&World, This, Args) -> Out + Send + Sync,
         This: FromPetit,
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {
         // Wrap the lambda with logic to convert input/output/error, and box it
-        let function =
-            move |process: &Process, this: Value, args: Vec<Value>| {
-                // TODO add error context
-                let this = This::from_petit(this.clone())?;
-                let args = Args::from_petit_args(args)?;
-                let output = f(process, this, args).into_petit_result()?;
-                output.into_petit().map_err(RuntimeErrorKind::Value)
-            };
+        let function = move |world: &World, this: Value, args: Vec<Value>| {
+            // TODO add error context
+            let this = This::from_petit(this.clone())?;
+            let args = Args::from_petit_args(args)?;
+            let output = f(world, this, args).into_petit_result()?;
+            output.into_petit().map_err(RuntimeErrorKind::Value)
+        };
         Self(Arc::new(function))
     }
 
     /// Invoke this function
     pub(crate) fn call(
         &self,
-        process: &Process,
+        world: &World,
         receiver: Value,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeErrorKind> {
-        (self.0)(process, receiver, arguments)
+        (self.0)(world, receiver, arguments)
     }
 }
 

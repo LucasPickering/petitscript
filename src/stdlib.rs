@@ -5,7 +5,7 @@ mod object;
 mod string;
 
 use crate::{
-    Process,
+    World,
     error::RuntimeErrorKind,
     execute::GlobalEnvironment,
     value::{Number, Object, Value, ValueType, function::Varargs},
@@ -27,13 +27,13 @@ pub fn stdlib() -> GlobalEnvironment {
 }
 
 /// Coerce a value to a boolean
-fn boolean(_: &Process, value: Value) -> bool {
+fn boolean(_: &World, value: Value) -> bool {
     value.to_bool()
 }
 
 /// Coerce a value to a number
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number#number_coercion>
-fn number(_: &Process, value: Value) -> Number {
+fn number(_: &World, value: Value) -> Number {
     value.to_number().unwrap_or(Number::NAN)
 }
 
@@ -45,7 +45,7 @@ fn console() -> Object {
 }
 
 /// Log values to stdout
-fn console_log(_: &Process, Varargs(values): Varargs) {
+fn console_log(_: &World, Varargs(values): Varargs) {
     for (i, value) in values.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -56,7 +56,7 @@ fn console_log(_: &Process, Varargs(values): Varargs) {
 }
 
 /// Log values to stdout with their debug format
-fn console_debug(_: &Process, Varargs(values): Varargs) {
+fn console_debug(_: &World, Varargs(values): Varargs) {
     for (i, value) in values.iter().enumerate() {
         if i > 0 {
             print!(" ");
@@ -75,11 +75,11 @@ pub fn json() -> Object {
 }
 
 /// Stringify a value to JSON
-fn json_stringify(_: &Process, value: Value) -> String {
+fn json_stringify(_: &World, value: Value) -> String {
     value.to_json()
 }
 
 /// Parse a JSON string
-fn json_parse(_: &Process, input: String) -> Result<Value, RuntimeErrorKind> {
+fn json_parse(_: &World, input: String) -> Result<Value, RuntimeErrorKind> {
     Value::from_json(&input)
 }

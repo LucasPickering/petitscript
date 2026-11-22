@@ -4,7 +4,7 @@
 use crate::{
     execute::Prototype,
     value::{function::BoundFunction, Array},
-    Process, Value,
+    World, Value,
 };
 
 /// Define all prototype functions for the `Array` type.
@@ -16,6 +16,6 @@ pub fn prototype() -> Prototype {
 
 /// `Array.includes`
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/includes>
-fn includes(_: &Process, this: Array, element: Value) -> bool {
+fn includes(_: &World, this: Array, element: Value) -> bool {
     this.contains(&element)
 }

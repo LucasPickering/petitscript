@@ -25,9 +25,9 @@ fn main() -> ExitCode {
 
 fn run(path: &Path) -> Result<(), petitscript::Error> {
     let engine = Engine::default();
-    let process = engine.compile(Source::file(path)?)?;
+    let world = engine.compile(Source::file(path)?)?;
 
-    let exports = process.execute()?;
+    let exports = world.execute()?;
     println!("Exported:\n{exports:#}");
     let json = serde_json::to_string_pretty(&exports.default).unwrap();
     println!("Default (JSON): {json}");

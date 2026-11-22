@@ -45,10 +45,9 @@
 //! fn main() -> Result<(), Error> {
 //!     let engine = Engine::new();
 //!     // TODO reevaluate the naming of everything:
-//!     // - Process is kinda clunky/confusing
 //!     // - execute() doesn't sound like it should return exports
-//!     let process = engine.compile("export default 4;")?;
-//!     let exports = process.execute()?;
+//!     let world = engine.compile("export default 4;")?;
+//!     let exports = world.execute()?;
 //!     assert_eq!(exports.default, Some(4.into()));
 //!     Ok(())
 //! }
@@ -87,7 +86,7 @@ pub use crate::{error::Error, value::Value};
 // with re-exports from public modules. Separate these out so they're ONLY
 // inlined.
 pub use crate::{
-    execute::{Exports, Process},
+    execute::{Exports, World},
     name::NativeModuleName,
     source::Source,
 };
@@ -106,7 +105,7 @@ use std::{collections::HashMap, sync::Arc};
 /// An engine defines how code should be executed and what modules are available
 /// to executed code. Engines are created using the [builder pattern](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html)
 /// and are immutable after creation. This immutability allows an engine to be
-/// shared among many processes cheaply through the joys of reference counting.
+/// shared among many threads cheaply through the joys of reference counting.
 ///
 /// See [the crate root](crate) for a usage example.
 #[derive(Clone, Debug)]
@@ -121,7 +120,7 @@ pub struct Engine {
     /// This includes only the global library (which for the default engine is
     /// just the [standard library](stdlib)). User-defined natives can only be
     /// exposed through modules. As such, we can use refcounting to share this
-    /// among all processes and fibers.
+    /// among all worlds and fibers.
     globals: Arc<GlobalEnvironment>,
 }
 
@@ -167,7 +166,7 @@ impl Engine {
     ///
     /// This is only useful if you want to introspect the compiled program. If
     /// you're just executing code, you should call [`Engine::compile`] to get
-    /// the compiled process in a single step.
+    /// the compiled world in a single step.
     ///
     /// # Errors
     ///
@@ -179,7 +178,7 @@ impl Engine {
         compile::parse(source)
     }
 
-    /// Parse and compile some source code into an executable [`Process`]
+    /// Parse and compile some source code into an executable [`World`]
     ///
     /// # Errors
     ///
@@ -189,24 +188,24 @@ impl Engine {
     pub fn compile(
         &self,
         source: impl Into<Source>,
-    ) -> Result<Process, ParseErrors> {
+    ) -> Result<World, ParseErrors> {
         let program = compile::compile(source)?;
         Ok(self.spawn(program))
     }
 
-    /// Compile a pre-parsed AST into an executable [`Process`]
+    /// Compile a pre-parsed AST into an executable [`World`]
     ///
     /// This is helpful for tests and other environments where an AST is built
     /// programatically rather than by parsing source code. This is infallible
     /// because parsing is the only fallible part of the compilation pipeline.
-    pub fn compile_ast(&self, module: Module) -> Process {
+    pub fn compile_ast(&self, module: Module) -> World {
         let program = compile::compile_ast(module);
         self.spawn(program)
     }
 
-    /// Create a new process to execute a compiled program
-    fn spawn(&self, program: Program) -> Process {
-        Process::new(self.clone(), program)
+    /// Create a new world to execute a compiled program
+    fn spawn(&self, program: Program) -> World {
+        World::new(self.clone(), program)
     }
 }
 
@@ -266,11 +265,11 @@ impl EngineBuilder {
     /// #     Engine,
     /// #     Exports,
     /// #     NativeModuleName,
-    /// #     Process,
+    /// #     World,
     /// #     value::Number
     /// # };
     /// let mut module = Exports::default();
-    /// module.export_fn("add", |_process, (a, b): (Number, Number)| a + b);
+    /// module.export_fn("add", |_world, (a, b): (Number, Number)| a + b);
     /// Engine::builder().with_module("math", module).build();
     /// ```
     ///

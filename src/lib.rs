@@ -57,6 +57,7 @@
 //! - TODO Native modules
 //! - TODO Local modules
 //! - TODO Compile and inspect AST
+//! - TODO app data
 //! - TODO value provenance (source span tracking)
 //!
 //! ## Immutable Semantics
@@ -218,8 +219,8 @@ impl Default for Engine {
 /// A modular builder for constructing [`Engine`]s
 ///
 /// This builder can be used to customize an engine, such as registering native
-/// modules with [`with_module`](Self::with_module). Create a builder with
-/// [`Engine::builder`]:
+/// modules with [`with_native_module`](Self::with_native_module). Create a
+/// builder with [`Engine::builder`]:
 ///
 /// ```
 /// # use petitscript::Engine;
@@ -241,9 +242,24 @@ impl EngineBuilder {
         self
     }
 
-    /// Build and register a native module with the built engine. The module can
-    /// be imported into any PetitScript program executed by this engine. If
-    /// a module with the given name is already registered, it will be replaced.
+    /// Build and register a [native module](TODO link to example) in the engine
+    ///
+    /// The module can be imported into any PetitScript program executed by this
+    /// engine. If a module with the given name is already registered, it
+    /// will be replaced.
+    ///
+    /// <div class="warning">
+    ///
+    /// This accepts any value that implements `Into<NativeModuleName>` as the
+    /// module name, which includes `&'static str` (a string literal). That
+    /// conversion **panics** if the name is invalid. Because the string is
+    /// defined statically, the panic is very easy to catch and fix. If you
+    /// want to build the name dynamically or handle the parse error
+    /// yourself, use [`str::parse`].
+    ///
+    /// </div>
+    ///
+    /// # Example
     ///
     /// ```
     /// # use petitscript::{
@@ -253,10 +269,9 @@ impl EngineBuilder {
     /// #     Process,
     /// #     value::Number
     /// # };
-    /// let name: NativeModuleName = "math".parse().unwrap();
     /// let mut module = Exports::default();
     /// module.export_fn("add", |_process, (a, b): (Number, Number)| a + b);
-    /// Engine::builder().with_module(name, module).build();
+    /// Engine::builder().with_module("math", module).build();
     /// ```
     ///
     /// And now you can do this:
@@ -266,12 +281,12 @@ impl EngineBuilder {
     /// add(1, 2);
     /// ```
     #[must_use]
-    pub fn with_module(
+    pub fn with_native_module(
         mut self,
-        name: NativeModuleName,
+        name: impl Into<NativeModuleName>,
         exports: Exports,
     ) -> Self {
-        self.modules.insert(name, exports);
+        self.modules.insert(name.into(), exports);
         self
     }
 

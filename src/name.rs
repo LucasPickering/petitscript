@@ -114,6 +114,18 @@ impl FromStr for NativeModuleName {
     }
 }
 
+/// Parse a [`NativeModuleName`] from a string literal
+///
+/// **Panics** if the string is invalid. This is a convenience conversion to be
+/// used with [`EngineBuilder::with_native_module`](crate::EngineBuilder::with_native_module).
+/// If you want to handle the parse error instead of panicking, call
+/// [`str::parse`].
+impl From<&'static str> for NativeModuleName {
+    fn from(value: &'static str) -> Self {
+        value.parse().unwrap()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

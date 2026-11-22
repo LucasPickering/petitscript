@@ -16,7 +16,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     exports.export_fn("add", add);
     Engine::builder()
         .with_stdlib()
-        .with_module("math".parse().unwrap(), exports)
+        .with_native_module("math", exports)
         .build()
 });
 

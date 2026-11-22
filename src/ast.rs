@@ -118,8 +118,6 @@
 
 mod build;
 mod display;
-#[cfg(test)]
-mod pbt;
 mod walk;
 
 // Re-export this because it fits conceptually here
@@ -141,7 +139,6 @@ use std::{
 /// [ImportModuleKind::Local].
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Module {
     pub id: NodeId,
     pub statements: Box<[Statement]>,
@@ -160,7 +157,6 @@ impl Node for Module {
 /// without emitting a value.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Statement {
     pub id: NodeId,
     /// Statement variant
@@ -208,7 +204,6 @@ pub enum StatementKind {
 /// A block is delineated by `{ }` and creates a new lexical scope.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Block {
     pub id: NodeId,
     pub statements: Box<[Statement]>,
@@ -224,11 +219,9 @@ impl Node for Block {
 /// 3;` or `const x = 3, y = 4, z = 5;`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Declaration {
     pub id: NodeId,
     /// One or more variables to declare (cannot be empty)
-    #[cfg_attr(test, proptest(strategy = "pbt::declaration_variables()"))]
     pub variables: Box<[Variable]>,
 }
 
@@ -241,8 +234,6 @@ impl Node for Declaration {
 /// A single declared variable in a declaration or function parameter
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[cfg_attr(test, proptest(params = "Option<bool>"))] // Forwarded to init
 pub struct Variable {
     pub id: NodeId,
     /// Identifier(s) being bound
@@ -251,7 +242,6 @@ pub struct Variable {
     ///
     /// `None` for declarations without initializers, such as (most) function
     /// parameters.
-    #[cfg_attr(test, proptest(strategy = "pbt::variable_init(params)"))]
     pub init: Option<Box<Expression>>,
 }
 
@@ -266,7 +256,6 @@ impl Node for Variable {
 /// arrow functions, since the two are semantically equivalent in PS.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct FunctionDefinition {
     pub id: NodeId,
     /// A label for this function, to be passed onto the function value
@@ -296,7 +285,6 @@ impl Node for FunctionDefinition {
 /// expression.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum FunctionBody {
     /// A single-expression body of an arrow function: `(x) => x + 1`
     Expression(Box<Expression>),
@@ -318,7 +306,6 @@ impl Node for FunctionBody {
 /// One parameter in a function definition
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))] // TODO varargs at end
 pub struct FunctionParameter {
     pub id: NodeId,
     pub variable: Variable,
@@ -345,7 +332,6 @@ impl Node for FunctionParameter {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct If {
     pub id: NodeId,
     pub condition: Expression,
@@ -367,7 +353,6 @@ impl Node for If {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import>
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ImportDeclaration {
     pub id: NodeId,
     /// `exportDefault`
@@ -393,7 +378,6 @@ impl Node for ImportDeclaration {
 /// the nameds are `export1` and `export2 as ex2`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ImportNamed {
     pub id: NodeId,
     /// External name being imported
@@ -413,7 +397,6 @@ impl Node for ImportNamed {
 /// Source for an imported module, i.e. the string after `from`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ImportModule {
     pub id: NodeId,
     /// Import module variant
@@ -429,7 +412,6 @@ impl Node for ImportModule {
 /// Variants for [`ImportModule`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ImportModuleKind {
     /// A native module provided by the engine with a static name, like
     /// `import helpers from 'helpers'`
@@ -444,7 +426,6 @@ pub enum ImportModuleKind {
 /// Export a name or value: `export const ...` or `export default ...`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ExportDeclaration {
     pub id: NodeId,
     /// Declaration variant
@@ -460,7 +441,6 @@ impl Node for ExportDeclaration {
 /// Variants for [`ExportDeclaration`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ExportDeclarationKind {
     /// `export const x = 3;`
     Declaration(Declaration),
@@ -475,7 +455,6 @@ pub enum ExportDeclarationKind {
 /// without emitting a value.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Expression {
     pub id: NodeId,
     /// Expression variant
@@ -530,7 +509,6 @@ pub enum ExpressionKind {
 /// Fixed value defined literally in source code
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Literal {
     /// `null`: the empty value
     Null,
@@ -558,7 +536,6 @@ pub enum Literal {
 /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals>
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))] // TODO alternating chunks
 pub struct TemplateLiteral {
     pub id: NodeId,
     /// A set of contiguous chunks that comprise the template. These will be
@@ -578,7 +555,6 @@ impl Node for TemplateLiteral {
 /// Either a static string or an expression
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TemplateChunk {
     pub id: NodeId,
     /// Template chunk variant
@@ -594,7 +570,6 @@ impl Node for TemplateChunk {
 /// Variants for [`TemplateChunk`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum TemplateChunkKind {
     /// This doesn't need a `Node` because we never refer to the literal chunks
     /// of a template on their own
@@ -608,7 +583,6 @@ pub enum TemplateChunkKind {
 /// must be defined.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ArrayLiteral {
     pub id: NodeId,
     pub elements: Box<[ArrayElement]>,
@@ -623,7 +597,6 @@ impl Node for ArrayLiteral {
 /// One element in an array literal: `x` in `[x]`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ArrayElement {
     pub id: NodeId,
     /// Expression evaluating to the array element
@@ -658,7 +631,6 @@ impl Node for ArrayElement {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ObjectLiteral {
     pub id: NodeId,
     pub properties: Box<[ObjectProperty]>,
@@ -675,7 +647,6 @@ impl Node for ObjectLiteral {
 /// Objects don't support methods, getters, or setters
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ObjectProperty {
     pub id: NodeId,
     /// Object property variant
@@ -691,7 +662,6 @@ impl Node for ObjectProperty {
 /// Variants for [`ObjectProperty`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ObjectPropertyKind {
     /// Normal key:value mapping
     ///
@@ -707,7 +677,6 @@ pub enum ObjectPropertyKind {
 /// Invoke a function: `f(x)`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct FunctionCall {
     pub id: NodeId,
     /// Expression evaluating to the function to invoke
@@ -732,7 +701,6 @@ impl Node for FunctionCall {
 /// One argument in a [`FunctionCall`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Argument {
     /// Regular passed argument: `f(1)`
     Expression(Box<Expression>),
@@ -752,7 +720,6 @@ pub enum Argument {
 /// will evaluate to `undefined`.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct PropertyAccess {
     pub id: NodeId,
     /// Object to access into
@@ -780,7 +747,6 @@ impl Node for PropertyAccess {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct OptionalPropertyAccess {
     pub id: NodeId,
     /// Object to access into
@@ -801,7 +767,6 @@ impl Node for OptionalPropertyAccess {
 /// the operand.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct UnaryOperation {
     pub id: NodeId,
     /// Operation to perform
@@ -819,7 +784,6 @@ impl Node for UnaryOperation {
 /// Operator for [`UnaryOperation`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum UnaryOperator {
     /// `!`: Boolean negation
     BooleanNot,
@@ -837,7 +801,6 @@ pub enum UnaryOperator {
 /// the operands.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct BinaryOperation {
     pub id: NodeId,
     /// Operation to perform
@@ -857,7 +820,6 @@ impl Node for BinaryOperation {
 /// Operator for [`BinaryOperation`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum BinaryOperator {
     /// `+`
     Add,
@@ -877,7 +839,7 @@ pub enum BinaryOperator {
 
     /// **Strict** equality: `===`
     Equal,
-    /// **Strict** inequality: !==
+    /// **Strict** inequality: `!==`
     NotEqual,
 
     /// `<`
@@ -896,7 +858,6 @@ pub enum BinaryOperator {
 /// Conditional expression: `condition ? then : else`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TernaryConditional {
     pub id: NodeId,
     pub condition: Box<Expression>,
@@ -918,7 +879,6 @@ impl Node for TernaryConditional {
 /// - Property access: `o.a` or `o["a"]`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct PropertyName {
     pub id: NodeId,
     /// Property name variant
@@ -934,7 +894,6 @@ impl Node for PropertyName {
 /// Variants for [`PropertyName`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PropertyNameKind {
     /// Normal key: `{ key: value }`
     Identifier(IdentifierNode),
@@ -956,7 +915,6 @@ pub enum PropertyNameKind {
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Binding {
     pub id: NodeId,
     /// Binding variant
@@ -1004,7 +962,6 @@ pub enum BindingKind {
 /// - `const { x: x2 = 3 } = object`
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ObjectPatternElement {
     pub id: NodeId,
     /// Key extracted from the object
@@ -1024,7 +981,6 @@ impl Node for ObjectPatternElement {
 /// One element in a [`BindingKind::Array`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct ArrayPatternElement {
     pub id: NodeId,
     /// Array pattern element variant
@@ -1040,7 +996,6 @@ impl Node for ArrayPatternElement {
 /// Variants for [`ArrayPatternElement`]
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ArrayPatternElementKind {
     /// A specific bound field
     ///
@@ -1063,7 +1018,6 @@ pub enum ArrayPatternElementKind {
 /// Use this for identifiers that exist in the source code.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct IdentifierNode {
     pub id: NodeId,
     pub identifier: Identifier,
@@ -1111,7 +1065,6 @@ impl Node for IdentifierNode {
 #[derive(Copy, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct NodeId(pub u32);
 
 impl NodeId {

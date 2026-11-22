@@ -768,12 +768,8 @@ impl_display! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Source,
-        ast::{IntoExpression, NodeId},
-    };
+    use crate::ast::IntoExpression;
     use pretty_assertions::assert_eq;
-    use proptest::property_test;
     use std::fmt::Display;
     use test_case::test_case;
 
@@ -820,17 +816,5 @@ mod tests {
     // I'll add more test cases as I go. It's definitely not exhaustive.
     fn display<T: Display>(node: T, expected: &str) {
         assert_eq!(node.to_string(), expected);
-    }
-
-    /// Property test for AST display + parsing
-    ///
-    /// Any generated AST should stringify->parse back to itself.
-    #[property_test]
-    #[ignore = "AST generation is broken; maybe fix, maybe delete"]
-    fn display_parse_prop(module: Module) {
-        let source = Source::owned(module.to_string());
-        let parsed = source.parse().unwrap_or_else(|error| panic!("{error:#}"));
-        // Compare original to parsed (ignoring node IDs)
-        NodeId::with_all_equal(|| assert_eq!(&module, parsed.module()));
     }
 }

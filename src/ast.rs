@@ -68,7 +68,7 @@
 //!
 //! ```rust
 //! use petitscript::{
-//!     Engine, Exports,
+//!     Engine, Exports, Program,
 //!     ast::{
 //!         BinaryOperator, Declaration, Expression, FunctionBody,
 //!         FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
@@ -110,8 +110,9 @@
 //!
 //! // You can also run the code directly:
 //! let engine = Engine::new();
-//! let world = engine.compile_ast(module);
-//! let exports = world.execute().unwrap();
+//! let program = Program::compile(module);
+//! let world = engine.instantiate(program);
+//! let exports = world.run().unwrap();
 //! assert_eq!(exports, Exports::new(Some(6), [("x", 3)]));
 //! ```
 

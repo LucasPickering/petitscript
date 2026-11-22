@@ -13,53 +13,53 @@ use crate::{
     source::{SourceTable, SpanTable},
 };
 
-/// Parse some source code into an AST
-pub fn parse(source: impl Into<Source>) -> Result<Module, ParseErrors> {
-    Ok(Compiler::new(source).parse()?.program.module)
-}
-
-/// Parse and compile source code into an executable [`Program`]
-pub fn compile(source: impl Into<Source>) -> Result<Program, ParseErrors> {
-    let program = Compiler::new(source).parse()?.label().capture().end();
-    Ok(program)
-}
-
-/// Compile a prebuilt AST into an executable [`Program`]
-///
-/// Helpful for tests and other environments where an AST is built
-/// programatically rather than by parsing source code. Compilation is
-/// infallible.
-pub fn compile_ast(module: Module) -> Program {
-    Compiler {
-        program: ParsedAst {
-            module,
-            spans: SpanTable::default(),
-        },
-        sources: SourceTable::default(), // No source code to map here
-    }
-    .label()
-    .capture()
-    .end()
-}
-
 /// A compiled program
 ///
-/// This is produced by [`compile`] and contains all the static information
-/// needed to run a program. It is not itself executable though; that requires
-/// a [`World`].
+/// This is produced by [`Source::parse`] and contains all the static
+/// information needed to run a program. It is not itself executable though;
+/// that requires a [`World`].
+///
+/// TODO example for how to mutate a program - modify the module and recompile.
 #[derive(Debug)]
 pub struct Program {
-    sources: SourceTable,
+    /// Program AST
     module: Module,
+    /// Source(s) that were parsed to make this program
+    sources: SourceTable,
     /// A debug table of source spans for each node. This will help us produce
     /// good error messages at runtime
     spans: SpanTable,
 }
 
 impl Program {
-    /// TODO
-    pub fn sources(&self) -> &SourceTable {
-        &self.sources
+    /// Parse and compile some source code into a [`Program`]
+    ///
+    /// The returned program can be executed with
+    /// [`Engine::instantiate`](crate::Engine::instantiate).
+    ///
+    /// # Errors
+    ///
+    /// Return an error if the program is syntactically invalid.
+    pub fn parse(source: impl Into<Source>) -> Result<Self, ParseErrors> {
+        Ok(Compiler::new(source).parse()?.label().capture().end())
+    }
+
+    /// Compile a constructed abstract syntax tree into a program
+    ///
+    /// This is helpful for environments where an AST is built programatically
+    /// rather than by parsing source code. This is infallible
+    /// because parsing is the only fallible part of the compilation pipeline.
+    pub fn compile(module: Module) -> Self {
+        Compiler {
+            program: ParsedAst {
+                module,
+                spans: SpanTable::default(),
+            },
+            sources: SourceTable::default(), // No source code to map here
+        }
+        .label()
+        .capture()
+        .end()
     }
 
     /// TODO
@@ -68,7 +68,12 @@ impl Program {
     }
 
     /// TODO
-    pub fn spans(&self) -> &SpanTable {
+    pub(crate) fn sources(&self) -> &SourceTable {
+        &self.sources
+    }
+
+    /// TODO
+    pub(crate) fn spans(&self) -> &SpanTable {
         &self.spans
     }
 }

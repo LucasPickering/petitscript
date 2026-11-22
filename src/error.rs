@@ -21,7 +21,8 @@ use winnow::error::ContextError;
 /// Any error that can occur within PetitScript
 ///
 /// This is a catch-all container for all error types. It's never returned
-/// directly by any functions in the library. It's just a convenience for
+/// directly by any functions in the library, except for the all-in-one
+/// [`Engine::run`](crate::Engine::run). This is primarily a convenience for
 /// downstream code that wants to group different PetitScript-related errors
 /// together.
 ///
@@ -110,8 +111,8 @@ impl ParseErrors {
     /// [`annotate_snippets::Renderer`].
     ///
     /// ```
-    /// # use petitscript::Engine;
-    /// let errors = Engine::default().parse("f(").unwrap_err();
+    /// # use petitscript::Program;
+    /// let errors = Program::parse("f(").unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
     /// eprintln!("{}", renderer.render(&errors.to_report()));
     /// ```
@@ -526,10 +527,11 @@ impl RuntimeError {
     /// See [`annotate_snippets::Renderer`].
     ///
     /// ```
-    /// # use petitscript::Engine;
+    /// # use petitscript::{Engine, Program};
     /// let engine = Engine::default();
-    /// let world = engine.compile("f()").unwrap();
-    /// let error = world.execute().unwrap_err();
+    /// let program = Program::parse("f()").unwrap();
+    /// let world = engine.instantiate(program);
+    /// let error = world.run().unwrap_err();
     /// let renderer = annotate_snippets::Renderer::styled();
     /// eprintln!("{}", renderer.render(&[error.to_report()]));
     /// ```

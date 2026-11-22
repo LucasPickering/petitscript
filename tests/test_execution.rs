@@ -132,9 +132,11 @@ fn execute(path: impl AsRef<Path>) -> Result<Value, RuntimeError> {
     let path = path.as_ref();
     // Sanity check
     assert!(path.exists(), "Path {} does not exist", path.display());
+    // Only propagate runtime errors. Everything else is a panic.
     let source = Source::file(path).unwrap();
-    let world = ENGINE.compile(source).unwrap();
-    let exports = world.execute()?;
+    let program = source.parse().unwrap();
+    let world = ENGINE.instantiate(program);
+    let exports = world.run()?;
 
     assert_eq!(
         exports.named,

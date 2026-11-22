@@ -769,12 +769,12 @@ impl_display! {
 mod tests {
     use super::*;
     use crate::{
-        Engine,
+        Source,
         ast::{IntoExpression, NodeId},
     };
     use pretty_assertions::assert_eq;
     use proptest::property_test;
-    use std::{fmt::Display, sync::LazyLock};
+    use std::fmt::Display;
     use test_case::test_case;
 
     /// Test stringification of AST nodes
@@ -828,13 +828,9 @@ mod tests {
     #[property_test]
     #[ignore = "AST generation is broken; maybe fix, maybe delete"]
     fn display_parse_prop(module: Module) {
-        static ENGINE: LazyLock<Engine> = LazyLock::new(Engine::new);
-
-        let source = module.to_string();
-        let parsed = ENGINE
-            .parse(source)
-            .unwrap_or_else(|error| panic!("{error:#}"));
+        let source = Source::owned(module.to_string());
+        let parsed = source.parse().unwrap_or_else(|error| panic!("{error:#}"));
         // Compare original to parsed (ignoring node IDs)
-        NodeId::with_all_equal(|| assert_eq!(module, parsed));
+        NodeId::with_all_equal(|| assert_eq!(&module, parsed.module()));
     }
 }

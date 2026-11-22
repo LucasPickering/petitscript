@@ -1,6 +1,10 @@
 //! Utilities for interacting with source code
 
-use crate::{ast::NodeId, error::SourceError};
+use crate::{
+    Program,
+    ast::NodeId,
+    error::{ParseErrors, SourceError},
+};
 use normalize_path::NormalizePath;
 use std::{
     collections::HashMap,
@@ -39,6 +43,11 @@ pub enum Source {
 }
 
 impl Source {
+    /// Read source code from an owned string
+    pub fn owned(string: String) -> Self {
+        Self::String(string.into())
+    }
+
     /// Load source code from a file
     pub fn file(path: impl AsRef<Path>) -> Result<Self, SourceError> {
         let path = path.as_ref();
@@ -92,6 +101,19 @@ impl Source {
             Self::String(s) => s,
             Self::File { text, .. } => text,
         }
+    }
+
+    /// Parse and compile this source code into a [`Program`]
+    ///
+    /// The returned program can be executed with
+    /// [`Engine::instantiate`](crate::Engine::instantiate). This is an alias
+    /// for [`Program::parse`].
+    ///
+    /// # Errors
+    ///
+    /// Return an error if the program is syntactically invalid.
+    pub fn parse(self) -> Result<Program, ParseErrors> {
+        Program::parse(self)
     }
 }
 

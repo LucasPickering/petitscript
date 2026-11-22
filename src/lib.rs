@@ -35,6 +35,10 @@
 //! - Try/catch
 //! - Async
 //!
+//! # Usage
+//!
+//! TODO
+//!
 //! # Examples
 //!
 //! The simplest example of parsing and executing some PetitScript code:
@@ -44,15 +48,13 @@
 //!
 //! fn main() -> Result<(), Error> {
 //!     let engine = Engine::new();
-//!     // TODO reevaluate the naming of everything:
-//!     // - execute() doesn't sound like it should return exports
-//!     let world = engine.compile("export default 4;")?;
-//!     let exports = world.execute()?;
+//!     let exports = engine.run("export default 4;")?;
 //!     assert_eq!(exports.default, Some(4.into()));
 //!     Ok(())
 //! }
 //! ```
 //!
+//! - TODO calling functions
 //! - TODO Native modules
 //! - TODO Local modules
 //! - TODO Compile and inspect AST
@@ -86,17 +88,14 @@ pub use crate::{error::Error, value::Value};
 // with re-exports from public modules. Separate these out so they're ONLY
 // inlined.
 pub use crate::{
+    compile::Program,
     execute::{Exports, World},
     name::NativeModuleName,
     source::Source,
 };
 
 use crate::{
-    ast::Module,
-    compile::Program,
-    error::{ParseErrors, RuntimeErrorKind},
-    execute::GlobalEnvironment,
-    stdlib::stdlib,
+    error::RuntimeErrorKind, execute::GlobalEnvironment, stdlib::stdlib,
 };
 use std::{collections::HashMap, sync::Arc};
 
@@ -153,59 +152,23 @@ impl Engine {
         }
     }
 
-    /// Get a reference to a registered name module by its name
-    pub fn module(&self, name: &str) -> Option<&Exports> {
+    /// Get a reference to a registered native module by its name
+    pub fn native_module(&self, name: &str) -> Option<&Exports> {
         self.modules.get(name)
     }
 
-    /// Parse source code into an [abstract syntax tree](crate::ast)
-    ///
-    /// The returned AST is
-    /// not fully compiled and therefore can't be executed. Call
-    /// [`Engine::compile_ast`] to complete compilation.
-    ///
-    /// This is only useful if you want to introspect the compiled program. If
-    /// you're just executing code, you should call [`Engine::compile`] to get
-    /// the compiled world in a single step.
-    ///
-    /// # Errors
-    ///
-    /// Return an error if the program is syntactically invalid.
-    pub fn parse(
-        &self,
-        source: impl Into<Source>,
-    ) -> Result<Module, ParseErrors> {
-        compile::parse(source)
-    }
-
-    /// Parse and compile some source code into an executable [`World`]
-    ///
-    /// # Errors
-    ///
-    /// Return an error if the program is syntactically invalid. PetitScript has
-    /// no static checks beyond imports and parsing, so [`ParseErrors`] is the
-    /// only possible error.
-    pub fn compile(
-        &self,
-        source: impl Into<Source>,
-    ) -> Result<World, ParseErrors> {
-        let program = compile::compile(source)?;
-        Ok(self.spawn(program))
-    }
-
-    /// Compile a pre-parsed AST into an executable [`World`]
-    ///
-    /// This is helpful for tests and other environments where an AST is built
-    /// programatically rather than by parsing source code. This is infallible
-    /// because parsing is the only fallible part of the compilation pipeline.
-    pub fn compile_ast(&self, module: Module) -> World {
-        let program = compile::compile_ast(module);
-        self.spawn(program)
-    }
-
-    /// Create a new world to execute a compiled program
-    fn spawn(&self, program: Program) -> World {
+    /// Create a new [`World`] to execute the given program
+    pub fn instantiate(&self, program: Program) -> World {
         World::new(self.clone(), program)
+    }
+
+    /// TODO
+    pub fn run(&self, source: impl Into<Source>) -> Result<Exports, Error> {
+        let source = source.into();
+        let program = source.parse()?;
+        let world = self.instantiate(program);
+        let exports = world.run()?;
+        Ok(exports)
     }
 }
 
@@ -270,7 +233,7 @@ impl EngineBuilder {
     /// # };
     /// let mut module = Exports::default();
     /// module.export_fn("add", |_world, (a, b): (Number, Number)| a + b);
-    /// Engine::builder().with_module("math", module).build();
+    /// Engine::builder().with_native_module("math", module).build();
     /// ```
     ///
     /// And now you can do this:

@@ -104,7 +104,7 @@ impl World {
     /// # Errors
     ///
     /// TODO
-    pub fn execute(&self) -> Result<Exports, RuntimeError> {
+    pub fn run(&self) -> Result<Exports, RuntimeError> {
         let mut fiber = self.create_fiber();
         self.program.module().exec(&mut fiber)?;
         // Exporting is available here because we're in the root scope

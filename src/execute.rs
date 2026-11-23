@@ -2,8 +2,8 @@
 
 mod eval;
 mod exec;
+mod fiber;
 mod scope;
-mod state;
 
 pub use scope::{GlobalEnvironment, Prototype};
 
@@ -15,7 +15,7 @@ use crate::{
     error::{DuplicateAppData, RuntimeError, RuntimeErrorKind, UnknownAppData},
     execute::{
         exec::Execute,
-        state::{Fiber, Location},
+        fiber::{Fiber, Location},
     },
     name::NativeModuleName,
     value::{FromPetitArgs, IntoPetitResult, Value, function::Function},

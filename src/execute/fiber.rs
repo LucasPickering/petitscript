@@ -1,4 +1,4 @@
-//! Program state management
+//! Fibers are individual program invocations
 
 use crate::{
     RuntimeErrorKind, World,

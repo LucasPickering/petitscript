@@ -9,7 +9,7 @@ use crate::{
         TemplateChunkKind, TemplateLiteral, UnaryOperation, UnaryOperator,
     },
     error::{RuntimeError, RuntimeErrorKind, ValueError},
-    execute::{Fiber, exec::Execute, state::Location},
+    execute::{Fiber, exec::Execute, fiber::Location},
     value::{
         Array, Number, Object, Value, ValueType,
         function::{Function, FunctionInner},
@@ -24,14 +24,14 @@ pub trait Evaluate: Node {
     /// originated. We use `Traced<RuntimeError,Span>` instead of
     /// `Error::Runtime` because we don't have the context needed here to
     /// qualify the spans.
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError>;
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError>;
 }
 
 impl Evaluate for Expression {
     /// Evaluate an expression
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         match &self.kind {
-            ExpressionKind::Parenthesized(expression) => expression.eval(state),
+            ExpressionKind::Parenthesized(expression) => expression.eval(fiber),
             ExpressionKind::Literal(literal) => match literal {
                 Literal::Null => Ok(Value::Null),
                 Literal::Undefined => Ok(Value::Undefined),
@@ -39,27 +39,27 @@ impl Evaluate for Expression {
                 Literal::String(s) => Ok(Value::String(s.as_str().into())),
                 Literal::Float(f) => Ok(Value::Number(Number::Float(*f))),
                 Literal::Int(i) => Ok(Value::Number(Number::Int(*i))),
-                Literal::Array(array_literal) => array_literal.eval(state),
-                Literal::Object(object_literal) => object_literal.eval(state),
+                Literal::Array(array_literal) => array_literal.eval(fiber),
+                Literal::Object(object_literal) => object_literal.eval(fiber),
             },
             ExpressionKind::Template(template_literal) => {
-                template_literal.eval(state)
+                template_literal.eval(fiber)
             }
-            ExpressionKind::Identifier(identifier) => state
+            ExpressionKind::Identifier(identifier) => fiber
                 .scope()
                 .get(identifier.as_str())
-                .map_err(|error| state.trace_error(error, self)),
-            ExpressionKind::Function(function) => function.eval(state),
-            ExpressionKind::Call(call) => call.eval(state),
-            ExpressionKind::Property(access) => access.eval(state),
-            ExpressionKind::OptionalProperty(access) => access.eval(state),
-            ExpressionKind::Unary(unary) => unary.eval(state),
-            ExpressionKind::Binary(binary) => binary.eval(state),
+                .map_err(|error| fiber.trace_error(error, self)),
+            ExpressionKind::Function(function) => function.eval(fiber),
+            ExpressionKind::Call(call) => call.eval(fiber),
+            ExpressionKind::Property(access) => access.eval(fiber),
+            ExpressionKind::OptionalProperty(access) => access.eval(fiber),
+            ExpressionKind::Unary(unary) => unary.eval(fiber),
+            ExpressionKind::Binary(binary) => binary.eval(fiber),
             ExpressionKind::Ternary(conditional) => {
-                if conditional.condition.eval(state)?.to_bool() {
-                    conditional.true_expression.eval(state)
+                if conditional.condition.eval(fiber)?.to_bool() {
+                    conditional.true_expression.eval(fiber)
                 } else {
-                    conditional.false_expression.eval(state)
+                    conditional.false_expression.eval(fiber)
                 }
             }
         }
@@ -67,14 +67,14 @@ impl Evaluate for Expression {
 }
 
 impl Evaluate for ArrayLiteral {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let mut array = Array::default();
         for element in &self.elements {
-            let value = element.expression.eval(state)?;
+            let value = element.expression.eval(fiber)?;
             // These are optimized to avoid allocations where possible
             if element.spread {
                 let new = value.try_into_array().map_err(|error| {
-                    state.trace_error(error.into(), &element.expression)
+                    fiber.trace_error(error.into(), &element.expression)
                 })?;
                 array = array.concat(new);
             } else {
@@ -86,7 +86,7 @@ impl Evaluate for ArrayLiteral {
 }
 
 impl Evaluate for ObjectLiteral {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         let mut object = Object::default();
         for property in &self.properties {
             match &property.kind {
@@ -96,14 +96,14 @@ impl Evaluate for ObjectLiteral {
                 } => {
                     // Convert to a string using coercion semantics.
                     // Make sure *not* to convert with the Display impl
-                    let name = String::from(property.eval(state)?.to_string());
-                    let value = expression.eval(state)?;
+                    let name = String::from(property.eval(fiber)?.to_string());
+                    let value = expression.eval(fiber)?;
                     object = object.insert(name, value);
                 }
                 ObjectPropertyKind::Spread(expression) => {
                     let new =
-                        expression.eval(state)?.try_into_object().map_err(
-                            |error| state.trace_error(error.into(), expression),
+                        expression.eval(fiber)?.try_into_object().map_err(
+                            |error| fiber.trace_error(error.into(), expression),
                         )?;
                     object = object.insert_all(new);
                 }
@@ -114,7 +114,7 @@ impl Evaluate for ObjectLiteral {
 }
 
 impl Evaluate for PropertyName {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         match &self.kind {
             // {field: "value"}
             // Shorthand syntax unpacks to {field: field} in parsing
@@ -122,13 +122,13 @@ impl Evaluate for PropertyName {
                 Ok(identifier.as_str().into())
             }
             // {["field"]: "value"}
-            PropertyNameKind::Expression(expression) => expression.eval(state),
+            PropertyNameKind::Expression(expression) => expression.eval(fiber),
         }
     }
 }
 
 impl Evaluate for TemplateLiteral {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
         self.chunks
             .iter()
             .map(|chunk| match &chunk.kind {
@@ -139,7 +139,7 @@ impl Evaluate for TemplateLiteral {
                     // Convert to a string using coercion semantics.
                     // Make sure *not* to convert with the Display impl
                     Ok(Cow::Owned(String::from(
-                        expression.eval(state)?.to_string(),
+                        expression.eval(fiber)?.to_string(),
                     )))
                 }
             })
@@ -149,11 +149,11 @@ impl Evaluate for TemplateLiteral {
 }
 
 impl Evaluate for FunctionDefinition {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        let scope = state.scope();
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        let scope = fiber.scope();
         let captures = scope
             .captures(&self.captures)
-            .map_err(|error| state.trace_error(error, self))?;
+            .map_err(|error| fiber.trace_error(error, self))?;
 
         Ok(Function::user(Arc::new(self.clone()), captures).into())
     }
@@ -162,8 +162,8 @@ impl Evaluate for FunctionDefinition {
 /// This is implemented on `FunctionCall` so we can access our own node
 /// ID to add to the call stack
 impl Evaluate for FunctionCall {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        let function = self.function.eval(state)?;
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        let function = self.function.eval(fiber)?;
         match function {
             Value::Function(function) => {
                 // Collect arguments
@@ -171,14 +171,14 @@ impl Evaluate for FunctionCall {
                 for argument in &self.arguments {
                     match argument {
                         Argument::Expression(expression) => {
-                            arguments.push(expression.eval(state)?);
+                            arguments.push(expression.eval(fiber)?);
                         }
                         Argument::Spread(expression) => {
                             let array = expression
-                                .eval(state)?
+                                .eval(fiber)?
                                 .try_into_array()
                                 .map_err(|error| {
-                                    state.trace_error(
+                                    fiber.trace_error(
                                         error.into(),
                                         &**expression,
                                     )
@@ -188,7 +188,7 @@ impl Evaluate for FunctionCall {
                     }
                 }
 
-                function.call(state, self.into(), arguments)
+                function.call(fiber, self.into(), arguments)
             }
             // f?.() syntax. Skip the call, do NOT eval arguments
             Value::Undefined | Value::Null if self.optional => {
@@ -198,35 +198,35 @@ impl Evaluate for FunctionCall {
                 expected: ValueType::Function,
                 actual: function.type_(),
             })
-            .map_err(|error| state.trace_error(error.into(), self)),
+            .map_err(|error| fiber.trace_error(error.into(), self)),
         }
     }
 }
 
 /// Property access: `.` or `[...]`
 impl Evaluate for PropertyAccess {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        let target = self.object.eval(state)?;
-        let property = self.property.eval(state)?;
-        get_property(state, target, property)
-            .map_err(|error| state.trace_error(error, self))
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        let target = self.object.eval(fiber)?;
+        let property = self.property.eval(fiber)?;
+        get_property(fiber, target, property)
+            .map_err(|error| fiber.trace_error(error, self))
     }
 }
 
 /// Optional object/array property access: `?.` or `?.[...]`
 impl Evaluate for OptionalPropertyAccess {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        match self.object.eval(state)? {
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        match self.object.eval(fiber)? {
             // Do NOT evaluate the property expression if the target is
             // null/undefined
             Value::Undefined | Value::Null => Ok(Value::Undefined),
             target => {
-                let property = self.property.eval(state)?;
-                get_property(state, target, property).map_err(|error| {
+                let property = self.property.eval(fiber)?;
+                get_property(fiber, target, property).map_err(|error| {
                     // Error should be impossible here, because we handled the
                     // failure cases above
                     let error = RuntimeErrorKind::internal(error);
-                    state.trace_error(error, self)
+                    fiber.trace_error(error, self)
                 })
             }
         }
@@ -238,7 +238,7 @@ impl Evaluate for OptionalPropertyAccess {
 /// This will first check the value itself (for arrays/objects), then check
 /// its prototype. Error if `target` is `null`/`undefined`.
 fn get_property(
-    state: &mut Fiber<'_>,
+    fiber: &mut Fiber<'_>,
     target: Value,
     property: Value,
 ) -> Result<Value, RuntimeErrorKind> {
@@ -250,7 +250,7 @@ fn get_property(
             // If the key isn't a string, we know it won't be in the prototype
             // so we can bail out
             let name = property.as_str()?;
-            let function = state.scope().get_prototype(target.type_(), name)?;
+            let function = fiber.scope().get_prototype(target.type_(), name)?;
             Some(
                 Function::bound(name.into(), function.clone(), target.clone())
                     .into(),
@@ -260,8 +260,8 @@ fn get_property(
 }
 
 impl Evaluate for UnaryOperation {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        let value = self.expression.eval(state)?;
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        let value = self.expression.eval(fiber)?;
         match self.operator {
             UnaryOperator::BooleanNot => Ok(!value),
             UnaryOperator::Plus => {
@@ -274,9 +274,9 @@ impl Evaluate for UnaryOperation {
 }
 
 impl Evaluate for BinaryOperation {
-    fn eval(&self, state: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
-        let lhs = self.lhs.eval(state)?;
-        let rhs = self.rhs.eval(state)?;
+    fn eval(&self, fiber: &mut Fiber<'_>) -> Result<Value, RuntimeError> {
+        let lhs = self.lhs.eval(fiber)?;
+        let rhs = self.rhs.eval(fiber)?;
         match self.operator {
             BinaryOperator::Add => Ok(lhs + rhs),
             BinaryOperator::Sub => Ok(lhs - rhs),
@@ -305,7 +305,7 @@ impl Function {
     /// track this for the stack trace.
     pub(super) fn call(
         &self,
-        state: &mut Fiber<'_>,
+        fiber: &mut Fiber<'_>,
         location: Location,
         arguments: Vec<Value>,
     ) -> Result<Value, RuntimeError> {
@@ -316,41 +316,41 @@ impl Function {
             } => {
                 // Put all declarations in a new frame. This will init a clean
                 // scope from the globals. We'll add captures and args to that
-                state.with_frame(
-                    state.world().engine.globals.clone().scope(),
+                fiber.with_frame(
+                    fiber.world().engine.globals.clone().scope(),
                     location,
                     self.name().map(String::from),
-                    |state| {
+                    |fiber| {
                         // Insert captured bindings into the scope
                         for (name, value) in captures {
-                            state.scope_mut().declare(name, value.clone());
+                            fiber.scope_mut().declare(name, value.clone());
                         }
                         Self::bind_arguments(
-                            state,
+                            fiber,
                             &definition.parameters,
                             arguments,
                         )?;
                         // Execute the body
-                        definition.body.exec(state)
+                        definition.body.exec(fiber)
                     },
                 )
             }
             FunctionInner::Native { function, .. } => function
-                .call(state.world(), arguments)
-                .map_err(|error| state.trace_error(error, location)),
+                .call(fiber.world(), arguments)
+                .map_err(|error| fiber.trace_error(error, location)),
             FunctionInner::Bound {
                 function, receiver, ..
             } => function
                 // Clone is necessary on receiver because there could be
                 // multiple references to `this.f`
-                .call(state.world(), Value::clone(receiver), arguments)
-                .map_err(|error| state.trace_error(error, location)),
+                .call(fiber.world(), Value::clone(receiver), arguments)
+                .map_err(|error| fiber.trace_error(error, location)),
         }
     }
 
     /// Bind argument values to parameters in the current scope
     fn bind_arguments(
-        state: &mut Fiber,
+        fiber: &mut Fiber,
         parameters: &[FunctionParameter],
         arguments: Vec<Value>,
     ) -> Result<(), RuntimeError> {
@@ -373,12 +373,12 @@ impl Function {
                 }
             } else if let Some(init) = &parameter.variable.init {
                 // If the arg wasn't given, fall back to the init expression
-                init.eval(state)?
+                init.eval(fiber)?
             } else {
                 // No init expression, use undefined
                 Value::Undefined
             };
-            state.bind(&parameter.variable.binding, value)?;
+            fiber.bind(&parameter.variable.binding, value)?;
         }
         Ok(())
     }

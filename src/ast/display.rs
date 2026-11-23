@@ -263,7 +263,7 @@ impl DisplayIndent for &Literal {
                 // Escape characters that can't appear literally. According to
                 // MDN, these are the only ones that need it.
                 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Numbers_and_strings#string_literals
-                ('"', escape(s, &['"', '\n', '\\']), '"').fmt(ind)
+                ('"', Escape::new(s, &['"', '\n', '\\']), '"').fmt(ind)
             }
             Literal::Array(array_literal) => array_literal.fmt(ind),
             Literal::Object(object_literal) => object_literal.fmt(ind),
@@ -281,7 +281,9 @@ impl DisplayIndent for &TemplateChunk {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match &self.kind {
             // TODO escape backticks in here
-            TemplateChunkKind::Literal(literal) => literal.fmt(ind),
+            TemplateChunkKind::Literal(literal) => {
+                Escape::new(literal, &['`']).fmt(ind)
+            }
             // Escaping isn't needed here, the parser is smart enough to tell
             // when a backtick is part of the expression vs closing the literal
             TemplateChunkKind::Expression(expression) => {
@@ -627,6 +629,31 @@ where
     }
 }
 
+/// Add an extra `\` before each escapable character
+#[derive(Debug)]
+struct Escape<'a> {
+    s: &'a str,
+    chars: &'a [char],
+}
+
+impl<'a> Escape<'a> {
+    fn new(s: &'a str, chars: &'a [char]) -> Self {
+        Self { s, chars }
+    }
+}
+
+impl DisplayIndent for Escape<'_> {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        for c in self.s.chars() {
+            if self.chars.contains(&c) {
+                '\\'.fmt(ind)?;
+            }
+            c.fmt(ind)?;
+        }
+        Ok(())
+    }
+}
+
 impl<T> DisplayIndent for &Box<T>
 where
     for<'a> &'a T: DisplayIndent,
@@ -822,34 +849,6 @@ impl_display! {
     ArrayPatternElement
 }
 
-/// Add an extra `\` before each escapable character
-///
-/// Avoids an allocation if the string doesn't contain and escape characters.
-fn escape<'s>(s: &'s str, to_escape: &[char]) -> Cow<'s, str> {
-    // Most strings won't contain the escaped chars, so avoid an allocation in
-    // those cases. This will be a bit slower for the replacement case.
-    let replacements = s
-        .char_indices()
-        .filter_map(|(i, c)| to_escape.contains(&c).then_some(i))
-        .collect::<Vec<_>>();
-    if replacements.is_empty() {
-        // If no replacements are needed, return the original
-        Cow::Borrowed(s)
-    } else {
-        // +1 byte for each inserted backslash
-        let mut new = String::with_capacity(s.len() + replacements.len());
-        let mut last_copied = 0;
-        // Copy chunk-by-chunk with \ inserted in the middle, to avoid shifts
-        for i in replacements {
-            new.push_str(&s[last_copied..i]);
-            new.push('\\');
-            last_copied = i;
-        }
-        new.push_str(&s[last_copied..]);
-        Cow::Owned(new)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -884,6 +883,7 @@ mod tests {
 }";
         "literal object"
     )]
+    #[test_case(TemplateLiteral::new(["`"]), "`\\``"; "template escape")]
     #[test_case(
         Binding::object(
             [("x", "x", None), ("y", "y1", Some(1))],
@@ -939,6 +939,7 @@ mod tests {
     /// `test_display.rs`. This test holds specific cases I had to debug while
     /// testing that one.
     #[test_case("3.0;"; "float whole")]
+    #[test_case("`\\`${code}\\``"; "template escape")]
     #[test_case("function f() {}"; "function keyword")]
     fn display_round_trip(source_code: &str) {
         let parsed = Source::raw(source_code).parse().unwrap_display();
@@ -951,11 +952,25 @@ mod tests {
         assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
     }
 
-    /// Test `escape()`
-    #[test_case("test", Cow::Borrowed("test"); "unescaped")]
-    #[test_case(r"te\st", Cow::Owned(r"te\\st".into()); "escape")]
-    #[test_case(r#"te\s"t"#, Cow::Owned(r#"te\\s\"t"#.into()); "escape multiple")]
-    fn string_escape(s: &str, expected: Cow<'_, str>) {
-        assert_eq!(escape(s, &['\\', '"']), expected);
+    /// Test `Escape`
+    #[test_case("test", "test"; "unescaped")]
+    #[test_case(r"te\st", r"te\\st".into(); "escape")]
+    #[test_case(r#"te\s"t"#, r#"te\\s\"t"#.into(); "escape multiple")]
+    fn string_escape(s: &str, expected: &str) {
+        // Helper needed to integrate with DisplayIndent
+        #[derive(Debug)]
+        struct Help<'a>(&'a str);
+
+        impl Display for Help<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                let mut indenter = Indenter::new(f, "  ");
+                DisplayIndent::fmt(
+                    Escape::new(self.0, &['\\', '"']),
+                    &mut indenter,
+                )
+            }
+        }
+
+        assert_eq!(Help(s).to_string(), expected);
     }
 }

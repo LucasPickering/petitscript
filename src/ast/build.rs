@@ -410,10 +410,12 @@ impl From<OptionalPropertyAccess> for ExpressionKind {
 
 impl TemplateLiteral {
     /// Create a new template literal from chunks
-    pub fn new(chunks: impl IntoIterator<Item = TemplateChunk>) -> Self {
+    pub fn new(
+        chunks: impl IntoIterator<Item = impl Into<TemplateChunk>>,
+    ) -> Self {
         Self {
             id: next_id(),
-            chunks: chunks.into_iter().collect(),
+            chunks: chunks.into_iter().map(Into::into).collect(),
         }
     }
 }

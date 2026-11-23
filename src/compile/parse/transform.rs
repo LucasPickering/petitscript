@@ -46,6 +46,7 @@ pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
 ) -> Module {
+    dbg!(&program);
     let id = context.id(&program);
     let statements = program.body.transform_all(context);
     Module { id, statements }
@@ -1330,13 +1331,18 @@ impl Transform for oxc::TemplateLiteral<'_> {
             .quasis
             .iter()
             .map(|quasi| {
-                // TODO check the `cooked` field
-                let literal = quasi.value.raw;
+                let literal = quasi
+                    .value
+                    .cooked
+                    .expect("TODO what do if None")
+                    .as_str()
+                    .expect("TODO")
+                    .to_owned();
                 let span = quasi.span;
                 (
                     TemplateChunk {
                         id: context.id(quasi),
-                        kind: TemplateChunkKind::Literal(literal.into_string()),
+                        kind: TemplateChunkKind::Literal(literal),
                     },
                     span,
                 )

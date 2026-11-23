@@ -438,6 +438,7 @@ impl From<&str> for TemplateChunk {
 }
 
 impl ArrayLiteral {
+    /// Create a new array literal from a sequence of elements
     pub fn new(iter: impl IntoIterator<Item = impl IntoExpression>) -> Self {
         Self {
             id: next_id(),
@@ -449,6 +450,14 @@ impl ArrayLiteral {
                     spread: false,
                 })
                 .collect(),
+        }
+    }
+
+    /// Create a new empty array literal
+    pub fn empty() -> Self {
+        Self {
+            id: next_id(),
+            elements: Box::new([]),
         }
     }
 }
@@ -473,6 +482,14 @@ impl ObjectLiteral {
                     .into_node()
                 })
                 .collect(),
+        }
+    }
+
+    /// Create a new empty object literal
+    pub fn empty() -> Self {
+        Self {
+            id: next_id(),
+            properties: Box::new([]),
         }
     }
 

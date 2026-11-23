@@ -16,8 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 annotate-snippets = {workspace = true}
-petitscript = {path = "..", features = ["serde"]}
-serde_json = {workspace = true}
+petitscript = {path = ".."}
 
 [lints]
 workspace = true

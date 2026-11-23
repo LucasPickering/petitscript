@@ -76,7 +76,17 @@ impl DisplayIndent for &Statement {
         match &self.kind {
             StatementKind::Empty => ";".fmt(ind),
             StatementKind::Block(block) => block.fmt(ind),
-            StatementKind::Expression(expression) => (expression, ";").fmt(ind),
+            StatementKind::Expression(expression) => {
+                // If the statement is just an object literal, we need to wrap
+                // it in parens so it doesn't look like a block
+                if let ExpressionKind::Literal(Literal::Object(_)) =
+                    &expression.kind
+                {
+                    ("(", expression, ");").fmt(ind)
+                } else {
+                    (expression, ";").fmt(ind)
+                }
+            }
             StatementKind::Declaration(declaration) => declaration.fmt(ind),
             StatementKind::If(if_) => if_.fmt(ind),
             StatementKind::Return(expression) => {
@@ -137,13 +147,12 @@ impl DisplayIndent for &FunctionBody {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         match self {
             FunctionBody::Expression(expression) => {
-                if let ExpressionKind::Literal(Literal::Object(
-                    object_literal,
-                )) = &expression.kind
+                if let ExpressionKind::Literal(Literal::Object(_)) =
+                    &expression.kind
                 {
                     // If the body is just an object literal, we need to wrap it
                     // in parens so it doesn't look like a block
-                    ("(", object_literal, ")").fmt(ind)
+                    ("(", expression, ")").fmt(ind)
                 } else {
                     expression.fmt(ind)
                 }
@@ -810,7 +819,7 @@ impl_display! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::IntoExpression;
+    use crate::ast::{IntoExpression, IntoStatement};
     use pretty_assertions::assert_eq;
     use std::fmt::Display;
     use test_case::test_case;
@@ -833,7 +842,8 @@ mod tests {
   y: {
     z: 5,
   },
-}"; "literal object"
+}";
+        "literal object"
     )]
     #[test_case(
         Binding::object(
@@ -853,7 +863,18 @@ mod tests {
         Block::new([Declaration::new("x", 3)]),
         "{
   const x = 3;
-}"; "block"
+}";
+        "block"
+    )]
+    #[test_case(
+        // Requires parens around the object
+        ObjectLiteral::empty().into_expr().into_stmt(),
+        "({});"; "statement object"
+    )]
+    #[test_case(
+        // Requires parens around the object
+        FunctionDefinition::expression([], ObjectLiteral::empty()),
+        "() => ({})"; "function expression object"
     )]
     // I'll add more test cases as I go. It's definitely not exhaustive.
     fn display<T: Display>(node: T, expected: &str) {

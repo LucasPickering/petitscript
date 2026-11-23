@@ -28,7 +28,5 @@ fn run(path: &Path) -> Result<(), petitscript::Error> {
     let source = Source::file(path)?;
     let exports = engine.run(source)?;
     println!("Exported:\n{exports:#}");
-    let json = serde_json::to_string_pretty(&exports.default).unwrap();
-    println!("Default (JSON): {json}");
     Ok(())
 }

@@ -1,7 +1,5 @@
 //! Serialization and deserialization via the [serde] crate
 //!
-//! TODO make sure crate feature tag shows
-//!
 //! This module is designed to imitate a Serde data format crate, and thus
 //! follows [the conventions laid out by Serde](https://serde.rs/conventions.html),
 //! with the exception of the `Error` and `Result` types: we use [`ValueError`]

@@ -2,9 +2,9 @@
 //! module and its prototype
 
 use crate::{
+    Value, World,
     execute::Prototype,
-    value::{function::BoundFunction, Array},
-    World, Value,
+    value::{Array, function::BoundFunction},
 };
 
 /// Define all prototype functions for the `Array` type.

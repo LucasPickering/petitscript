@@ -45,9 +45,9 @@
 //!
 //! # Collection Types
 //!
-//! Collection types all use `Box<[T]>` instead of `Vec<T>` because we know
-//! they're all fixed size and won't need to grow. `Box<[T]>` ensures we don't
-//! allocate more memory than needed.
+//! Collection types all use `Box<[T]>` instead of `Vec<T>` because they're all
+//! fixed size and won't need to grow. `Box<[T]>` ensures we don't allocate more
+//! memory than needed.
 //!
 //! # Building ASTs
 //!
@@ -115,8 +115,6 @@
 //! let exports = world.run().unwrap();
 //! assert_eq!(exports, Exports::new(Some(6), [("x", 3)]));
 //! ```
-//!
-//! TODO example for parsing to an AST and inspecting
 
 mod build;
 mod display;

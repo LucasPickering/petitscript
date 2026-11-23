@@ -63,7 +63,6 @@ impl FromStr for Identifier {
 ///
 /// Native module names must adhere to these rules:
 /// - Allowed characters are `a-z`, `A-Z`, `0-9`, `_` and `-`
-/// - Must start with a letter `a-z` or `A-Z`
 /// - Must be at least one character long
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -167,5 +166,21 @@ mod tests {
         }
     }
 
-    // TODO module name parse errors
+    /// Property test for module name parsing
+    ///
+    /// Module name parsing succeeds iff the input string:
+    /// - Is non-empty
+    /// - Contains only ASCII letters, `0-9`, `-`, and `_`
+    #[property_test]
+    fn parse_native_module_name_prop(s: String) {
+        let result = s.parse::<NativeModuleName>();
+        if !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            result.expect("expected valid module name");
+        } else {
+            result.expect_err("expected invalid module name");
+        }
+    }
 }

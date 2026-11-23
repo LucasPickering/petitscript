@@ -19,6 +19,29 @@ use std::collections::HashMap;
 /// This is produced by [`Source::parse`] and contains all the static
 /// information needed to run a program. It is not itself executable though;
 /// that requires a [`World`](crate::World).
+///
+/// # Introspection
+///
+/// You can inspect the [abstract syntax tree](crate::ast) of a parsed program
+/// with [`Program::root`].
+///
+/// ```
+/// use petitscript::{
+///     Program,
+///     ast::{IntoExpression, Module, NodeId},
+/// };
+/// let program = Program::parse("export default 3;").unwrap();
+/// // NodeId::with_all_equal is useful for equality assertions on ASTs. Each
+/// // AST node gets a unique ID, and the generation order can vary based on
+/// // how the AST is constructed. with_all_equal() causes assertions to
+/// // ignore node IDs, making the comparison just structural.
+/// NodeId::with_all_equal(|| {
+///     assert_eq!(
+///         program.root(),
+///         &Module::new([3.into_expr().export_default()])
+///     );
+/// });
+/// ```
 #[derive(Debug)]
 pub struct Program {
     /// Compiled source code
@@ -65,17 +88,19 @@ impl Program {
         .end()
     }
 
-    /// TODO
+    /// Get the root module of the program
+    ///
+    /// This is the root of the abstract syntax tree that composes the program.
     pub fn root(&self) -> &Module {
         &self.modules.root
     }
 
-    /// TODO
+    /// Get the sources parsed to make this program
     pub(crate) fn sources(&self) -> &SourceTable {
         &self.sources
     }
 
-    /// TODO
+    /// Get the source span table
     pub(crate) fn spans(&self) -> &SpanTable {
         &self.spans
     }

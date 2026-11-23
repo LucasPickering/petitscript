@@ -1,7 +1,7 @@
 //! Standard library functions related to objects.
 
 use crate::{
-    World, Value,
+    Value, World,
     value::{Array, Object, PetitString},
 };
 

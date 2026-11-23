@@ -8,6 +8,7 @@ use crate::{
 use normalize_path::NormalizePath;
 use std::{
     collections::HashMap,
+    env,
     fmt::Debug,
     fs,
     path::{Path, PathBuf},
@@ -27,10 +28,14 @@ use std::{
 /// Cloning is cheap because source code is stored via `Arc<str>`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
-    /// Source code from a string literal
-    Static(&'static str),
-    /// Source code from an owned string
-    String(Arc<str>),
+    /// Source code from a string
+    String {
+        text: Arc<str>,
+        /// Root directory for imports
+        ///
+        /// Defaults to the current working directory for [`Self::owned`].
+        root: PathBuf,
+    },
     /// Source code loaded from a file
     File {
         /// Descriptive name derived from the path
@@ -43,11 +48,6 @@ pub enum Source {
 }
 
 impl Source {
-    /// Read source code from an owned string
-    pub fn owned(string: String) -> Self {
-        Self::String(string.into())
-    }
-
     /// Load source code from a file
     pub fn file(path: impl AsRef<Path>) -> Result<Self, SourceError> {
         let path = path.as_ref();
@@ -63,13 +63,21 @@ impl Source {
         })
     }
 
+    /// Read source code from a string
+    pub fn raw(text: impl Into<Arc<str>>) -> Self {
+        Self::String {
+            text: text.into(),
+            root: env::current_dir().unwrap(), // TODO handle this error?
+        }
+    }
+
     /// Descriptive name for this source
     ///
     /// The name is used in user-facing output (such as errors), so it's
     /// readable rather than specific.
     pub fn name(&self) -> &str {
         match self {
-            Self::Static(_) | Self::String(_) => "<source>",
+            Self::String { .. } => "<source>",
             Self::File { name, .. } => name,
         }
     }
@@ -86,7 +94,7 @@ impl Source {
     /// [`ParseErrorKind::ImportInvalidLocal`](crate::error::ParseErrorKind::ImportInvalidLocal).
     pub fn path(&self) -> Option<&Path> {
         match self {
-            Self::Static(_) | Self::String(_) => None,
+            Self::String { .. } => None,
             Self::File { path, .. } => Some(path),
         }
     }
@@ -97,8 +105,7 @@ impl Source {
     /// infallible.
     pub fn text(&self) -> &str {
         match self {
-            Self::Static(s) => s,
-            Self::String(s) => s,
+            Self::String { text, .. } => text,
             Self::File { text, .. } => text,
         }
     }
@@ -117,17 +124,17 @@ impl Source {
     }
 }
 
-/// Convert a string literal to [`Source::Static`]
-impl From<&'static str> for Source {
-    fn from(value: &'static str) -> Self {
-        Self::Static(value)
+/// Convert a `&str` to [`Source::String`]
+impl From<&str> for Source {
+    fn from(text: &str) -> Self {
+        Self::raw(text)
     }
 }
 
 /// Convert a [`String`] to [`Source::String`]
 impl From<String> for Source {
-    fn from(value: String) -> Self {
-        Self::String(value.into())
+    fn from(text: String) -> Self {
+        Self::raw(text)
     }
 }
 

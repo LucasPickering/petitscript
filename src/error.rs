@@ -195,7 +195,10 @@ impl StdError for ParseError {
 #[derive(Debug, thiserror::Error)]
 pub enum ParseErrorKind {
     /// Imported an absolute path: `import ... from '/data/lib.js'`
-    #[error("illegal import from absolute path '{}'", path.display())]
+    #[error(
+        "illegal import from absolute path '{}'; imports must be relative paths",
+        path.display(),
+    )]
     ImportAbsolute { path: PathBuf },
 
     /// Attempted to import a module with an unrecognized file extension
@@ -205,17 +208,6 @@ pub enum ParseErrorKind {
         path = path.display()
     )]
     ImportInvalidExtension { path: PathBuf },
-
-    /// Attempted a local module import from a non-file source
-    ///
-    /// Non-file sources (i.e. sources defined in-memory) cannot import other
-    /// files, as they do not exist on disk. A local import (e.g. `import ...
-    /// from './other.js'`) will result in this error.
-    #[error("illegal import '{module}' from non-file source")]
-    ImportInvalidLocal {
-        /// Name of the module being imported
-        module: String,
-    },
 
     /// [oxc_parser] failed to parse the source
     ///

@@ -469,13 +469,10 @@ fn resolve_module(
     }
 
     // The import is relative to the parent directory of this file
-    let relative_to = parent_source
-        .path()
-        .ok_or_else(|| ParseErrorKind::ImportInvalidLocal {
-            module: specifier.to_owned(),
-        })?
-        .parent()
-        .expect("TODO");
+    let relative_to = match parent_source {
+        Source::String { root, .. } => root,
+        Source::File { path, .. } => path.parent().expect("TODO handle error"),
+    };
     let path = relative_to.join(path);
 
     // Ensure the path is a file with a supported extension

@@ -12,8 +12,10 @@ const { o: { a, b: b1, c: [c1, c2, c3] } } = null;
 null;
 undefined;
 null ?? undefined;
+typeof null;
 
 // Booleans
+!true;
 true && false;
 true || false;
 true === false;

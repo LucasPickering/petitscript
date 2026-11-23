@@ -1064,13 +1064,9 @@ impl Node for IdentifierNode {
 /// you probably only care about checking the structure of the AST, not the
 /// exact ID values. You can use [`NodeId::with_all_equal`] to temporarily
 /// disable equality checks.
-#[expect(
-    // Hash is safe because PartialEq is non-standard only in a very limited and
-    // intentional context. Deserialize warning is noise because the unsafe comes
-    // from the thread-local, which doesn't affect ser/de.
-    clippy::derived_hash_with_manual_eq,
-    clippy::unsafe_derive_deserialize
-)]
+// Hash is safe because PartialEq is non-standard only in a very limited and
+// intentional context.
+#[expect(clippy::derived_hash_with_manual_eq)]
 #[derive(Copy, Clone, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]

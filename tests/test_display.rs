@@ -1,5 +1,6 @@
 use petitscript::{Source, ast::NodeId};
 use pretty_assertions::assert_eq;
+use std::{path::Path, sync::Arc};
 
 /// Test parse -> display -> parse round trip
 ///
@@ -13,14 +14,18 @@ use pretty_assertions::assert_eq;
 /// trusting that the parse works.
 #[test]
 fn display_round_trip() {
-    let source = Source::file("tests/ps/everything.js").unwrap();
+    let js_root = Path::new("tests/ps/");
+    let source = Source::file(js_root.join("everything.js")).unwrap();
     let parsed = source.parse().unwrap_or_else(|error| panic!("{error:#}"));
     // This line is what we're testing!! The source codes won't be textually
     // equal, but they should be semantically equal
-    let stringified = parsed.root().to_string();
-    let reparsed = Source::from(stringified.clone())
-        .parse()
-        .unwrap_or_else(|error| panic!("{error:#}"));
+    let stringified: Arc<str> = parsed.root().to_string().into();
+    let reparsed = Source::String {
+        text: stringified.clone(),
+        root: js_root.to_owned(),
+    }
+    .parse()
+    .unwrap_or_else(|error| panic!("{error:#}"));
     NodeId::with_all_equal(|| {
         assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
     });

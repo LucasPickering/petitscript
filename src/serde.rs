@@ -1,11 +1,118 @@
 //! Serialization and deserialization via the [serde] crate
 //!
+//! TODO make sure crate feature tag shows
+//!
 //! This module is designed to imitate a Serde data format crate, and thus
 //! follows [the conventions laid out by Serde](https://serde.rs/conventions.html),
 //! with the exception of the `Error` and `Result` types: we use [`ValueError`]
 //! instead and no `Result` alias is provided.
 //!
-//! TODO add examples
+//! There are two primary use cases for serde integration:
+//! - (De)serialize between Rust types and [`Value`], treating `Value` as a
+//!   serialization format
+//! - (De)serialize between `Value` and another serialization format
+//!
+//! # Examples
+//!
+//! ## `Value` <=> JSON
+//!
+//! `Value` implements [`Serialize`] and [`Deserialize`], so you can convert
+//! between it and any external format. Here's an example with
+//! [`serde_json`](https://docs.rs/serde_json/latest/serde_json/):
+//!
+//! ```
+//! # use petitscript::Value;
+//! let value =
+//!     Value::object([("name", Value::from("Fred")), ("age", 32.into())]);
+//! assert_eq!(
+//!     serde_json::to_string(&value).unwrap(),
+//!     r#"{"name":"Fred","age":32}"#
+//! );
+//! ```
+//!
+//! <div class="warning">
+//!
+//! [`Function`] cannot be (de)serialized with external formats, as they can't
+//! be represented in [serde's data model](https://serde.rs/data-model.html).
+//! Functions can only be (de)serialized as themselves. See [the example
+//! below](#deserializing-functions).
+//!
+//! </div>
+//!
+//! ## `Value` <=> Rust
+//!
+//! You can treat `Value` as a serialization format, and (de)serialize between
+//! `Value` and your own Rust types.
+//!
+//! ```
+//! use petitscript::{
+//!     Engine, Value,
+//!     serde::{from_value, to_value},
+//! };
+//! use serde::{Deserialize, Serialize};
+//!
+//! #[derive(Debug, PartialEq, Serialize, Deserialize)]
+//! struct User {
+//!     name: String,
+//!     age: u32,
+//! }
+//!
+//! let exports = Engine::new()
+//!     .run("export default { name: 'Fred', age: 32 };")
+//!     .unwrap();
+//! let user = from_value::<User>(exports.default.unwrap()).unwrap();
+//! assert_eq!(
+//!     user,
+//!     User {
+//!         name: "Fred".into(),
+//!         age: 32
+//!     }
+//! );
+//!
+//! // And you can serialize back to a value:
+//! assert_eq!(
+//!     to_value(&user).unwrap(),
+//!     Value::object([("name", Value::from("Fred")), ("age", 32.into())])
+//! );
+//! ```
+//!
+//! ## (De)serializing Functions
+//!
+//! The [`Function`] type can only (de)serialize as itself. Functions may
+//! contain pointers to Rust values in memory, so there's no way to serialize
+//! one to a format such as JSON. But you can use [`to_value`] and
+//! [`from_value`] to pack and unpack values that contain functions.
+//!
+//! ```
+//! use petitscript::{Engine, Program, serde::from_value, value::Function};
+//! use serde::Deserialize;
+//!
+//! #[derive(Deserialize)]
+//! struct User {
+//!     name: String,
+//!     procedure: Function,
+//! }
+//!
+//! let engine = Engine::new();
+//! let program = Program::parse(
+//!     r#"export default {
+//!   name: "Fred",
+//!   procedure: (n) => n * 2,
+//! };"#,
+//! )
+//! .unwrap();
+//! let world = engine.instantiate(program);
+//! let exports = world.run().unwrap();
+//! let user = from_value::<User>(exports.default.unwrap()).unwrap();
+//! assert_eq!(user.name, "Fred");
+//! // The procedure was deserialized and we can call it
+//! assert_eq!(world.call(&user.procedure, [4]).unwrap(), 8.into());
+//! ```
+//!
+//! This deserialization is implemented using [out-of-band
+//! signalling](https://lucumr.pocoo.org/2021/11/14/abusing-serde/), which
+//! requires cooperation between the data type (`Value`) and the serialization
+//! format (also `Value`).
 
 mod de;
 mod impls;

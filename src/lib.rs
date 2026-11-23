@@ -4,8 +4,8 @@
 //! attached to Rust programs. It serves a related role to [Lua](https://www.lua.org/),
 //! [Rhai](https://docs.rs/rhai/latest/rhai/), and others. **However**,
 //! PetitScript is more specifically designed for app configuration. The
-//! [immutable semantics](#immutable-semantics) are meant to force declarative
-//! code that is easy to read and reason about. TODO link to Slumber?
+//! [immutable semantics](#immutability) are meant to force declarative code
+//! that is easy to read and reason about.
 //!
 //! The primary advantage of PS over other scripting languages is the
 //! familiarity of its syntax and semantics. Most people already know
@@ -14,11 +14,13 @@
 //! also makes JS tooling applicable. You can use both JavaScript and TypeScript
 //! language servers and formatters to write PetitScript.
 //!
-//! TODO how intro this list?
+//! Some neat features of PetitScript:
 //! - Easily define native functions callable from PS code
-//! - Introspect and create programs via the minimal [abstract syntax tree](ast)
+//! - Introspect and build programs via the minimal [abstract syntax tree](ast)
 //! - Freely clone and share PS values across threads
-//! - [Serde](crate::serde) integration
+//! - [Serde integration](crate::serde)
+//!
+//! TODO those should all link to examples^^
 //!
 //! Some language features that PetitScript supports:
 //! - Primitive types
@@ -35,36 +37,130 @@
 //! - Try/catch
 //! - Async
 //!
-//! # Usage
+//! # Semantics
+//!
+//! ## Simplicity
+//!
+//! ## Immutability
 //!
 //! TODO
+//!
+//! # Usage
+//!
+//! TODO explain core types
+//! - Engine
+//! - Source
+//! - Program
+//! - World
+//! - Exports
+//! - Value
 //!
 //! # Examples
 //!
 //! The simplest example of parsing and executing some PetitScript code:
 //!
 //! ```
-//! use petitscript::{Engine, Error};
-//!
-//! fn main() -> Result<(), Error> {
-//!     let engine = Engine::new();
-//!     let exports = engine.run("export default 4;")?;
-//!     assert_eq!(exports.default, Some(4.into()));
-//!     Ok(())
-//! }
+//! let engine = petitscript::Engine::new();
+//! let exports = engine.run("export default 4;").unwrap();
+//! assert_eq!(exports.default, Some(4.into()));
 //! ```
 //!
-//! - TODO calling functions
-//! - TODO Native modules
-//! - TODO Local modules
-//! - TODO Compile and inspect AST
-//! - TODO app data
-//! - TODO value provenance (source span tracking)
+//! ## Calling Functions
 //!
-//! # Immutable Semantics
+//! Functions exported from an invocation can then be called later:
+//!
+//! ```
+//! # use petitscript::{Engine, Program, Value};
+//! let engine = Engine::new();
+//! // Export a function
+//! let program = Program::parse("export const f  = (n) => n * 2;").unwrap();
+//! let world = engine.instantiate(program);
+//! let exports = world.run().unwrap();
+//! // Grab the exported function
+//! let Value::Function(f) = &exports.named["f"] else {
+//!     panic!("expected function!")
+//! };
+//! assert_eq!(f.to_string(), "[Function `f` (user)]");
+//! // The function MUST be invoked in the world that produced it
+//! assert_eq!(world.call(f, [4]).unwrap(), 8.into());
+//! ```
+//!
+//! ## Native Modules
+//!
+//! Native modules allow you to expose Rust functions to PetitScript code.
+//! PetitScript's standard library has no random library, so here's an example
+//! of a random number generator:
+//!
+//! ```
+//! # use petitscript::{Engine, Exports};
+//! let mut module = Exports::default();
+//! // Native functions always take two parameters: the executing World and
+//! // the args passed from the PS call. The PS args will be packed into a
+//! // tuple.
+//! module.export_fn("random", |_, ()| {
+//!     // chosen by fair dice roll
+//!     // guaranteed to be random
+//!     4
+//! });
+//! let engine = Engine::builder()
+//!     .with_native_module("random", module)
+//!     .build();
+//!
+//! let program = "import { random } from 'random';
+//! export default random();";
+//! let exports = engine.run(program).unwrap();
+//! assert_eq!(exports.default.unwrap(), 4.into());
+//! ```
+//!
+//! See [`Exports::export_fn`] for examples of arguments, return types, and
+//! errors.
+//!
+//! ## App Data
+//!
+//! App data is arbitrary data attached to a [`World`]. Because the `World` is
+//! exposed to each native function call, app data can be accessed in those
+//! native calls, providing a conduit to outside program context.
+//!
+//! **App data is keyed by its type**, meaning you can only register one app
+//! data value for any specific type `T`.
+//!
+//! ```
+//! # use petitscript::{Engine, Exports, Program};
+//! # use std::sync::atomic::{AtomicU32, Ordering};
+//! struct Counter(AtomicU32);
+//!
+//! // Define your native module
+//! let mut module = Exports::default();
+//! module.export_fn("counter", |world, ()| {
+//!     // App data is immutable, so we have to use an atomic primitive
+//!     let counter = world.app_data::<Counter>().unwrap();
+//!     counter.0.fetch_add(1, Ordering::Relaxed)
+//! });
+//! let engine = Engine::builder()
+//!     .with_native_module("counter", module)
+//!     .build();
+//!
+//! // Instantiate the program as a world
+//! let program = Program::parse(
+//!     "import { counter } from 'counter';
+//! export default [counter(), counter(), counter()];",
+//! )
+//! .unwrap();
+//! let mut world = engine.instantiate(program);
+//!
+//! // Attach app data and it will be available to counter()
+//! world.set_app_data(Counter(0.into()));
+//! let exports = world.run().unwrap();
+//! assert_eq!(exports.default.unwrap(), [0, 1, 2].into());
+//! ```
+//!
+//! ## Local Modules
 //!
 //! TODO
-
+//!
+//! # Feature Flags
+//!
+//! TODO
 #![forbid(unsafe_code)]
 #![deny(clippy::all)]
 
@@ -74,7 +170,6 @@ pub mod error;
 mod execute;
 mod name;
 #[cfg(feature = "serde")]
-#[cfg_attr(docsrs, doc(cfg(feature = "serde")))] // TODO make this work
 pub mod serde;
 mod source;
 mod stdlib;
@@ -204,7 +299,7 @@ impl EngineBuilder {
         self
     }
 
-    /// Build and register a [native module](TODO link to example) in the engine
+    /// Build and register a [native module](crate#native-modules) in the engine
     ///
     /// The module can be imported into any PetitScript program executed by this
     /// engine. If a module with the given name is already registered, it

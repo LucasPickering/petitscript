@@ -18,9 +18,7 @@ use std::collections::HashMap;
 ///
 /// This is produced by [`Source::parse`] and contains all the static
 /// information needed to run a program. It is not itself executable though;
-/// that requires a [`World`].
-///
-/// TODO example for how to mutate a program - modify the module and recompile.
+/// that requires a [`World`](crate::World).
 #[derive(Debug)]
 pub struct Program {
     /// Compiled source code

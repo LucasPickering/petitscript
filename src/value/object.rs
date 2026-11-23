@@ -10,6 +10,8 @@ use std::{
 };
 
 /// A reference-counted immutable key-value store
+///
+/// Object keys must be strings.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
@@ -37,7 +39,7 @@ impl Object {
         self.0.is_empty()
     }
 
-    /// TODO
+    /// Add a new property to this object, returning a new object
     #[must_use]
     pub fn insert(
         self,
@@ -50,6 +52,10 @@ impl Object {
     }
 
     /// Insert a native function into this object
+    ///
+    /// This is a convenience for [`Self::insert`] when the value is a native
+    /// function. This handles the conversion from a Rust function to
+    /// [`Function`].
     #[must_use]
     pub fn insert_fn<F, Args, Out>(
         self,
@@ -61,7 +67,7 @@ impl Object {
         Args: FromPetitArgs,
         Out: IntoPetitResult,
     {
-        // Use the naem as the and also attach it to the function for printing
+        // Use the name as the key and also attach it to the function
         let name = name.into();
         self.insert(name.clone(), Value::from(Function::native(name, function)))
     }

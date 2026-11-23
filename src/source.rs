@@ -33,7 +33,7 @@ pub enum Source {
         text: Arc<str>,
         /// Root directory for imports
         ///
-        /// Defaults to the current working directory for [`Self::owned`].
+        /// Defaults to the current working directory for [`Self::raw`].
         root: PathBuf,
     },
     /// Source code loaded from a file
@@ -85,13 +85,6 @@ impl Source {
     /// Get the path to to the source
     ///
     /// Return `None` if the source isn't a file.
-    ///
-    /// # Relative (Loca Imports
-    ///
-    /// Imported local modules (`import ... from './other.js'`) from this source
-    /// will be performed relative to this path. Sources that don't have a
-    /// path cannot import local modules. Doing so will result in a
-    /// [`ParseErrorKind::ImportInvalidLocal`](crate::error::ParseErrorKind::ImportInvalidLocal).
     pub fn path(&self) -> Option<&Path> {
         match self {
             Self::String { .. } => None,

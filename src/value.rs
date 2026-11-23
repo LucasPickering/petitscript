@@ -36,8 +36,8 @@ use std::{
 
 /// Any PetitScript value
 ///
-/// See the [petitscript::value](crate::value) module for individual value
-/// types.
+/// Values are reference-counted, which means they are immutable and can be
+/// cheaply cloned and shared.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum Value {
     /// The empty value
@@ -49,11 +49,10 @@ pub enum Value {
     ///
     /// While PetitScript removes a lot of the thorns and oddities of
     /// JavaScript, `undefined` remains. Its prevalence in the semantics of
-    /// the language make it too hard to avoid while remaining close to a strict
-    /// subset of JS.
+    /// the language make it too hard to avoid.
     ///
     /// Unlike `null`, `undefined` is not representable in JSON. It will be
-    /// converted to `null`. With [`serde`]this value serializes as the unit
+    /// converted to `null`. With `serde` this value serializes as the unit
     /// value `()`.
     #[default]
     Undefined,
@@ -63,13 +62,14 @@ pub enum Value {
     Number(Number),
     /// A string of UTF-8 characters
     String(PetitString),
-    /// An ordered list
+    /// An ordered list: `[1, "a", false]`
     Array(Array),
-    /// An ordered key-value mapping
+    /// An ordered key-value mapping: `{ a: 1, b: false }`
+    ///
+    /// Object keys must be strings.
     Object(Object),
     /// An immutable byte buffer
     #[cfg(feature = "buffer")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "buffer")))]
     Buffer(Buffer),
     /// A callable procedure
     Function(Function),
@@ -90,6 +90,39 @@ impl Value {
     #[cfg(feature = "buffer")]
     pub fn buffer(bytes: impl Into<Vec<u8>>) -> Self {
         Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
+    }
+
+    /// Build a new array from an iterator of elements
+    ///
+    /// ```
+    /// # use petitscript::value::{Array, Value};
+    /// assert_eq!(
+    ///     Value::array([1, 2]),
+    ///     Value::Array(Array::new().push(1).push(2))
+    /// );
+    /// ```
+    pub fn array(elements: impl IntoIterator<Item = impl Into<Value>>) -> Self {
+        Self::Array(elements.into_iter().map(Into::into).collect())
+    }
+
+    /// Build an object from an iterator of properties
+    ///
+    /// ```
+    /// # use petitscript::value::{Object, Value};
+    /// assert_eq!(
+    ///     Value::object([("a", 1), ("b", 2)]),
+    ///     Value::Object(Object::new().insert("a", 1).insert("b", 2))
+    /// );
+    /// ```
+    pub fn object(
+        properties: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
+    ) -> Self {
+        Self::Object(
+            properties
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        )
     }
 
     /// Coerce this value to a boolean

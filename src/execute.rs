@@ -30,7 +30,18 @@ use std::{
 
 /// Instantiated [`Program`] that can be executed
 ///
-/// TODO
+/// A `World` is how PetitScript programs are invoked. There are two ways to
+/// invoke:
+/// - [`run`](Self::run): Run from program entrypoint
+/// - [`call`](Self::call): Call a [`Function`] that was previously returned by
+///   this world
+///
+/// # App Data
+///
+/// App data is arbitrary data attached to the world. This is available to all
+/// [native functions](crate#native-functions), so you can use it to share
+/// contextual data with native functions. See the [example in the crate
+/// root](crate#app-data).
 #[derive(Clone, Debug)]
 pub struct World {
     /// Engine to execute under
@@ -68,8 +79,8 @@ impl World {
     /// Get user-defined app data attached to the world
     ///
     /// App data is stored and fetched by type, meaning **there can only be one
-    /// piece of app data per type**. See [set_app_data](Self::set_app_data) for
-    /// examples.
+    /// piece of app data per type**. See [`set_app_data`](Self::set_app_data)
+    /// for more info, and the [example in the crate root](crate#app-data).
     ///
     /// # Errors
     ///
@@ -81,12 +92,13 @@ impl World {
     /// Attach arbitrary data of a statically known type to this world
     ///
     /// This data will be accessible to all subsequent executions of this
-    /// world. This makes it easy to pass data to native functions.
+    /// world. The world is passed as a parameter to all native functions, so
+    /// app data is available there.
     ///
     /// App data is keyed by its type, meaning **only one instance of any given
     /// type can be stored.**
     ///
-    /// TODO example code
+    /// See the [example in the crate root](crate#app-data).
     ///
     /// # Errors
     ///
@@ -101,9 +113,13 @@ impl World {
 
     /// Execute the loaded program and return its exported values
     ///
+    /// This will invoke the program from its entrypoint, which is the top of
+    /// the root module. The exports from the *root* module only are returned.
+    ///
     /// # Errors
     ///
-    /// TODO
+    /// Return an error if the execution fails. See [`RuntimeError`] for
+    /// possible errors.
     pub fn run(&self) -> Result<Exports, RuntimeError> {
         let mut fiber = self.create_fiber();
         self.program.root().exec(&mut fiber)?;
@@ -117,15 +133,17 @@ impl World {
     ///
     /// # Errors
     ///
-    /// TODO
+    /// Return an error if the execution fails. See [`RuntimeError`] for
+    /// possible errors.
     pub fn call(
         &self,
         function: &Function,
-        arguments: Vec<Value>,
+        arguments: impl IntoIterator<Item = impl Into<Value>>,
     ) -> Result<Value, RuntimeError> {
         // Exporting is NOT allowed here, because we're not in the root scope
         let mut fiber =
             Fiber::new(Arc::clone(&self.engine.globals), self, false);
+        let arguments = arguments.into_iter().map(Into::into).collect();
         function.call(&mut fiber, Location::Native, arguments)
     }
 
@@ -173,7 +191,7 @@ impl Exports {
         }
     }
 
-    /// Export a some values as named exports. This allows the exports to be
+    /// Export some values as named exports. This allows the exports to be
     /// imported as a native module like so:
     ///
     /// ```notrust
@@ -212,10 +230,16 @@ impl Exports {
     /// The return value must implement [`IntoPetitResult`]. This can be any
     /// value that implements [`IntoPetit`](crate::value::IntoPetit), or a
     /// `Result` where `T` implements [`IntoPetit`](crate::value::IntoPetit)
-    /// and `E` implements `Into` for [`RuntimeError`].
+    /// and `E` implements `Into` for [`RuntimeErrorKind`]. In most cases,
+    /// you'll want to define your own error type and implement `From<MyError>
+    /// for RuntimeErrorKind`, mapping it with [`RuntimeErrorKind::other`].
     ///
     /// ```
-    /// use petitscript::{Exports, Value, error::ValueError, value::Number};
+    /// use petitscript::{
+    ///     Exports, Value,
+    ///     error::{RuntimeErrorKind, ValueError},
+    ///     value::Number,
+    /// };
     ///
     /// let mut module = Exports::default();
     /// // All functions take two arguments: world and args. Use tuples to
@@ -235,6 +259,35 @@ impl Exports {
     ///             Ok(input)
     ///         } else {
     ///             Err(ValueError::Other("error!".into()))
+    ///         }
+    ///     },
+    /// );
+    ///
+    /// // And use a custom error type:
+    /// #[derive(Debug)]
+    /// struct MyError;
+    ///
+    /// impl std::fmt::Display for MyError {
+    ///     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    ///         write!(f, "oh no!")
+    ///     }
+    /// }
+    ///
+    /// impl std::error::Error for MyError {}
+    ///
+    /// impl From<MyError> for RuntimeErrorKind {
+    ///     fn from(error: MyError) -> RuntimeErrorKind {
+    ///         RuntimeErrorKind::other(error)
+    ///     }
+    /// }
+    ///
+    /// module.export_fn(
+    ///     "customError",
+    ///     |_, (input,): (Number,)| -> Result<Number, MyError> {
+    ///         if input < 10.into() {
+    ///             Ok(input)
+    ///         } else {
+    ///             Err(MyError)
     ///         }
     ///     },
     /// );

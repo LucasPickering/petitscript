@@ -16,7 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 annotate-snippets = {workspace = true}
-petitscript = {path = ".."}
+petitscript = {path = "..", version = "0.1.0"}
 
 [lints]
 workspace = true

@@ -357,7 +357,11 @@ impl Value {
     /// *not* strictly for boolean operations.
     #[must_use]
     pub fn and(self, other: Self) -> Value {
-        if self.to_bool() { other } else { self }
+        if self.to_bool() {
+            other
+        } else {
+            self
+        }
     }
 
     /// Logical OR operator (`||`)
@@ -366,7 +370,11 @@ impl Value {
     /// *not* strictly for boolean operations.
     #[must_use]
     pub fn or(self, other: Self) -> Value {
-        if self.to_bool() { self } else { other }
+        if self.to_bool() {
+            self
+        } else {
+            other
+        }
     }
 
     /// Apply nullish coalescing (`??`)

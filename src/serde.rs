@@ -232,7 +232,7 @@ impl FunctionPool {
 mod tests {
     use super::*;
     use crate::{
-        ast::{Expression, FunctionDefinition, FunctionParameter},
+        ast::{Expression, FunctionDefinition, FunctionParameter, NodeId},
         value::{
             Array, Object,
             function::{BoundFunction, Function},
@@ -543,11 +543,15 @@ mod tests {
     {
         let deserialized: T = from_value(value.clone())
             .unwrap_or_else(|error| panic!("Deserialization failed: {error}"));
-        assert_eq!(deserialized, external, "Deserialization did not match");
+        NodeId::with_all_equal(|| {
+            assert_eq!(deserialized, external, "Deserialization did not match")
+        });
 
         let serialized = to_value(&external)
             .unwrap_or_else(|error| panic!("Serialization failed: {error}"));
-        assert_eq!(serialized, value, "Serialization did not match");
+        NodeId::with_all_equal(|| {
+            assert_eq!(serialized, value, "Serialization did not match")
+        });
     }
 
     /// Test deserialization only of certain external values

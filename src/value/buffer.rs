@@ -11,7 +11,16 @@ use std::{
 /// efficient sharing of bytes, and is commonly used throughout the Rust
 /// ecosystem.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Buffer(Bytes);
+pub struct Buffer(
+    /// Boxed to reduce the size of Value
+    Box<Bytes>,
+);
+
+impl Buffer {
+    fn new(bytes: Bytes) -> Self {
+        Self(Box::new(bytes))
+    }
+}
 
 impl Deref for Buffer {
     type Target = [u8];
@@ -47,7 +56,7 @@ impl Display for Buffer {
 /// because it would conflict with the conversion to an array of numbers.
 impl From<&'static [u8]> for Buffer {
     fn from(bytes: &[u8]) -> Self {
-        Self(bytes.to_owned().into())
+        Self::new(bytes.to_owned().into())
     }
 }
 
@@ -57,31 +66,31 @@ impl From<&'static [u8]> for Buffer {
 /// because it would conflict with the conversion to an array of numbers.
 impl<const N: usize> From<[u8; N]> for Buffer {
     fn from(bytes: [u8; N]) -> Self {
-        Self(Bytes::from_owner(bytes))
+        Self::new(Bytes::from_owner(bytes))
     }
 }
 
 impl From<Vec<u8>> for Buffer {
     fn from(bytes: Vec<u8>) -> Self {
-        Self(bytes.into())
+        Self::new(bytes.into())
     }
 }
 
 impl From<Bytes> for Buffer {
     fn from(bytes: bytes::Bytes) -> Self {
-        Self(bytes)
+        Self::new(bytes)
     }
 }
 
 impl From<Buffer> for Bytes {
     fn from(buffer: Buffer) -> Self {
-        buffer.0
+        *buffer.0
     }
 }
 
 impl From<Buffer> for Vec<u8> {
     fn from(buffer: Buffer) -> Self {
-        buffer.0.into()
+        (*buffer.0).into()
     }
 }
 

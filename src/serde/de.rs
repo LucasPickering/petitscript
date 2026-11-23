@@ -60,10 +60,10 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Object(object) => {
                 visitor.visit_map(&mut MapDeserializer::new(object.into_iter()))
             }
-            #[cfg(feature = "buffer")]
-            Value::Buffer(buffer) => visitor.visit_byte_buf(buffer.into()),
             Value::Function(_) => self
                 .deserialize_newtype_struct(FunctionPool::STRUCT_NAME, visitor),
+            #[cfg(feature = "buffer")]
+            Value::Buffer(buffer) => visitor.visit_byte_buf(buffer.into()),
         }
     }
 
@@ -147,9 +147,9 @@ impl<'de> serde::Deserializer<'de> for Deserializer {
             Value::Number(Number::Int(int)) => Unexpected::Signed(int),
             Value::Number(Number::Float(float)) => Unexpected::Float(float),
             Value::Array(_) => Unexpected::Seq,
+            Value::Function(_) => Unexpected::Other("function"),
             #[cfg(feature = "buffer")]
             Value::Buffer(_) => Unexpected::Other("bytes"),
-            Value::Function(_) => Unexpected::Other("function"),
         };
         Err(de::Error::invalid_type(unexpected, &"string or object"))
     }

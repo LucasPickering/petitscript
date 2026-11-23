@@ -31,9 +31,9 @@ impl serde::Serialize for Value {
             Value::String(string) => string.serialize(serializer),
             Value::Array(array) => array.serialize(serializer),
             Value::Object(object) => object.serialize(serializer),
+            Value::Function(function) => function.serialize(serializer),
             #[cfg(feature = "buffer")]
             Value::Buffer(buffer) => buffer.serialize(serializer),
-            Value::Function(function) => function.serialize(serializer),
         }
     }
 }

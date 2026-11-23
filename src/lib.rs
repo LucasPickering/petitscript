@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+#![deny(clippy::all)]
 // Enable automatic feature tagging in docs
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -164,8 +166,6 @@
 //! # Feature Flags
 //!
 //! TODO
-#![forbid(unsafe_code)]
-#![deny(clippy::all)]
 
 pub mod ast;
 mod compile;

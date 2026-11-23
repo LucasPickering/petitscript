@@ -53,9 +53,9 @@ pub fn write_json(buf: &mut String, value: &Value) {
             write!(buf, "}}").unwrap();
         }
         // These two can't be represented well as JSON, so just use undefined
+        Value::Function(_) => write_json(buf, &Value::Undefined),
         #[cfg(feature = "buffer")]
         Value::Buffer(_) => write_json(buf, &Value::Undefined),
-        Value::Function(_) => write_json(buf, &Value::Undefined),
     }
 }
 

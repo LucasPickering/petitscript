@@ -1,12 +1,22 @@
 use annotate_snippets::Renderer;
+use clap::Parser;
 use petitscript::{Engine, Error, Source};
-use std::{env, path::Path, process::ExitCode};
+use std::{path::PathBuf, process::ExitCode};
+
+#[derive(Debug, Parser)]
+struct Args {
+    /// Path to a PetitScript file
+    path: PathBuf,
+    /// Parse and print the AST instead of executing
+    #[arg(long)]
+    parse: bool,
+}
 
 fn main() -> ExitCode {
-    let path = env::args().nth(1).expect("Expected path");
+    let args = Args::parse();
 
     let renderer = Renderer::styled();
-    match run(Path::new(&path)) {
+    match run(args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(Error::Parse(parse_errors)) => {
             eprintln!("{}", renderer.render(&parse_errors.to_report()));
@@ -23,10 +33,18 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(path: &Path) -> Result<(), petitscript::Error> {
-    let engine = Engine::default();
-    let source = Source::file(path)?;
-    let exports = engine.run(source)?;
-    println!("Exported:\n{exports:#}");
-    Ok(())
+fn run(args: Args) -> Result<(), petitscript::Error> {
+    let source = Source::file(&args.path)?;
+    let program = source.parse()?;
+
+    if args.parse {
+        println!("{:#?}", program.root());
+        Ok(())
+    } else {
+        let engine = Engine::default();
+        let world = engine.instantiate(program);
+        let exports = world.run()?;
+        println!("Exported:\n{exports:#}");
+        Ok(())
+    }
 }

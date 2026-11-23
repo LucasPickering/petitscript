@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 annotate-snippets = {workspace = true}
+clap = {version = "4.6.9", default-features = false, features = ["derive", "std"]}
 petitscript = {path = "..", version = "0.1.0"}
 
 [lints]

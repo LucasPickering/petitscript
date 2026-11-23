@@ -3,10 +3,8 @@ idiomatic_version_file_enable_tools = ["rust"] # use rust-toolchain.toml
 
 [tasks.cli]
 description = "Run a PetitScript file"
+raw_args = true
 run = "cargo run -p petitscript_cli -- $usage_file"
-usage = '''
-arg "<file>" help="File to execute"
-'''
 
 [tasks.doc]
 # Nightly required for automatic feature tagging

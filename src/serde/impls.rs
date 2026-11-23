@@ -244,7 +244,7 @@ mod tests {
     /// for now this test at least makes it well-defined.
     #[test]
     fn serialize_function_json() {
-        let function = Function::native("func".into(), |_, _: Value| 0);
+        let function = Function::native("func", |_, _: Value| 0);
         assert_eq!(serde_json::to_value(function).unwrap(), json!(0));
     }
 

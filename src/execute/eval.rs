@@ -251,10 +251,7 @@ fn get_property(
             // so we can bail out
             let name = property.as_str()?;
             let function = fiber.scope().get_prototype(target.type_(), name)?;
-            Some(
-                Function::bound(name.into(), function.clone(), target.clone())
-                    .into(),
-            )
+            Some(Function::bound(name, function.clone(), target.clone()).into())
         })
         .unwrap_or_default())
 }

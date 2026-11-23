@@ -367,12 +367,12 @@ mod tests {
     )]
     #[test_case(
         // This will do pointer equality to ensure it's the same fn
-        Function::native("func".into(), |_, _: Value| 0);
+        Function::native("func", |_, _: Value| 0);
         "function_native"
     )]
     #[test_case(
         Function::bound(
-            "func".into(),
+            "func",
             // This will do pointer equality to ensure it's the same fn
             BoundFunction::new(|_, _: Value, _: Value| 0),
             [1, 2, 3].into(),
@@ -406,12 +406,12 @@ mod tests {
     )]
     #[test_case(
         // This will do pointer equality to ensure it's the same fn
-        Function::native("func".into(), |_, _: Value| 0);
+        Function::native("func", |_, _: Value| 0);
         "native"
     )]
     #[test_case(
         Function::bound(
-            "func".into(),
+            "func",
             // This will do pointer equality to ensure it's the same fn
             BoundFunction::new(|_, _: Value, _: Value| 0),
             [1, 2, 3].into(),

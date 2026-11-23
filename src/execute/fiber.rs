@@ -19,19 +19,30 @@ use std::{collections::VecDeque, sync::Arc};
 /// Running invocation of a [`World`]
 ///
 /// A fiber can be spawned at a program's entrypoint, or by invoking a function
-/// that was previously returned from the world. This is an internal concept.
-/// Because fibers are not interruptible, they exist only for the duration of
-/// a single external invocation.
+/// that was previously returned from the world. The fiber holds all the state
+/// that statement execution will modify.
+///
+/// This is an internal concept. Because fibers are not interruptible, they
+/// exist only for the duration of a single external invocation.
 #[derive(Debug)]
 pub(super) struct Fiber<'world> {
-    // TODO comments
+    /// World that this fiber is executing in
     world: &'world World,
+    /// Current function call stack
     call_stack: CallStack,
+    /// Exported values
+    ///
+    /// This is built procedurally as we execute and is the final result of
+    /// execution. `None` for invocations that don't support exporting
+    /// (function calls).
     exports: Option<Exports>,
 }
 
 impl<'world> Fiber<'world> {
-    /// TODO
+    /// Create a new fiber
+    ///
+    /// `can_export` is `true` for entrypoint invocations, `false` for function
+    /// calls.
     pub fn new(
         globals: Arc<GlobalEnvironment>,
         world: &'world World,
@@ -50,7 +61,7 @@ impl<'world> Fiber<'world> {
         }
     }
 
-    /// TODO
+    /// Get the world this fiber is executing in
     pub fn world(&self) -> &'world World {
         self.world
     }
@@ -155,12 +166,14 @@ impl<'world> Fiber<'world> {
         }
     }
 
-    /// TODO
+    /// Get the current scope of bound names
     pub fn scope(&self) -> &Scope {
         self.call_stack.top()
     }
 
-    /// TODO
+    /// Get a mutable reference to the current scope of bound names
+    ///
+    /// Use this to push, pop, and modify environments in the scope.
     pub fn scope_mut(&mut self) -> &mut Scope {
         self.call_stack.top_mut()
     }

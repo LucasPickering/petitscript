@@ -41,7 +41,7 @@ impl Function {
     /// Generally it's more convenient to call
     /// [`Object::insert_fn`](crate::value::Object::insert_fn)
     /// or [`Exports::export_fn`](crate::Exports::export_fn).
-    pub fn native<F, Args, Out>(name: String, function: F) -> Self
+    pub fn native<F, Args, Out>(name: impl Into<Arc<str>>, function: F) -> Self
     where
         F: 'static + Fn(&World, Args) -> Out + Send + Sync,
         Args: FromPetitArgs,
@@ -60,7 +60,7 @@ impl Function {
     /// accessible through the prototype, which can only be accessed via
     /// string keys.
     pub(crate) fn bound(
-        name: String,
+        name: impl Into<Arc<str>>,
         function: BoundFunction,
         receiver: Value,
     ) -> Self {
@@ -212,7 +212,7 @@ impl FromIterator<(String, Value)> for Captures {
 
 /// TODO
 #[derive(Clone)]
-pub struct NativeFunction(
+pub(crate) struct NativeFunction(
     #[expect(clippy::type_complexity)]
     Arc<
         dyn Fn(&World, Vec<Value>) -> Result<Value, RuntimeErrorKind>

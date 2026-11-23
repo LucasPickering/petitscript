@@ -67,11 +67,11 @@ pub enum Value {
     ///
     /// Object keys must be strings.
     Object(Object),
+    /// A callable procedure
+    Function(Function),
     /// An immutable byte buffer
     #[cfg(feature = "buffer")]
     Buffer(Buffer),
-    /// A callable procedure
-    Function(Function),
 }
 
 #[cfg(test)]
@@ -81,16 +81,6 @@ static_assertions::assert_impl_all!(Value: Send, Sync);
 static_assertions::assert_eq_size!(Value, [u8; 24]);
 
 impl Value {
-    /// Create a new byte buffer
-    ///
-    /// TODO this could potentially lead to unnecessary clones if someone
-    /// already has a `Bytes`. Clean it up somehow, or add a note pointing
-    /// people to the From implementations
-    #[cfg(feature = "buffer")]
-    pub fn buffer(bytes: impl Into<Vec<u8>>) -> Self {
-        Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
-    }
-
     /// Build a new array from an iterator of elements
     ///
     /// ```
@@ -122,6 +112,16 @@ impl Value {
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
         )
+    }
+
+    /// Create a new byte buffer
+    ///
+    /// TODO this could potentially lead to unnecessary clones if someone
+    /// already has a `Bytes`. Clean it up somehow, or add a note pointing
+    /// people to the From implementations
+    #[cfg(feature = "buffer")]
+    pub fn buffer(bytes: impl Into<Vec<u8>>) -> Self {
+        Self::Buffer(Buffer::from(bytes::Bytes::from(bytes.into())))
     }
 
     /// Coerce this value to a boolean
@@ -209,9 +209,9 @@ impl Value {
             }
             // lol. This is stupid but it matches JS
             Self::Object(_) => "[Object object]".into(),
+            Self::Function(function) => format!("{function}").into(),
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => "[Buffer buffer]".into(),
-            Self::Function(function) => format!("{function}").into(),
         }
     }
 
@@ -314,9 +314,9 @@ impl Value {
             Self::String(_) => ValueType::String,
             Self::Array(_) => ValueType::Array,
             Self::Object(_) => ValueType::Object,
+            Self::Function(_) => ValueType::Function,
             #[cfg(feature = "buffer")]
             Self::Buffer(_) => ValueType::Buffer,
-            Self::Function(_) => ValueType::Function,
         }
     }
 
@@ -390,9 +390,9 @@ impl Display for Value {
             Self::String(string) => write!(f, "{string}"),
             Self::Array(array) => write!(f, "{array}"),
             Self::Object(object) => write!(f, "{object}"),
+            Self::Function(function) => write!(f, "{function}"),
             #[cfg(feature = "buffer")]
             Self::Buffer(buffer) => write!(f, "{buffer}"),
-            Self::Function(function) => write!(f, "{function}"),
         }
     }
 }
@@ -618,9 +618,19 @@ impl<T: FromPetit> FromPetit for Vec<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
-    use crate::value::Value::{Null, Undefined};
+    use crate::{
+        World,
+        value::Value::{Null, Undefined},
+    };
     use test_case::test_case;
+
+    static THUNK: LazyLock<Function> =
+        LazyLock::new(|| Function::native("thunk", thunk));
+
+    fn thunk(_world: &World, (): ()) {}
 
     /// Test boolean coercion
     #[test_case(Undefined, false; "undefined")]
@@ -638,6 +648,7 @@ mod tests {
     #[test_case([1,2], true; "array")]
     #[test_case(Object::default(), true; "object_empty")]
     #[test_case([("a", 1)], true; "object")]
+    #[test_case(THUNK.clone(), true; "function")]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::default(), true; "buffer_empty"),
@@ -646,7 +657,6 @@ mod tests {
         feature = "buffer",
         test_case(Buffer::from([1, 2]), true; "buffer"),
     )]
-    // TODO test function
     fn to_bool(value: impl Into<Value>, expected: bool) {
         assert_eq!(value.into().to_bool(), expected);
     }
@@ -667,9 +677,7 @@ mod tests {
     #[test_case([1, 2], None::<Number>; "array_2")]
     #[test_case(Object::default(), None::<Number>; "object_empty")]
     #[test_case([("a", 1)], None::<Number>; "object")]
-    #[test_case(
-        Function::native("f".into(), |_, ()| ()), None::<Number>; "function"
-    )]
+    #[test_case(THUNK.clone(), None::<Number>; "function")]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::default(), None::<Number>; "buffer_empty"),
@@ -700,11 +708,11 @@ mod tests {
     #[test_case("test", "test"; "string")]
     #[test_case([1, 2], "1,2"; "array")]
     #[test_case([("a", 1)], "[Object object]"; "object")]
+    #[test_case(THUNK.clone(), "[Function `thunk` (native)]"; "function")]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::from([1, 2]), "[Buffer buffer]"; "buffer"),
     )]
-    // TODO test function
     fn to_string(value: impl Into<Value>, expected: &str) {
         assert_eq!(&*value.into().to_string(), expected);
     }
@@ -721,11 +729,11 @@ mod tests {
     #[test_case("hello", "hello"; "string")]
     #[test_case([1, 2], [1, 2]; "array")]
     #[test_case([("a", 1)], [("a", 1)]; "object")]
+    #[test_case(THUNK.clone(), THUNK.clone(); "function native")]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::from([1u8, 2u8]), [1u8, 2u8].as_slice(); "buffer")
     )]
-    // TODO test functions
     fn equal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_eq!(a.into(), b.into());
     }
@@ -739,11 +747,16 @@ mod tests {
     #[test_case(1, "1"; "number string")]
     #[test_case([1], [1, 2]; "array")]
     #[test_case([("a", 1)], [("a", 2)]; "object")]
+    #[test_case(
+        // These look equal, but two separate Arcs to the same underlying fn
+        // makes them different
+        Function::native("f", thunk), Function::native("f", thunk);
+        "function"
+    )]
     #[cfg_attr(
         feature = "buffer",
         test_case(Buffer::from([1, 2]), Buffer::from([1, 3]); "buffer"),
     )]
-    // TODO test functions
     fn unequal(a: impl Into<Value>, b: impl Into<Value>) {
         assert_ne!(a.into(), b.into());
     }
@@ -799,6 +812,11 @@ mod tests {
         [("a", 1), ("b", 2)], "s", "[Object object]s", "s[Object object]";
         "object string"
     )]
+    #[test_case(
+        THUNK.clone(), "s",
+        "[Function `thunk` (native)]s", "s[Function `thunk` (native)]";
+        "function string"
+    )]
     #[cfg_attr(
         feature = "buffer",
         test_case(
@@ -806,7 +824,6 @@ mod tests {
             "buffer string"
         ),
     )]
-    // TODO test functions
     fn add_string(
         a: impl Into<Value>,
         b: impl Into<Value>,

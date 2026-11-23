@@ -153,7 +153,7 @@ impl World {
     }
 
     /// Look up a native module by name
-    fn get_native_module(
+    fn native_module(
         &self,
         name: &NativeModuleName,
     ) -> Result<&Exports, RuntimeErrorKind> {
@@ -207,14 +207,30 @@ impl Exports {
         Self::new(None::<Value>, exports)
     }
 
-    /// TODO
+    /// Get a named export
+    ///
+    /// Return `None` if the name isn't exported.
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.named.get(name)
+    }
+
+    /// Get a named export deserialized to type `T`
+    ///
+    /// Return `Ok(None)` if the name isn't exported. Return `Err` if the
+    /// deserialization fails.
     #[cfg(feature = "serde")]
-    pub fn get_deserialize<'de, T>(&self, name: &str) -> Result<T, ValueError>
+    pub fn get_deserialize<'de, T>(
+        &self,
+        name: &str,
+    ) -> Result<Option<T>, ValueError>
     where
         T: serde::Deserialize<'de>,
     {
-        let value = self.named.get(name).expect("TODO error or return None?");
-        crate::serde::from_value(value.clone())
+        self.named
+            .get(name)
+            .cloned()
+            .map(crate::serde::from_value)
+            .transpose()
     }
 
     /// Create a native function and export it with the given name

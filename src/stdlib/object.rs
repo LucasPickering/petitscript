@@ -21,7 +21,7 @@ pub fn module() -> Object {
 fn entries(_: &World, object: Object) -> Array {
     object
         .into_iter()
-        .map(|(k, v)| Array::from([k.into(), v]).into())
+        .map(|(k, v)| Array::from([k.into(), v]))
         .collect()
 }
 

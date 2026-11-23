@@ -106,7 +106,7 @@ impl Program {
     }
 
     /// Get a local module by its source ID
-    pub(crate) fn get_module(&self, source: SourceId) -> Option<&Module> {
+    pub(crate) fn module(&self, source: SourceId) -> Option<&Module> {
         self.modules.imported.get(&source)
     }
 }

@@ -139,7 +139,7 @@ impl Execute for ImportModule {
         match &self.kind {
             ImportModuleKind::Native(name) => fiber
                 .world()
-                .get_native_module(name)
+                .native_module(name)
                 // The clone is not strictly necessary, but the consuming logic
                 // gets a lot more complicated if we don't
                 .cloned()
@@ -147,7 +147,7 @@ impl Execute for ImportModule {
             ImportModuleKind::Local { source, .. } => {
                 let module = fiber
                     .program()
-                    .get_module(*source)
+                    .module(*source)
                     .expect("TODO error - miscompiled program");
                 // Spawn another fiber
                 let mut fiber = fiber.world().create_fiber();

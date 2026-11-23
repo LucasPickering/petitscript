@@ -729,13 +729,6 @@ pub struct StackTraceFrame {
     pub function_name: String,
 }
 
-// TODO
-// impl Display for StackTraceFrame {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "in {} at {}", self.function_name, self.span)
-//     }
-// }
-
 /// An error that can occur while converting to/from [`Value`]
 #[derive(Debug, thiserror::Error)]
 pub enum ValueError {

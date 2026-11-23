@@ -80,8 +80,9 @@ impl Scope {
         current.declare(name.into(), value.into());
     }
 
-    /// Get the value of a binding. Return an error if the binding doesn't exist
-    /// in scope.
+    /// Get the value of a binding
+    ///
+    /// Return an error if the binding doesn't exist in scope.
     pub fn get(&self, name: &str) -> Result<Value, RuntimeErrorKind> {
         // Search up the chain until we find the name
         self.chain()

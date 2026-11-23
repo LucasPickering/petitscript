@@ -1,21 +1,19 @@
 //! Runtime values
 
-mod array;
 #[cfg(feature = "buffer")]
 mod buffer;
+mod collections;
 pub(crate) mod function;
 mod json;
 mod macros;
 mod number;
-mod object;
 mod string;
 
-pub use array::Array;
 #[cfg(feature = "buffer")]
 pub use buffer::Buffer;
+pub use collections::{Array, Object};
 pub use function::{FromPetitArgs, Function, IntoPetitResult};
 pub use number::Number;
-pub use object::Object;
 pub use string::PetitString;
 
 use crate::{

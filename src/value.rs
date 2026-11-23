@@ -12,7 +12,6 @@ mod string;
 
 pub use array::Array;
 #[cfg(feature = "buffer")]
-#[cfg_attr(docsrs, doc(cfg(feature = "buffer")))]
 pub use buffer::Buffer;
 pub use function::{FromPetitArgs, Function, IntoPetitResult};
 pub use number::Number;
@@ -357,11 +356,7 @@ impl Value {
     /// *not* strictly for boolean operations.
     #[must_use]
     pub fn and(self, other: Self) -> Value {
-        if self.to_bool() {
-            other
-        } else {
-            self
-        }
+        if self.to_bool() { other } else { self }
     }
 
     /// Logical OR operator (`||`)
@@ -370,11 +365,7 @@ impl Value {
     /// *not* strictly for boolean operations.
     #[must_use]
     pub fn or(self, other: Self) -> Value {
-        if self.to_bool() {
-            self
-        } else {
-            other
-        }
+        if self.to_bool() { self } else { other }
     }
 
     /// Apply nullish coalescing (`??`)

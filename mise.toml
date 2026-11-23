@@ -9,6 +9,9 @@ arg "<file>" help="File to execute"
 '''
 
 [tasks.doc]
+# Nightly required for automatic feature tagging
+# https://github.com/rust-lang/rust/issues/43781
 description = "Build docs"
-run = "cargo doc -p petitscript --all-features --no-deps"
+env.RUSTDOCFLAGS = "--cfg docsrs"
+run = "cargo +nightly doc -p petitscript --all-features --no-deps"
 sources = ["Cargo.toml", "src/**/*.rs"]

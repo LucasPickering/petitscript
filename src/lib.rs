@@ -1,3 +1,6 @@
+// Enable automatic feature tagging in docs
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
 //! PetitScript is a **minimal** JavaScript subset designed for embeddability
 //!
 //! PetitScript is intended as sidecar language for extensible scripting

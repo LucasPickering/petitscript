@@ -188,39 +188,26 @@ mod tests {
     use super::*;
     use crate::{
         assert_matches,
-        ast::{Declaration, NodeId},
+        ast::{Block, IntoExpression, Literal, NodeId},
         error::Unsupported,
+        util::ResultExt,
     };
+    use test_case::test_case;
 
-    /// Test an escaped newline `\n` in a string literal
-    /// ```notrust
-    /// "test\nnewline"
-    /// // parses to
-    /// `test
-    /// newline`
-    /// ```
-    #[test]
-    fn string_literal_newline() {
-        let source = r"const s = 'test\nnewline';";
-        let actual = parse_test(source).unwrap();
-        let expected = Module::new([Declaration::new("s", "test\nnewline")]);
-        NodeId::with_all_equal(|| assert_eq!(actual, expected));
-    }
-
-    /// Test \ before a literal newline escapes the newline, allowing for
-    /// wrapped strings:
-    ///
-    /// ```notrust
-    /// "test \
-    /// no newline"
-    /// // parses to
-    /// "test no newline"
-    /// ```
-    #[test]
-    fn string_literal_escape_newline() {
-        let source = "const s = 'test \\\nno newline';";
-        let actual = parse_test(source).unwrap();
-        let expected = Module::new([Declaration::new("s", "test no newline")]);
+    /// Parse single expressions
+    #[test_case("3", Literal::Int(3); "literal integer")]
+    #[test_case("3.1", Literal::Float(3.1); "literal float")]
+    #[test_case("3.", Literal::Float(3.0); "literal float whole")]
+    #[test_case(r"'test\ntest'", "test\ntest"; "literal string newline")]
+    #[test_case(
+        // \ before a literal newline escapes the newline, allowing for wrapping
+        "'test \\\n test'", "test  test"; "literal string escape newline"
+    )]
+    fn parse_expression(source: &str, expected: impl IntoExpression) {
+        // The parser treats bare strings as directives so they get dropped.
+        // Put it in a block to treat it as an expression.
+        let expected = Module::new([Block::new([expected.into_expr()])]);
+        let actual = parse_test(&format!("{{ {source}; }}")).unwrap_display();
         NodeId::with_all_equal(|| assert_eq!(actual, expected));
     }
 
@@ -266,7 +253,7 @@ mod tests {
         assert_eq!(span_async, Span::new(source_id, 59, 198));
     }
 
-    fn parse_test(source: &'static str) -> Result<Module, ParseErrors> {
+    fn parse_test(source: &str) -> Result<Module, ParseErrors> {
         let mut source_table = SourceTable::default();
         source_table.insert(source.into());
         let modules = parse(&mut source_table).map(|(module, _)| module)?;

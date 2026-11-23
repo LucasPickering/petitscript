@@ -260,15 +260,10 @@ impl DisplayIndent for &Literal {
             Literal::Float(float) => float.fmt(ind),
             Literal::Int(int) => int.fmt(ind),
             Literal::String(s) => {
-                // If any invalid chars are in the string, use a template
-                // literal because they're more forgiving
-                // TODO escape with \ instead. Requires fixes to the parser
-                if s.contains('"') || s.contains('\n') {
-                    // TODO escape backticks
-                    ("`", s, "`").fmt(ind)
-                } else {
-                    ("\"", s, "\"").fmt(ind)
-                }
+                // Escape characters that can't appear literally. According to
+                // MDN, these are the only ones that need it.
+                // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Numbers_and_strings#string_literals
+                ('"', escape(s, &['"', '\n', '\\']), '"').fmt(ind)
             }
             Literal::Array(array_literal) => array_literal.fmt(ind),
             Literal::Object(object_literal) => object_literal.fmt(ind),
@@ -655,6 +650,17 @@ impl DisplayIndent for i64 {
 
 impl DisplayIndent for f64 {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        // Always include decimal point to differentiate round floats from ints
+        if self.fract() == 0.0 {
+            write!(ind.formatter, "{self:.1}")
+        } else {
+            write!(ind.formatter, "{self}")
+        }
+    }
+}
+
+impl DisplayIndent for char {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
 }
@@ -671,7 +677,7 @@ impl DisplayIndent for &String {
     }
 }
 
-impl DisplayIndent for &Cow<'_, str> {
+impl DisplayIndent for Cow<'_, str> {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         write!(ind.formatter, "{self}")
     }
@@ -816,22 +822,55 @@ impl_display! {
     ArrayPatternElement
 }
 
+/// Add an extra `\` before each escapable character
+///
+/// Avoids an allocation if the string doesn't contain and escape characters.
+fn escape<'s>(s: &'s str, to_escape: &[char]) -> Cow<'s, str> {
+    // Most strings won't contain the escaped chars, so avoid an allocation in
+    // those cases. This will be a bit slower for the replacement case.
+    let replacements = s
+        .char_indices()
+        .filter_map(|(i, c)| to_escape.contains(&c).then_some(i))
+        .collect::<Vec<_>>();
+    if replacements.is_empty() {
+        // If no replacements are needed, return the original
+        Cow::Borrowed(s)
+    } else {
+        // +1 byte for each inserted backslash
+        let mut new = String::with_capacity(s.len() + replacements.len());
+        let mut last_copied = 0;
+        // Copy chunk-by-chunk with \ inserted in the middle, to avoid shifts
+        for i in replacements {
+            new.push_str(&s[last_copied..i]);
+            new.push('\\');
+            last_copied = i;
+        }
+        new.push_str(&s[last_copied..]);
+        Cow::Owned(new)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{IntoExpression, IntoStatement};
+    use crate::{
+        Source,
+        ast::{IntoExpression, IntoStatement},
+        util::ResultExt,
+    };
     use pretty_assertions::assert_eq;
-    use std::fmt::Display;
+    use std::{fmt::Display, sync::Arc};
     use test_case::test_case;
 
     /// Test stringification of AST nodes
     #[test_case(Literal::Undefined, "undefined"; "literal undefined")]
     #[test_case(Literal::Null, "null"; "literal null")]
-    #[test_case(Literal::from(false), "false"; "literal false")]
-    #[test_case(Literal::from(true), "true"; "literal true")]
-    #[test_case(Literal::from(-11), "-11"; "literal int")]
-    #[test_case(Literal::from(-3.24), "-3.24"; "literal float")]
-    #[test_case(Literal::from("asdf"), "\"asdf\""; "literal string")]
+    #[test_case(false.into_expr(), "false"; "literal false")]
+    #[test_case(true.into_expr(), "true"; "literal true")]
+    #[test_case((-11).into_expr(), "-11"; "literal int")]
+    #[test_case((-3.24).into_expr(), "-3.24"; "literal float")]
+    #[test_case((-3.0).into_expr(), "-3.0"; "literal float whole")]
+    #[test_case("asdf".into_expr(), "\"asdf\""; "literal string")]
     #[test_case(
         ObjectLiteral::new([
             ("x", 3.into_expr()),
@@ -879,5 +918,44 @@ mod tests {
     // I'll add more test cases as I go. It's definitely not exhaustive.
     fn display<T: Display>(node: T, expected: &str) {
         assert_eq!(node.to_string(), expected);
+    }
+
+    /// Test parse > display > parse round trip
+    ///
+    /// This tests that parse and display are inverses. When an AST is
+    /// stringified, it should parse back to the exact same AST. The test cases
+    /// start with source code because it's easier to write than an AST.
+    ///
+    /// 1. Start with source code because it's easy to write
+    /// 2. Parse it to get an AST
+    /// 3. Stringify the AST back to source code
+    /// 4. Parse again
+    /// 5. Compare the two ASTs.
+    ///
+    /// **Step 3** is the target of this test, the rest is overhead. This is
+    /// trusting that the parse works.
+    ///
+    /// There's a catch-all integration test version of this as well, in
+    /// `test_display.rs`. This test holds specific cases I had to debug while
+    /// testing that one.
+    #[test_case("3.0;"; "float whole")]
+    #[test_case("function f() {}"; "function keyword")]
+    fn display_round_trip(source_code: &str) {
+        let parsed = Source::raw(source_code).parse().unwrap_display();
+        // This line is what we're testing!! The source codes won't be textually
+        // equal, but they should be semantically equal
+        let stringified: Arc<str> = parsed.root().to_string().into();
+        let reparsed =
+            Source::raw(stringified.clone()).parse().unwrap_display();
+        // Node IDs should all match because the AST is parsed in the same order
+        assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
+    }
+
+    /// Test `escape()`
+    #[test_case("test", Cow::Borrowed("test"); "unescaped")]
+    #[test_case(r"te\st", Cow::Owned(r"te\\st".into()); "escape")]
+    #[test_case(r#"te\s"t"#, Cow::Owned(r#"te\\s\"t"#.into()); "escape multiple")]
+    fn string_escape(s: &str, expected: Cow<'_, str>) {
+        assert_eq!(escape(s, &['\\', '"']), expected);
     }
 }

@@ -32,3 +32,27 @@ impl<T> OptionExt<T> for Option<T> {
         }
     }
 }
+
+/// Extension trait for [`Result`]
+#[cfg(test)]
+pub trait ResultExt<T, E> {
+    /// Return the value if `Ok`, or panic if `Err`
+    ///
+    /// Uses the error's `Display` impl instead of `Debug` for printing.
+    fn unwrap_display(self) -> T
+    where
+        E: std::fmt::Display;
+}
+
+#[cfg(test)]
+impl<T, E> ResultExt<T, E> for Result<T, E> {
+    fn unwrap_display(self) -> T
+    where
+        E: std::fmt::Display,
+    {
+        match self {
+            Ok(value) => value,
+            Err(error) => panic!("{error:#}"),
+        }
+    }
+}

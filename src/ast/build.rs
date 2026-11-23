@@ -819,6 +819,12 @@ impl From<String> for Literal {
     }
 }
 
+impl From<Block> for StatementKind {
+    fn from(block: Block) -> Self {
+        StatementKind::Block(block)
+    }
+}
+
 impl From<Declaration> for StatementKind {
     fn from(declaration: Declaration) -> Self {
         StatementKind::Declaration(declaration)

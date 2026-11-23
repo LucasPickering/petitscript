@@ -46,11 +46,9 @@ pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
 ) -> Module {
+    let id = context.id(&program);
     let statements = program.body.transform_all(context);
-    Module {
-        id: context.id(&program),
-        statements,
-    }
+    Module { id, statements }
 }
 
 /// Helper for returning an unsupported error
@@ -958,7 +956,13 @@ impl Transform for oxc::Function<'_> {
         let Some(identifier) = &self.id else {
             unsupported!(context, self, Unsupported::AnonymousFunction);
         };
+
         let identifier = identifier.transform(context)?;
+        let name = identifier.identifier.clone();
+        let binding = Binding {
+            id: context.id_from(&identifier),
+            kind: BindingKind::Identifier(identifier),
+        };
 
         // Functions without a body are just type declarations, so ignore them
         let Some(body) = &self.body else {
@@ -971,21 +975,19 @@ impl Transform for oxc::Function<'_> {
         // declaration in the PS AST, for simplicity
         let function = FunctionDefinition {
             id: context.id(self),
-            name: Some(identifier.identifier.clone()),
+            name: Some(name),
             parameters,
             body,
             captures: [].into(), // Captures are populated post-parse
         };
+        let init = Expression {
+            id: context.id_from(&function),
+            kind: ExpressionKind::Function(function),
+        };
         let variable = Variable {
             id: context.id(self),
-            binding: Binding {
-                id: context.id_from(&identifier),
-                kind: BindingKind::Identifier(identifier),
-            },
-            init: Some(Box::new(Expression {
-                id: context.id_from(&function),
-                kind: ExpressionKind::Function(function),
-            })),
+            binding,
+            init: Some(Box::new(init)),
         };
 
         Ok(Some(Declaration {

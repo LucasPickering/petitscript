@@ -1,4 +1,4 @@
-use petitscript::{Source, ast::NodeId};
+use petitscript::Source;
 use pretty_assertions::assert_eq;
 use std::{path::Path, sync::Arc};
 
@@ -26,7 +26,6 @@ fn display_round_trip() {
     }
     .parse()
     .unwrap_or_else(|error| panic!("{error:#}"));
-    NodeId::with_all_equal(|| {
-        assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
-    });
+    // Node IDs should all match because the AST is parsed in the same order
+    assert_eq!(parsed.root(), reparsed.root(), "{stringified}");
 }

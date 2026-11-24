@@ -261,11 +261,14 @@ impl Engine {
     }
 
     /// TODO
-    pub fn run(&self, source: impl Into<Source>) -> Result<Exports, Error> {
+    pub async fn run(
+        &self,
+        source: impl Into<Source>,
+    ) -> Result<Exports, Error> {
         let source = source.into();
         let program = source.parse()?;
         let world = self.instantiate(program);
-        let exports = world.run()?;
+        let exports = world.run().await?;
         Ok(exports)
     }
 }

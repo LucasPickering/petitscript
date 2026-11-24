@@ -9,7 +9,6 @@ use crate::{
     },
     error::{RuntimeError, RuntimeErrorKind},
     execute::{Fiber, eval::Evaluate},
-    util::OptionExt,
     value::Value,
 };
 
@@ -22,7 +21,7 @@ pub trait Execute: Node {
     type Output<'world>;
 
     /// Execute the statement, modifying state appropriately
-    fn exec<'world>(
+    async fn exec<'world>(
         &self,
         fiber: &mut Fiber<'world>,
     ) -> Result<Self::Output<'world>, RuntimeError>;
@@ -31,8 +30,8 @@ pub trait Execute: Node {
 impl Execute for Module {
     type Output<'world> = ();
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<(), RuntimeError> {
-        exec_all(fiber, &self.statements)?;
+    async fn exec(&self, fiber: &mut Fiber<'_>) -> Result<(), RuntimeError> {
+        exec_all(fiber, &self.statements).await?;
         Ok(())
     }
 }
@@ -41,28 +40,33 @@ impl Execute for Statement {
     /// We can break out of a loop iter, loop, or fn from here
     type Output<'world> = Option<Return>;
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
+    async fn exec(
+        &self,
+        fiber: &mut Fiber<'_>,
+    ) -> Result<Option<Return>, RuntimeError> {
         match &self.kind {
             StatementKind::Empty => Ok(None),
             StatementKind::Block(block) => {
                 // A block gets a new lexical scope
-                fiber.with_subscope(|state| exec_all(state, &block.statements))
+                fiber
+                    .with_subscope(|state| exec_all(state, &block.statements))
+                    .await
             }
             StatementKind::Expression(expression) => {
                 // Expression may have side effects, so evaluate it and throw
                 // away the outcome
-                expression.eval(fiber)?;
+                expression.eval(fiber).await?;
                 Ok(None)
             }
             StatementKind::Declaration(declaration) => {
-                declaration.exec(fiber)?;
+                declaration.exec(fiber).await?;
                 Ok(None)
             }
 
-            StatementKind::If(if_statement) => if_statement.exec(fiber),
+            StatementKind::If(if_statement) => if_statement.exec(fiber).await,
             StatementKind::Return(expression) => {
                 let return_value = if let Some(expression) = expression {
-                    Some(expression.eval(fiber)?)
+                    Some(expression.eval(fiber).await?)
                 } else {
                     None
                 };
@@ -70,11 +74,11 @@ impl Execute for Statement {
             }
 
             StatementKind::Import(import) => {
-                import.exec(fiber)?;
+                import.exec(fiber).await?;
                 Ok(None)
             }
             StatementKind::Export(export) => {
-                export.exec(fiber)?;
+                export.exec(fiber).await?;
                 Ok(None)
             }
         }
@@ -84,9 +88,12 @@ impl Execute for Statement {
 impl Execute for Block {
     type Output<'world> = Option<Return>;
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
+    async fn exec(
+        &self,
+        fiber: &mut Fiber<'_>,
+    ) -> Result<Option<Return>, RuntimeError> {
         for statement in &self.statements {
-            if let Some(terminate) = statement.exec(fiber)? {
+            if let Some(terminate) = statement.exec(fiber).await? {
                 return Ok(Some(terminate));
             }
         }
@@ -97,8 +104,8 @@ impl Execute for Block {
 impl Execute for ImportDeclaration {
     type Output<'world> = ();
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<(), RuntimeError> {
-        let mut exports = self.module.exec(fiber)?;
+    async fn exec(&self, fiber: &mut Fiber<'_>) -> Result<(), RuntimeError> {
+        let mut exports = self.module.exec(fiber).await?;
 
         if let Some(name) = &self.default {
             let value = exports.default.ok_or_else(|| {
@@ -135,7 +142,10 @@ impl Execute for ImportModule {
     ///
     /// For native modules this just grabs the exports from the registry. For
     /// paths, it will execute the external program.
-    fn exec(&self, fiber: &mut Fiber) -> Result<Exports, RuntimeError> {
+    async fn exec(
+        &self,
+        fiber: &mut Fiber<'_>,
+    ) -> Result<Exports, RuntimeError> {
         match &self.kind {
             ImportModuleKind::Native(name) => fiber
                 .world()
@@ -151,7 +161,7 @@ impl Execute for ImportModule {
                     .expect("TODO error - miscompiled program");
                 // Spawn another fiber
                 let mut fiber = fiber.world().create_fiber();
-                module.exec(&mut fiber)?;
+                module.exec(&mut fiber).await?;
                 let exports = fiber.into_exports().unwrap();
                 Ok(exports)
             }
@@ -162,10 +172,10 @@ impl Execute for ImportModule {
 impl Execute for ExportDeclaration {
     type Output<'world> = ();
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<(), RuntimeError> {
+    async fn exec(&self, fiber: &mut Fiber<'_>) -> Result<(), RuntimeError> {
         match &self.kind {
             ExportDeclarationKind::Declaration(declaration) => {
-                for name in declaration.exec(fiber)? {
+                for name in declaration.exec(fiber).await? {
                     fiber.export(name).map_err(|error| {
                         fiber.trace_error(error, declaration)
                     })?;
@@ -173,7 +183,7 @@ impl Execute for ExportDeclaration {
                 Ok(())
             }
             ExportDeclarationKind::DefaultExpression(expression) => {
-                let value = expression.eval(fiber)?;
+                let value = expression.eval(fiber).await?;
                 fiber
                     .export_default(value)
                     .map_err(|error| fiber.trace_error(error, self))
@@ -185,11 +195,14 @@ impl Execute for ExportDeclaration {
 impl Execute for If {
     type Output<'world> = Option<Return>;
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<Option<Return>, RuntimeError> {
-        if self.condition.eval(fiber)?.to_bool() {
-            self.body.exec(fiber)
+    async fn exec(
+        &self,
+        fiber: &mut Fiber<'_>,
+    ) -> Result<Option<Return>, RuntimeError> {
+        if self.condition.eval(fiber).await?.to_bool() {
+            self.body.exec(fiber).await
         } else if let Some(statement) = &self.else_body {
-            statement.exec(fiber)
+            statement.exec(fiber).await
         } else {
             Ok(None)
         }
@@ -200,11 +213,14 @@ impl Execute for Declaration {
     /// Return the list of declared names
     type Output<'world> = Vec<String>;
 
-    fn exec(&self, fiber: &mut Fiber) -> Result<Vec<String>, RuntimeError> {
+    async fn exec(
+        &self,
+        fiber: &mut Fiber<'_>,
+    ) -> Result<Vec<String>, RuntimeError> {
         // Track the list of declared names
         let mut declared = Vec::with_capacity(self.variables.len());
         for variable in &self.variables {
-            declared.extend(variable.exec(fiber)?);
+            declared.extend(variable.exec(fiber).await?);
         }
 
         Ok(declared)
@@ -215,16 +231,15 @@ impl Execute for Variable {
     /// Return the list of declared names
     type Output<'world> = Vec<String>;
 
-    fn exec<'world>(
+    async fn exec<'world>(
         &self,
         fiber: &mut Fiber<'world>,
     ) -> Result<Self::Output<'world>, RuntimeError> {
-        let value = self
-            .init
-            .as_ref()
-            .try_map(|init| init.eval(fiber))?
-            .unwrap_or(Value::Undefined);
-        fiber.bind(&self.binding, value)
+        let value = match &self.init {
+            Some(init) => init.eval(fiber).await?,
+            None => Value::Undefined,
+        };
+        fiber.bind(&self.binding, value).await
     }
 }
 
@@ -232,13 +247,13 @@ impl Execute for FunctionBody {
     /// Function return value
     type Output<'world> = Value;
 
-    fn exec<'world>(
+    async fn exec<'world>(
         &self,
         fiber: &mut Fiber<'world>,
     ) -> Result<Self::Output<'world>, RuntimeError> {
         match self {
-            Self::Expression(expression) => expression.eval(fiber),
-            Self::Block(block) => match block.exec(fiber)? {
+            Self::Expression(expression) => expression.eval(fiber).await,
+            Self::Block(block) => match block.exec(fiber).await? {
                 Some(Return(Some(return_value))) => Ok(return_value),
                 _ => Ok(Value::Undefined),
             },
@@ -252,12 +267,12 @@ impl Execute for FunctionBody {
 pub struct Return(Option<Value>);
 
 /// Execute all nodes in a sequence, in order
-fn exec_all(
-    fiber: &mut Fiber,
+async fn exec_all(
+    fiber: &mut Fiber<'_>,
     statements: &[Statement],
 ) -> Result<Option<Return>, RuntimeError> {
     for statement in statements {
-        let output = statement.exec(fiber)?;
+        let output = statement.exec(fiber).await?;
         if let Some(output) = output {
             return Ok(Some(output));
         }

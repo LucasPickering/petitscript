@@ -9,8 +9,6 @@ pub use scope::{GlobalEnvironment, Prototype};
 
 #[cfg(feature = "serde")]
 use crate::error::ValueError;
-#[cfg(feature = "promise")]
-use crate::value::PromiseFuture;
 use crate::{
     Engine, Source,
     compile::Program,
@@ -122,9 +120,9 @@ impl World {
     ///
     /// Return an error if the execution fails. See [`RuntimeError`] for
     /// possible errors.
-    pub fn run(&self) -> Result<Exports, RuntimeError> {
+    pub async fn run(&self) -> Result<Exports, RuntimeError> {
         let mut fiber = self.create_fiber();
-        self.program.root().exec(&mut fiber)?;
+        self.program.root().exec(&mut fiber).await?;
         // Exporting is available here because we're in the root scope
         Ok(fiber.into_exports().unwrap())
     }
@@ -137,7 +135,7 @@ impl World {
     ///
     /// Return an error if the execution fails. See [`RuntimeError`] for
     /// possible errors.
-    pub fn call(
+    pub async fn call(
         &self,
         function: &Function,
         arguments: impl IntoIterator<Item = impl Into<Value>>,
@@ -146,7 +144,7 @@ impl World {
         let mut fiber =
             Fiber::new(Arc::clone(&self.engine.globals), self, false);
         let arguments = arguments.into_iter().map(Into::into).collect();
-        function.call(&mut fiber, Location::Native, arguments)
+        function.call(&mut fiber, Location::Native, arguments).await
     }
 
     /// Create a new fiber to execute a module
@@ -369,13 +367,4 @@ impl AppData {
             }
         }
     }
-}
-
-/// TODO
-enum MaybeFuture {
-    /// TODO
-    Value(Value),
-    /// TODO
-    #[cfg(feature = "promise")]
-    Future(PromiseFuture),
 }

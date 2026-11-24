@@ -219,7 +219,7 @@ impl<'world> Fiber<'world> {
     /// - `const [a = 1] = arr;`
     /// - `const { a = 1 } = o;`
     /// - `const { [f()]: a } = o;`
-    pub(crate) fn bind(
+    pub(crate) async fn bind(
         &mut self,
         binding: &Binding,
         value: Value,
@@ -241,7 +241,7 @@ impl<'world> Fiber<'world> {
                 let mut names = vec![];
 
                 for property in properties {
-                    let key = property.key.eval(self)?.to_string();
+                    let key = property.key.eval(self).await?.to_string();
                     // Calculate the bound value:
                     // property value -> init expression -> undefined
                     let value = values
@@ -254,12 +254,12 @@ impl<'world> Fiber<'world> {
                                 .try_map(|init| init.eval(self))
                         })?
                         .unwrap_or(Value::Undefined);
-                    names.extend(self.bind(&property.binding, value)?);
+                    names.extend(self.bind(&property.binding, value).await?);
                 }
                 if let Some(rest) = rest {
                     // Grab the remaining properties
                     let value = values.drain(..).collect::<Object>();
-                    names.extend(self.bind(rest, value.into())?);
+                    names.extend(self.bind(rest, value.into()).await?);
                 }
 
                 Ok(names)
@@ -290,7 +290,7 @@ impl<'world> Fiber<'world> {
                                         .try_map(|init| init.eval(self))
                                 })?
                                 .unwrap_or(Value::Undefined);
-                            names.extend(self.bind(binding, value)?);
+                            names.extend(self.bind(binding, value).await?);
                         }
                         ArrayPatternElementKind::Skip => {
                             values.pop_front(); // Skip this element
@@ -301,7 +301,7 @@ impl<'world> Fiber<'world> {
                 if let Some(rest) = rest {
                     // Grab the remaining elements
                     let value = values.drain(..).collect::<Array>();
-                    names.extend(self.bind(rest, value.into())?);
+                    names.extend(self.bind(rest, value.into()).await?);
                 }
 
                 Ok(names)

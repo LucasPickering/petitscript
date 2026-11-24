@@ -179,12 +179,14 @@ impl Value {
         }
     }
 
-    /// Coerce this value to a string. This intentionally shadows
-    /// [`ToString::to_string`] to prevent accidentally using display rules for
-    /// coercion. The [`Display`] impl is intended just for debug printing in
-    /// Rust. This coercion implementation aims to match JS's semantics for
-    /// string coercion. If you specifically want the display implementation,
-    /// use `format!({string})` instead.
+    /// Coerce this value to a string
+    ///
+    /// This intentionally shadows [`ToString::to_string`] to prevent
+    /// accidentally using display rules for coercion. The [`Display`] impl
+    /// is intended just for debug printing in Rust. This coercion
+    /// implementation aims to match JS's semantics for string coercion. If you
+    /// specifically want the display implementation, use `format!("{value}")`
+    /// instead.
     ///
     /// <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String>
     pub fn to_string(&self) -> PetitString {

@@ -657,7 +657,9 @@ pub enum RuntimeErrorKind {
 
 impl RuntimeErrorKind {
     /// Wrap a custom error type
-    pub fn other(error: impl 'static + StdError + Send + Sync) -> Self {
+    pub fn other(
+        error: impl Into<Box<dyn 'static + StdError + Send + Sync>>,
+    ) -> Self {
         Self::Other(error.into())
     }
 
@@ -780,7 +782,9 @@ pub enum ValueError {
 
 impl ValueError {
     /// Wrap a custom error type
-    pub fn other(error: impl 'static + StdError + Send + Sync) -> Self {
+    pub fn other(
+        error: impl Into<Box<dyn 'static + StdError + Send + Sync>>,
+    ) -> Self {
         Self::Other(error.into())
     }
 }

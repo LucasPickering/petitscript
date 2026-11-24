@@ -61,6 +61,7 @@ static ENGINE: LazyLock<Engine> = LazyLock::new(|| {
     "property_access"
 )]
 #[test_case("prototype.js", true; "prototype")]
+#[test_case("recursion.js", [("direct", 0), ("mutual", 0)]; "recursion")]
 #[test_case("varargs.js", 3; "varargs")]
 fn execution(file_name: &'static str, expected: impl Into<Value>) {
     let exported = execute(format!("tests/ps/{file_name}"))

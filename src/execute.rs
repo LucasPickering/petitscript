@@ -216,21 +216,15 @@ impl Exports {
 
     /// Get a named export deserialized to type `T`
     ///
-    /// Return `Ok(None)` if the name isn't exported. Return `Err` if the
-    /// deserialization fails.
+    /// If the name isn't exported, the value will be treated as
+    /// [`Value::Undefined`]. Return `Err` if the deserialization fails.
     #[cfg(feature = "serde")]
-    pub fn get_deserialize<'de, T>(
-        &self,
-        name: &str,
-    ) -> Result<Option<T>, ValueError>
+    pub fn get_deserialize<'de, T>(&self, name: &str) -> Result<T, ValueError>
     where
         T: serde::Deserialize<'de>,
     {
-        self.named
-            .get(name)
-            .cloned()
-            .map(crate::serde::from_value)
-            .transpose()
+        let value = self.named.get(name).cloned().unwrap_or(Value::Undefined);
+        crate::serde::from_value(value)
     }
 
     /// Create a native function and export it with the given name

@@ -46,7 +46,6 @@ pub fn transform_module(
     context: &mut ParseContext,
     program: oxc::Program<'_>,
 ) -> Module {
-    dbg!(&program);
     let id = context.id(&program);
     let statements = program.body.transform_all(context);
     Module { id, statements }

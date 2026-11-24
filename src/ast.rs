@@ -174,6 +174,8 @@ pub enum StatementKind {
     Empty,
     /// Collection of statements to be executed sequentially: `{...}`
     Block(Block),
+    /// Export a name or value: `export const ...` or `export default ...`
+    Export(ExportDeclaration),
     /// An expression in statement position: `expression;`
     ///
     /// This will *not* emit the expression's value. The value is discarded.
@@ -181,19 +183,15 @@ pub enum StatementKind {
     /// `const` declaration
     Declaration(Declaration),
 
-    // Control flow
-    // Loops aren't supported at all because they aren't very useful without
-    // mutation. I may add them at some point, but I'm starting minimal.
     /// `if`/`else` conditional
     If(If),
+    /// Import values from another module: `import ... from '...'`
+    Import(ImportDeclaration),
     /// Exit the current function, optionally with a return value: `return
     /// [expression];`
     Return(Option<Expression>),
-
-    /// Import values from another module: `import ... from '...'`
-    Import(ImportDeclaration),
-    /// Export a name or value: `export const ...` or `export default ...`
-    Export(ExportDeclaration),
+    // Loops aren't supported at all because they aren't very useful without
+    // mutation. I may add them at some point, but I'm starting minimal.
 }
 
 /// A collection of statements to be executed sequentially
@@ -795,7 +793,7 @@ impl Node for UnaryOperation {
 }
 
 /// Operator for [`UnaryOperation`]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum UnaryOperator {
     /// `!`: Boolean negation
     BooleanNot,
@@ -829,7 +827,7 @@ impl Node for BinaryOperation {
 }
 
 /// Operator for [`BinaryOperation`]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BinaryOperator {
     /// `+`
     Add,

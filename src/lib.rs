@@ -175,6 +175,7 @@ mod name;
 #[cfg(feature = "serde")]
 pub mod serde;
 mod source;
+pub mod stack;
 mod stdlib;
 #[cfg(test)]
 mod test_util;

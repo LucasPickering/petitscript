@@ -62,6 +62,12 @@ impl FromStr for Identifier {
     }
 }
 
+impl From<Identifier> for String {
+    fn from(value: Identifier) -> Self {
+        value.0
+    }
+}
+
 /// Name of a native module registered with the engine
 ///
 /// Native module names must adhere to these rules:

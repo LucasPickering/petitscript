@@ -23,7 +23,7 @@ use crate::{
 use indexmap::IndexMap;
 use std::{
     any::{self, Any, TypeId},
-    collections::{HashMap, hash_map::Entry},
+    collections::HashMap,
     fmt::{self, Display},
     sync::Arc,
 };
@@ -316,6 +316,43 @@ impl Exports {
         self.named
             .insert(name.clone(), Function::native(name, function).into());
     }
+
+    /// Set a named exported value
+    ///
+    /// Return an error if the name is already exported.
+    pub(crate) fn export(
+        &mut self,
+        name: String,
+        value: Value,
+    ) -> Result<(), RuntimeErrorKind> {
+        use indexmap::map::Entry;
+
+        match self.named.entry(name) {
+            Entry::Vacant(entry) => {
+                entry.insert(value);
+                Ok(())
+            }
+            Entry::Occupied(entry) => Err(RuntimeErrorKind::AlreadyExported {
+                name: entry.key().clone(),
+            }),
+        }
+    }
+
+    /// Set the default exported value
+    ///
+    /// Return an error if there is already a default export.
+    pub(crate) fn export_default(
+        &mut self,
+        value: Value,
+    ) -> Result<(), RuntimeErrorKind> {
+        if self.default.is_some() {
+            return Err(RuntimeErrorKind::AlreadyExported {
+                name: "(default)".into(),
+            });
+        }
+        self.default = Some(value);
+        Ok(())
+    }
 }
 
 impl Display for Exports {
@@ -357,14 +394,15 @@ impl AppData {
         &mut self,
         data: T,
     ) -> Result<(), DuplicateAppData> {
+        use std::collections::hash_map::Entry;
         match self.0.entry(TypeId::of::<T>()) {
-            Entry::Occupied(_) => Err(DuplicateAppData {
-                type_name: any::type_name::<T>(),
-            }),
             Entry::Vacant(entry) => {
                 entry.insert(Arc::new(data));
                 Ok(())
             }
+            Entry::Occupied(_) => Err(DuplicateAppData {
+                type_name: any::type_name::<T>(),
+            }),
         }
     }
 }

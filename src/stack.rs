@@ -22,6 +22,8 @@ pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
         stack.execute(instruction)?;
     }
 
+    /*
+    TODO keep this? needs to be adapted for locals
     // Every STATEMENT execution should be zero-sum on the stack, so it must be
     // empty by the end. Anything else indicates a bug.
     assert_eq!(
@@ -29,6 +31,7 @@ pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
         [],
         "Stack must be empty after execution"
     );
+    */
 
     Ok(stack.exports.unwrap())
 }
@@ -66,7 +69,10 @@ impl StackMachine {
             Instruction::BinaryOperation(operator) => {
                 self.binary_operator(operator);
             }
-            Instruction::Export(name) => self.export(name)?,
+            Instruction::ExportDefault => self.export_default()?,
+            Instruction::ExportNamed { name, slot } => {
+                self.export_named(name, slot)?;
+            }
             Instruction::Pop => {
                 self.pop();
             }
@@ -111,26 +117,27 @@ impl StackMachine {
                 drop(values);
                 self.push(object.into());
             }
+            Instruction::PushReference { slot } => {
+                self.push(self.stack[slot].clone());
+            }
         }
         Ok(())
     }
 
-    /// Export a value
-    ///
-    /// If `name` is `Some`, grab that name from the current scope and export
-    /// it. If not, export the active value as the default.
-    fn export(
+    /// Pop the top value and export it as the default
+    fn export_default(&mut self) -> Result<(), RuntimeErrorKind> {
+        let value = self.pop();
+        self.exports_mut()?.export_default(value)
+    }
+
+    /// Export a named value
+    fn export_named(
         &mut self,
-        name: Option<Identifier>,
+        name: Identifier,
+        slot: usize,
     ) -> Result<(), RuntimeErrorKind> {
-        if let Some(name) = name {
-            let value = Value::Undefined; // TODO grab from scope
-            self.exports_mut()?.export(name.into(), value)?;
-        } else {
-            let value = self.pop();
-            self.exports_mut()?.export_default(value)?;
-        }
-        Ok(())
+        let value = self.stack[slot].clone();
+        self.exports_mut()?.export(name.into(), value)
     }
 
     /// Apply a binary operator
@@ -240,5 +247,23 @@ mod tests {
                 .unwrap();
         let exports = run(program).unwrap();
         assert_eq!(exports.default.unwrap(), expected.into());
+    }
+
+    /// Test statement execution evaluation
+    #[test_case("const x = 3; export default x;", 3; "declaration")]
+    fn statement(source: &str, expected: impl Into<Value>) {
+        let program = Program::parse(source).unwrap();
+        let exports = run(program).unwrap();
+        assert_eq!(exports.default.unwrap(), expected.into());
+    }
+
+    #[test]
+    fn export_named() {
+        let source = "
+export const x = 3, y = 4;
+export const z = x * y;";
+        let program = Program::parse(source).unwrap();
+        let exports = run(program).unwrap();
+        assert_eq!(exports, Exports::named([("x", 3), ("y", 4), ("z", 12)]));
     }
 }

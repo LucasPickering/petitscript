@@ -64,7 +64,7 @@ impl FromStr for Identifier {
 
 impl From<Identifier> for String {
     fn from(value: Identifier) -> Self {
-        value.0
+        value.0.into()
     }
 }
 

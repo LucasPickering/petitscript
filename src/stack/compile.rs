@@ -3,11 +3,11 @@
 use crate::{
     Program, Value,
     ast::{
-        ArrayLiteral, BinaryOperator, Block, Declaration, ExportDeclaration,
-        ExportDeclarationKind, Expression, ExpressionKind, Identifier, If,
-        ImportDeclaration, Literal, Module, Node, ObjectLiteral,
-        ObjectPropertyKind, PropertyName, PropertyNameKind, Statement,
-        StatementKind,
+        ArrayLiteral, BinaryOperator, Binding, BindingKind, Block, Declaration,
+        ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
+        Identifier, If, ImportDeclaration, Literal, Module, Node,
+        ObjectLiteral, ObjectPropertyKind, PropertyName, PropertyNameKind,
+        Statement, StatementKind, Variable,
     },
     value::Number,
 };
@@ -17,6 +17,19 @@ pub struct Compiler {
     ///
     /// This is the final result of compilation.
     instructions: Vec<Instruction>,
+    /// List of bindings accessible in the current scope
+    ///
+    /// TODO explain how this correponds to slots on the stack
+    ///
+    /// Invariant: for each element, `depth` is greater than or equal to
+    /// `depth` of the previous element. This means for any depth `n`, its
+    /// locals will be contiguous in this list.
+    locals: Vec<Local>,
+    /// Scope depth of the AST node currently being compiled
+    ///
+    /// `0` for the global scope and increasing by `1` for each block/function
+    /// body (each pair of `{}`).
+    current_scope: u16,
 }
 
 impl Compiler {
@@ -24,9 +37,66 @@ impl Compiler {
     pub fn compile(program: &Program) -> Vec<Instruction> {
         let mut compiler = Self {
             instructions: vec![],
+            locals: vec![],
+            current_scope: 0,
         };
         program.root().compile(&mut compiler);
         compiler.instructions
+    }
+
+    /// Declare an identifier for a local on the stack
+    fn declare(&mut self, identifier: Identifier) {
+        // TODO check if local already exists at this scope - shadowing illegal
+        self.locals.push(Local {
+            identifier,
+            depth: self.current_scope,
+        });
+    }
+
+    /// Declare a new nested lexical scope
+    fn enter_scope(&mut self) {
+        self.current_scope += 1;
+    }
+
+    /// Exit the current lexical scope, freeing its locals
+    ///
+    /// ## Panics
+    ///
+    /// Panics if already in the global scope.
+    fn exit_scope(&mut self) {
+        self.current_scope = self
+            .current_scope
+            .checked_sub(1)
+            .expect("Cannot exit global scope");
+
+        // Free the locals from this scope. Each scope is contiguous, so find
+        // where the current starts
+        let index = self
+            .locals
+            .iter()
+            .position(|local| local.depth > self.current_scope)
+            .unwrap_or(self.locals.len());
+        let len = self.locals.drain(index..).count();
+        for _ in 0..len {
+            self.push(Instruction::Pop);
+        }
+    }
+
+    /// Get the slot index of a local variable by identifier
+    ///
+    /// This gets the *innermost* (highest) stack slot matching the identifier,
+    /// so that inner scopes shadow outer scopes.
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the identifier is not in the locals.
+    fn local_slot(&self, identifier: &Identifier) -> usize {
+        // The index of the local in the locals list is equal to its index in
+        // the value stack
+        self.locals
+            .iter()
+            .rposition(|local| &local.identifier == identifier)
+            .expect("TODO handle unknown ref - defer error to runtime")
     }
 
     /// Push an instruction onto the program
@@ -42,13 +112,21 @@ pub enum Instruction {
     /// Top value is the **right-hand** side, second value is left-hand side.
     /// Result is pushed back onto the stack.
     BinaryOperation(BinaryOperator),
-    /// Move the top value to the machine's exports
+    /// Move the top value to the default export
     ///
-    /// Error if the name (or default) is already exported.
-    Export(
-        /// `None` for default, `Some` for named exports
-        Option<Identifier>,
-    ),
+    /// Error if there is already a default export. Because `export default`
+    /// applies to an expression rather than a bound name, this consumes a
+    /// temporary from the stack.
+    ExportDefault,
+    /// Copy a local to a named export
+    ///
+    /// Error if the name is already exported.
+    ExportNamed {
+        /// Name to export: `None` for default, `Some` for named exports
+        name: Identifier,
+        /// Stack slot containing the value to export
+        slot: usize,
+    },
     /// Pop the active value
     ///
     /// The popped value is thrown away.
@@ -83,6 +161,19 @@ pub enum Instruction {
         /// runtime error.
         spreads: Box<[usize]>,
     },
+    /// Copy the value of a local onto the stack
+    PushReference {
+        /// Stack slot containing the local value
+        slot: usize,
+    },
+}
+
+/// TODO
+struct Local {
+    /// TODO
+    identifier: Identifier,
+    /// TODO
+    depth: u16,
 }
 
 /// TODO
@@ -128,26 +219,63 @@ impl Compile for Statement {
 
 impl Compile for Block {
     fn compile(&self, compiler: &mut Compiler) {
-        // TODO declare a new scope
+        compiler.enter_scope();
         for statement in &self.statements {
             statement.compile(compiler);
         }
+        compiler.exit_scope();
     }
 }
 
 impl Compile for Declaration {
-    fn compile(&self, _compiler: &mut Compiler) {
-        todo!()
+    fn compile(&self, compiler: &mut Compiler) {
+        for variable in &self.variables {
+            variable.compile(compiler);
+        }
+    }
+}
+
+impl Compile for Variable {
+    fn compile(&self, compiler: &mut Compiler) {
+        // First put the value on the stack
+        self.init.compile(compiler);
+        // Then bind it
+        self.binding.compile(compiler);
+    }
+}
+
+impl Compile for Binding {
+    fn compile(&self, compiler: &mut Compiler) {
+        match &self.kind {
+            BindingKind::Identifier(identifier) => {
+                compiler.declare(identifier.identifier.clone());
+            }
+            BindingKind::Object { .. } => todo!("object binding"),
+            BindingKind::Array { .. } => todo!("array binding"),
+        }
     }
 }
 
 impl Compile for ExportDeclaration {
     fn compile(&self, compiler: &mut Compiler) {
+        // TODO disallow at depth > 0
         match &self.kind {
-            ExportDeclarationKind::Declaration(_) => todo!(),
+            ExportDeclarationKind::Declaration(declaration) => {
+                // Collect the set of names to export by checking what's added
+                // to the locals list
+                let start_len = compiler.locals.len();
+                declaration.compile(compiler);
+                for slot in start_len..compiler.locals.len() {
+                    let identifier = &compiler.locals[slot].identifier;
+                    compiler.push(Instruction::ExportNamed {
+                        name: identifier.clone(),
+                        slot,
+                    });
+                }
+            }
             ExportDeclarationKind::DefaultExpression(expression) => {
                 expression.compile(compiler);
-                compiler.push(Instruction::Export(None));
+                compiler.push(Instruction::ExportDefault);
             }
         }
     }
@@ -177,7 +305,10 @@ impl Compile for Expression {
                 compiler.push(Instruction::Push(value));
             }
             ExpressionKind::Template(_) => todo!(),
-            ExpressionKind::Identifier(_) => todo!(),
+            ExpressionKind::Identifier(identifier) => {
+                let slot = compiler.local_slot(&identifier.identifier);
+                compiler.push(Instruction::PushReference { slot });
+            }
             ExpressionKind::Call(_) => todo!(),
             ExpressionKind::Property(_) => todo!(),
             ExpressionKind::OptionalProperty(_) => todo!(),

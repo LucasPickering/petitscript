@@ -14,7 +14,10 @@ use std::{borrow::Borrow, str::FromStr};
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(transparent))]
-pub struct Identifier(String);
+pub struct Identifier(
+    /// `Box<str>` is 8 bytes smaller than `String`
+    Box<str>,
+);
 
 impl Identifier {
     /// Get a reference to the identifier's string value
@@ -44,7 +47,7 @@ impl TryFrom<String> for Identifier {
             && identifier.starts_with(is_valid_first)
             && identifier.chars().skip(1).all(is_valid)
         {
-            Ok(Self(identifier))
+            Ok(Self(identifier.into()))
         } else {
             Err(IdentifierError { identifier })
         }

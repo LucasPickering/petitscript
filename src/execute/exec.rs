@@ -9,7 +9,6 @@ use crate::{
     },
     error::{RuntimeError, RuntimeErrorKind},
     execute::{Fiber, eval::Evaluate},
-    util::OptionExt,
     value::Value,
 };
 
@@ -219,11 +218,7 @@ impl Execute for Variable {
         &self,
         fiber: &mut Fiber<'world>,
     ) -> Result<Self::Output<'world>, RuntimeError> {
-        let value = self
-            .init
-            .as_ref()
-            .try_map(|init| init.eval(fiber))?
-            .unwrap_or(Value::Undefined);
+        let value = self.init.eval(fiber)?;
         fiber.bind(&self.binding, value)
     }
 }

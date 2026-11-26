@@ -370,7 +370,8 @@ impl Walk for FunctionBody {
 impl Walk for FunctionParameter {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_function_parameter(self);
-        self.variable.walk(visitor);
+        self.binding.walk(visitor);
+        self.init.walk(visitor);
         visitor.exit_function_parameter(self);
     }
 }

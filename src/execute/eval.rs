@@ -368,14 +368,14 @@ impl Function {
                 } else {
                     value.clone()
                 }
-            } else if let Some(init) = &parameter.variable.init {
+            } else if let Some(init) = &parameter.init {
                 // If the arg wasn't given, fall back to the init expression
                 init.eval(fiber)?
             } else {
                 // No init expression, use undefined
                 Value::Undefined
             };
-            fiber.bind(&parameter.variable.binding, value)?;
+            fiber.bind(&parameter.binding, value)?;
         }
         Ok(())
     }

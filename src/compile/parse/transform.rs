@@ -658,10 +658,16 @@ impl Transform for oxc::VariableDeclarator<'_> {
         // = is stored in self.init
         let binding = BindingOnly(&self.id).transform(context)?;
 
+        // = must be present. SHOULD be guaranteed by the parser
         let init = if let Some(init) = &self.init {
-            Some(Box::new(init.transform(context)?))
+            Box::new(init.transform(context)?)
         } else {
-            None
+            return Err(context.register_error(
+                self,
+                ParseErrorKind::Unhandled {
+                    node: format!("{self:?}"),
+                },
+            ));
         };
         Ok(Variable {
             id: context.id(self),
@@ -987,7 +993,7 @@ impl Transform for oxc::Function<'_> {
         let variable = Variable {
             id: context.id(self),
             binding,
-            init: Some(Box::new(init)),
+            init: Box::new(init),
         };
 
         Ok(Some(Declaration {
@@ -1067,11 +1073,8 @@ impl Transform for oxc::FormalParameters<'_> {
                 BindingOnly(&rest.rest.argument).transform(context)?;
             parameters.push(FunctionParameter {
                 id: context.id(&**rest),
-                variable: Variable {
-                    id: context.id_from(&binding),
-                    binding,
-                    init: None,
-                },
+                binding,
+                init: None,
                 varargs: true,
             });
         }
@@ -1098,14 +1101,10 @@ impl Transform for oxc::FormalParameter<'_> {
         } else {
             None
         };
-        let variable = Variable {
+        Ok(FunctionParameter {
             id: context.id(self),
             binding,
             init,
-        };
-        Ok(FunctionParameter {
-            id: context.id_from(&variable),
-            variable,
             varargs: false,
         })
     }

@@ -116,7 +116,7 @@ impl DisplayIndent for &Declaration {
 
 impl DisplayIndent for &Variable {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
-        (&self.binding, self.init.as_ref().map(|init| (" = ", init))).fmt(ind)
+        (&self.binding, " = ", &self.init).fmt(ind)
     }
 }
 
@@ -137,7 +137,8 @@ impl DisplayIndent for &FunctionParameter {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (
             if self.varargs { Some("...") } else { None },
-            &self.variable,
+            &self.binding,
+            self.init.as_ref().map(|init| (" = ", &**init)),
         )
             .fmt(ind)
     }
@@ -954,8 +955,8 @@ mod tests {
 
     /// Test `Escape`
     #[test_case("test", "test"; "unescaped")]
-    #[test_case(r"te\st", r"te\\st".into(); "escape")]
-    #[test_case(r#"te\s"t"#, r#"te\\s\"t"#.into(); "escape multiple")]
+    #[test_case(r"te\st", r"te\\st"; "escape")]
+    #[test_case(r#"te\s"t"#, r#"te\\s\"t"#; "escape multiple")]
     fn string_escape(s: &str, expected: &str) {
         // Helper needed to integrate with DisplayIndent
         #[derive(Debug)]

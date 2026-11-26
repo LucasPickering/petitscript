@@ -226,7 +226,7 @@ impl Node for Declaration {
     }
 }
 
-/// A single declared variable in a declaration or function parameter
+/// A single declared variable in a declaration
 #[derive(Clone, Debug, PartialEq)]
 pub struct Variable {
     pub id: NodeId,
@@ -234,9 +234,8 @@ pub struct Variable {
     pub binding: Binding,
     /// Expression to bind to
     ///
-    /// `None` for declarations without initializers, such as (most) function
-    /// parameters.
-    pub init: Option<Box<Expression>>,
+    /// Bare `const` declarations without initializers are not allowed.
+    pub init: Box<Expression>,
 }
 
 impl Node for Variable {
@@ -256,6 +255,7 @@ pub struct FunctionDefinition {
     /// This is **not necessarily** the name the function is bound to; that is
     /// defined in the parent [`Declaration`].
     pub name: Option<Identifier>,
+    /// Parameter definitions
     pub parameters: Box<[FunctionParameter]>,
     // `Node` not necessary because both variants of the body contain it
     pub body: FunctionBody,
@@ -299,7 +299,14 @@ impl Node for FunctionBody {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FunctionParameter {
     pub id: NodeId,
-    pub variable: Variable,
+    /// Identifier(s) being bound
+    pub binding: Binding,
+    /// Default expression to bind when a corresponding argument is not passed
+    pub init: Option<Box<Expression>>,
+    /// `true` if this is a `...` argument
+    ///
+    /// Cannot be `true` if `init` is `Some`, because varargs can't have a
+    /// default value.
     pub varargs: bool,
 }
 

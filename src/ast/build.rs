@@ -108,7 +108,7 @@ impl Declaration {
     ) -> Self {
         Self {
             id: next_id(),
-            variables: [Variable::identifier(name, Some(expression))].into(),
+            variables: [Variable::identifier(name, expression)].into(),
         }
     }
 
@@ -201,7 +201,8 @@ impl FunctionParameter {
     pub fn identifier(name: impl Into<Identifier>) -> Self {
         Self {
             id: next_id(),
-            variable: Variable::identifier(name, None::<()>),
+            binding: Binding::identifier(name),
+            init: None,
             varargs: false,
         }
     }
@@ -209,7 +210,7 @@ impl FunctionParameter {
     /// Add an `= init` expression to this parameter
     #[must_use]
     pub fn with_init(mut self, init: impl IntoExpression) -> Self {
-        self.variable.init = Some(Box::new(init.into_expr()));
+        self.init = Some(Box::new(init.into_expr()));
         self
     }
 }
@@ -577,12 +578,12 @@ impl Variable {
     /// Create a simple identifier variable
     pub fn identifier(
         name: impl Into<Identifier>,
-        init: Option<impl IntoExpression>,
+        init: impl IntoExpression,
     ) -> Self {
         Self {
             id: next_id(),
             binding: Binding::identifier(name),
-            init: init.map(|expression| Box::new(expression.into_expr())),
+            init: Box::new(init.into_expr()),
         }
     }
 }

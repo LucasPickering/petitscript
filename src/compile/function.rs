@@ -2,14 +2,16 @@
 
 use crate::ast::{
     AstVisitor, Binding, BindingKind, Block, Expression, ExpressionKind,
-    FunctionDefinition, Identifier, IdentifierPosition, ObjectProperty,
-    ObjectPropertyKind, PropertyName, PropertyNameKind, Variable,
+    FunctionDefinition, FunctionParameter, Identifier, IdentifierPosition,
+    ObjectProperty, ObjectPropertyKind, PropertyName, PropertyNameKind,
+    Variable,
 };
 use indexmap::IndexSet;
 
-/// A convenience compiler step to apply a name to functions. The function name
-/// is purely for printing/debugging, so this has no impact on semantics. This
-/// covers these syntaxes:
+/// A convenience compiler step to apply a name to functions
+///
+/// The function name is purely for printing/debugging, so this has no impact on
+/// semantics. This covers these syntaxes:
 ///  - Function assignment: `const f = () => {};`
 ///  - Function as a default parameter value: `(f = () => {}) => {}`
 ///  - Function in an object: `{f: () => {}}`
@@ -32,18 +34,18 @@ impl LabelFunctions {
 }
 
 impl AstVisitor for LabelFunctions {
-    fn enter_variable(&mut self, variable: &mut Variable) {
-        // Look for `const f = () => {}` or `(f = () => {}) => {}`
-        // The second case is rare, but it's easier to support it than to not
-        if let Variable {
-            id: _,
+    fn enter_function_parameter(&mut self, parameter: &mut FunctionParameter) {
+        // Look for `(f = () => {}) => {}`
+        // It's rare, but might as well support it
+        if let FunctionParameter {
             binding:
                 Binding {
                     id: _,
                     kind: BindingKind::Identifier(identifier),
                 },
             init: Some(init),
-        } = variable
+            ..
+        } = parameter
         {
             Self::set_name(identifier, init);
         }
@@ -61,6 +63,22 @@ impl AstVisitor for LabelFunctions {
         } = &mut property.kind
         {
             Self::set_name(identifier, expression);
+        }
+    }
+
+    fn enter_variable(&mut self, variable: &mut Variable) {
+        // Look for `const f = () => {}`
+        if let Variable {
+            id: _,
+            binding:
+                Binding {
+                    id: _,
+                    kind: BindingKind::Identifier(identifier),
+                },
+            init,
+        } = variable
+        {
+            Self::set_name(identifier, init);
         }
     }
 }

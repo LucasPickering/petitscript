@@ -5,13 +5,14 @@ use crate::ast::{
     ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
     BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
     Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
-    FunctionParameter, Identifier, IdentifierNode, If, ImportDeclaration,
-    ImportModule, ImportModuleKind, ImportNamed, Literal, Module,
-    NativeModuleName, ObjectLiteral, ObjectPatternElement, ObjectProperty,
-    ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess, PropertyName,
-    PropertyNameKind, Statement, StatementKind, TemplateChunk,
-    TemplateChunkKind, TemplateLiteral, TernaryConditional, UnaryOperation,
-    UnaryOperator, Variable,
+    FunctionParameter, FunctionParameterRest, FunctionParameters, Identifier,
+    IdentifierNode, If, ImportDeclaration, ImportModule, ImportModuleKind,
+    ImportNamed, Literal, Module, NativeModuleName, ObjectLiteral,
+    ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+    TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
+    Variable,
 };
 use std::{borrow::Cow, fmt};
 
@@ -67,7 +68,9 @@ trait DisplayIndent {
 
 impl DisplayIndent for &Module {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
-        Repeat::new(&self.statements, "\n").with_trailing().fmt(ind)
+        Repeat::new(&self.statements, "\n")
+            .with_trailing(true)
+            .fmt(ind)
     }
 }
 
@@ -123,11 +126,18 @@ impl DisplayIndent for &Variable {
 impl DisplayIndent for &FunctionDefinition {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         // Print as arrow syntax because it's easier
+        (&self.parameters, " => ", &self.body).fmt(ind)
+    }
+}
+
+impl DisplayIndent for &FunctionParameters {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (
             "(",
-            Repeat::new(&self.parameters, ", "),
-            ") => ",
-            &self.body,
+            Repeat::new(&self.parameters, ", ")
+                .with_trailing(self.rest.is_some()),
+            &self.rest,
+            ")",
         )
             .fmt(ind)
     }
@@ -136,11 +146,16 @@ impl DisplayIndent for &FunctionDefinition {
 impl DisplayIndent for &FunctionParameter {
     fn fmt(self, ind: &mut Indenter) -> fmt::Result {
         (
-            if self.varargs { Some("...") } else { None },
             &self.binding,
             self.init.as_ref().map(|init| (" = ", &**init)),
         )
             .fmt(ind)
+    }
+}
+
+impl DisplayIndent for &FunctionParameterRest {
+    fn fmt(self, ind: &mut Indenter) -> fmt::Result {
+        ("...", &self.binding).fmt(ind)
     }
 }
 
@@ -552,8 +567,8 @@ impl<'a, I> Repeat<'a, I> {
         }
     }
 
-    fn with_trailing(mut self) -> Self {
-        self.include_trailing = true;
+    fn with_trailing(mut self, trailing: bool) -> Self {
+        self.include_trailing = trailing;
         self
     }
 }
@@ -942,6 +957,7 @@ mod tests {
     #[test_case("3.0;"; "float whole")]
     #[test_case("`\\`${code}\\``"; "template escape")]
     #[test_case("function f() {}"; "function keyword")]
+    #[test_case("function f(...z) {}"; "function varargs")]
     fn display_round_trip(source_code: &str) {
         let parsed = Source::raw(source_code).parse().unwrap_display();
         // This line is what we're testing!! The source codes won't be textually

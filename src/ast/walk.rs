@@ -3,12 +3,12 @@ use crate::ast::{
     ArrayPatternElementKind, BinaryOperation, Binding, BindingKind, Block,
     Declaration, ExportDeclaration, ExportDeclarationKind, Expression,
     ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
-    FunctionParameter, Identifier, If, ImportDeclaration, ImportModule,
-    ImportNamed, Literal, Module, ObjectLiteral, ObjectPatternElement,
-    ObjectProperty, ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess,
-    PropertyName, PropertyNameKind, Statement, StatementKind, TemplateChunk,
-    TemplateChunkKind, TemplateLiteral, TernaryConditional, UnaryOperation,
-    Variable,
+    FunctionParameter, FunctionParameterRest, FunctionParameters, Identifier,
+    If, ImportDeclaration, ImportModule, ImportNamed, Literal, Module,
+    ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
+    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
+    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
+    TemplateLiteral, TernaryConditional, UnaryOperation, Variable,
 };
 use std::ops::DerefMut;
 
@@ -94,10 +94,21 @@ pub trait AstVisitor {
     /// Called after walking down a [`FunctionDefinition`]
     fn exit_function_definition(&mut self, _: &mut FunctionDefinition) {}
 
+    /// Called before walking down a [`FunctionParameters`]
+    fn enter_function_parameters(&mut self, _: &mut FunctionParameters) {}
+    /// Called after walking down a [`FunctionParameters`]
+    fn exit_function_parameters(&mut self, _: &mut FunctionParameters) {}
+
     /// Called before walking down a [`FunctionParameter`]
     fn enter_function_parameter(&mut self, _: &mut FunctionParameter) {}
     /// Called after walking down a [`FunctionParameter`]
     fn exit_function_parameter(&mut self, _: &mut FunctionParameter) {}
+
+    /// Called before walking down a [`FunctionParameterRest`]
+    fn enter_function_parameter_rest(&mut self, _: &mut FunctionParameterRest) {
+    }
+    /// Called after walking down a [`FunctionParameterRest`]
+    fn exit_function_parameter_rest(&mut self, _: &mut FunctionParameterRest) {}
 
     /// Called before walking down an [`If`]
     fn enter_if(&mut self, _: &mut If) {}
@@ -367,12 +378,29 @@ impl Walk for FunctionBody {
     }
 }
 
+impl Walk for FunctionParameters {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_function_parameters(self);
+        self.parameters.walk(visitor);
+        self.rest.walk(visitor);
+        visitor.exit_function_parameters(self);
+    }
+}
+
 impl Walk for FunctionParameter {
     fn walk(&mut self, visitor: &mut dyn AstVisitor) {
         visitor.enter_function_parameter(self);
         self.binding.walk(visitor);
         self.init.walk(visitor);
         visitor.exit_function_parameter(self);
+    }
+}
+
+impl Walk for FunctionParameterRest {
+    fn walk(&mut self, visitor: &mut dyn AstVisitor) {
+        visitor.enter_function_parameter_rest(self);
+        self.binding.walk(visitor);
+        visitor.exit_function_parameter_rest(self);
     }
 }
 

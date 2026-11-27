@@ -15,12 +15,12 @@ use crate::ast::{
     ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
     BindingKind, Block, Declaration, ExportDeclaration, ExportDeclarationKind,
     Expression, ExpressionKind, FunctionBody, FunctionCall, FunctionDefinition,
-    FunctionParameter, Identifier, IdentifierNode, ImportDeclaration,
-    ImportModule, ImportModuleKind, ImportNamed, Literal, Module, Node, NodeId,
-    ObjectLiteral, ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
-    OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
-    Statement, StatementKind, TemplateChunk, TemplateChunkKind,
-    TemplateLiteral, Variable,
+    FunctionParameter, FunctionParameters, Identifier, IdentifierNode,
+    ImportDeclaration, ImportModule, ImportModuleKind, ImportNamed, Literal,
+    Module, Node, NodeId, ObjectLiteral, ObjectPatternElement, ObjectProperty,
+    ObjectPropertyKind, OptionalPropertyAccess, PropertyAccess, PropertyName,
+    PropertyNameKind, Statement, StatementKind, TemplateChunk,
+    TemplateChunkKind, TemplateLiteral, Variable,
 };
 use std::cell::Cell;
 
@@ -132,7 +132,7 @@ impl FunctionDefinition {
         Self {
             id: next_id(),
             name: None,
-            parameters: parameters.into_iter().collect(),
+            parameters: FunctionParameters::new(parameters),
             body: FunctionBody::Block(Block::new(statements)),
             captures: Default::default(),
         }
@@ -145,7 +145,7 @@ impl FunctionDefinition {
         Self {
             id: next_id(),
             name: None,
-            parameters: parameters.into_iter().collect(),
+            parameters: FunctionParameters::new(parameters),
             body: FunctionBody::Block(Block::new([(); 0])),
             captures: Default::default(),
         }
@@ -162,7 +162,7 @@ impl FunctionDefinition {
         Self {
             id: next_id(),
             name: None,
-            parameters: parameters.into_iter().collect(),
+            parameters: FunctionParameters::new(parameters),
             body: FunctionBody::Expression(Box::new(expression.into_expr())),
             captures: Default::default(),
         }
@@ -196,6 +196,18 @@ impl FunctionDefinition {
     }
 }
 
+impl FunctionParameters {
+    pub fn new(
+        parameters: impl IntoIterator<Item = FunctionParameter>,
+    ) -> Self {
+        FunctionParameters {
+            id: next_id(),
+            parameters: parameters.into_iter().collect(),
+            rest: None,
+        }
+    }
+}
+
 impl FunctionParameter {
     /// A simple single-identifier parameter, with no default expression
     pub fn identifier(name: impl Into<Identifier>) -> Self {
@@ -203,7 +215,6 @@ impl FunctionParameter {
             id: next_id(),
             binding: Binding::identifier(name),
             init: None,
-            varargs: false,
         }
     }
 

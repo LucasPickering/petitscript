@@ -10,14 +10,14 @@ use crate::{
         ArrayPatternElementKind, BinaryOperation, BinaryOperator, Binding,
         BindingKind, Block, Declaration, ExportDeclaration,
         ExportDeclarationKind, Expression, ExpressionKind, FunctionBody,
-        FunctionCall, FunctionDefinition, FunctionParameter, Identifier,
-        IdentifierNode, If, ImportDeclaration, ImportModule, ImportModuleKind,
-        ImportNamed, Literal, Module, Node, NodeId, ObjectLiteral,
-        ObjectPatternElement, ObjectProperty, ObjectPropertyKind,
-        OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
-        Statement, StatementKind, TemplateChunk, TemplateChunkKind,
-        TemplateLiteral, TernaryConditional, UnaryOperation, UnaryOperator,
-        Variable,
+        FunctionCall, FunctionDefinition, FunctionParameter,
+        FunctionParameterRest, FunctionParameters, Identifier, IdentifierNode,
+        If, ImportDeclaration, ImportModule, ImportModuleKind, ImportNamed,
+        Literal, Module, Node, NodeId, ObjectLiteral, ObjectPatternElement,
+        ObjectProperty, ObjectPropertyKind, OptionalPropertyAccess,
+        PropertyAccess, PropertyName, PropertyNameKind, Statement,
+        StatementKind, TemplateChunk, TemplateChunkKind, TemplateLiteral,
+        TernaryConditional, UnaryOperation, UnaryOperator, Variable,
     },
     compile::{SUPPORTED_EXTENSIONS, parse::ParseContext},
     error::{ParseError, ParseErrorKind, Unsupported},
@@ -974,8 +974,8 @@ impl Transform for oxc::Function<'_> {
         let Some(body) = &self.body else {
             return Ok(None);
         };
-        let body = body.transform(context)?;
         let parameters = self.params.transform(context)?;
+        let body = body.transform(context)?;
 
         // Declare the function as a variable. There is no separate function
         // declaration in the PS AST, for simplicity
@@ -1055,30 +1055,27 @@ impl Transform for oxc::FunctionBody<'_> {
 }
 
 impl Transform for oxc::FormalParameters<'_> {
-    type Output = Box<[FunctionParameter]>;
+    type Output = FunctionParameters;
 
     fn transform(
         &self,
         context: &mut ParseContext,
     ) -> Result<Self::Output, Reg> {
-        let mut parameters: Vec<_> = self
+        let parameters = self
             .items
             .iter()
             .map(|parameter| parameter.transform(context))
             .collect::<Result<_, _>>()?;
-        // Add the rest param in separately
-        if let Some(rest) = &self.rest {
-            // = isn't allowed here because the default is always []
-            let binding =
-                BindingOnly(&rest.rest.argument).transform(context)?;
-            parameters.push(FunctionParameter {
-                id: context.id(&**rest),
-                binding,
-                init: None,
-                varargs: true,
-            });
-        }
-        Ok(parameters.into())
+        let rest = if let Some(rest) = &self.rest {
+            Some(rest.transform(context)?)
+        } else {
+            None
+        };
+        Ok(FunctionParameters {
+            id: context.id(self),
+            parameters,
+            rest,
+        })
     }
 }
 
@@ -1105,7 +1102,21 @@ impl Transform for oxc::FormalParameter<'_> {
             id: context.id(self),
             binding,
             init,
-            varargs: false,
+        })
+    }
+}
+
+impl Transform for oxc::FormalParameterRest<'_> {
+    type Output = FunctionParameterRest;
+
+    fn transform(
+        &self,
+        context: &mut ParseContext,
+    ) -> Result<Self::Output, Reg> {
+        let binding = BindingOnly(&self.rest.argument).transform(context)?;
+        Ok(FunctionParameterRest {
+            id: context.id(self),
+            binding,
         })
     }
 }

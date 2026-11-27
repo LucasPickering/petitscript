@@ -3,7 +3,7 @@
 use crate::{
     ast::{
         Argument, ArrayLiteral, BinaryOperation, BinaryOperator, Expression,
-        ExpressionKind, FunctionCall, FunctionDefinition, FunctionParameter,
+        ExpressionKind, FunctionCall, FunctionDefinition, FunctionParameters,
         Literal, Node, ObjectLiteral, ObjectPropertyKind,
         OptionalPropertyAccess, PropertyAccess, PropertyName, PropertyNameKind,
         TemplateChunkKind, TemplateLiteral, UnaryOperation, UnaryOperator,
@@ -15,7 +15,7 @@ use crate::{
         function::{Function, FunctionInner},
     },
 };
-use std::{borrow::Cow, sync::Arc};
+use std::{borrow::Cow, collections::VecDeque, sync::Arc};
 
 /// Evaluate an expression into a value
 pub trait Evaluate: Node {
@@ -348,26 +348,18 @@ impl Function {
     /// Bind argument values to parameters in the current scope
     fn bind_arguments(
         fiber: &mut Fiber,
-        parameters: &[FunctionParameter],
+        parameters: &FunctionParameters,
         arguments: Vec<Value>,
     ) -> Result<(), RuntimeError> {
+        // Allow front popping. This doesn't rellocate
+        let mut arguments: VecDeque<Value> = arguments.into();
         // Each parameter will be added to the scope for the next param,
         // meaning `f(a, b = a + 1) {...}` is *legal*
-        for (i, parameter) in parameters.iter().enumerate() {
+        for parameter in &parameters.parameters {
             // If we got fewer args than the function has defined, we'll pad it
             // out with defaults/undefined
-            let value = if let Some(value) = arguments.get(i) {
-                // ... parameters get all the remaining args
-                if parameter.varargs {
-                    if i < arguments.len() {
-                        Array::from(arguments[i..].to_owned())
-                    } else {
-                        Array::new()
-                    }
-                    .into()
-                } else {
-                    value.clone()
-                }
+            let value = if let Some(value) = arguments.pop_front() {
+                value
             } else if let Some(init) = &parameter.init {
                 // If the arg wasn't given, fall back to the init expression
                 init.eval(fiber)?
@@ -377,6 +369,12 @@ impl Function {
             };
             fiber.bind(&parameter.binding, value)?;
         }
+
+        // ... parameters get all the remaining args
+        if let Some(rest) = &parameters.rest {
+            fiber.bind(&rest.binding, Array::from_iter(arguments).into())?;
+        }
+
         Ok(())
     }
 }

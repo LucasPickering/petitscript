@@ -256,7 +256,7 @@ pub struct FunctionDefinition {
     /// defined in the parent [`Declaration`].
     pub name: Option<Identifier>,
     /// Parameter definitions
-    pub parameters: Box<[FunctionParameter]>,
+    pub parameters: FunctionParameters,
     // `Node` not necessary because both variants of the body contain it
     pub body: FunctionBody,
     /// A list of all the identifiers this function captures from its parent
@@ -269,6 +269,54 @@ pub struct FunctionDefinition {
 }
 
 impl Node for FunctionDefinition {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// Input parameters for a function definition
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionParameters {
+    pub id: NodeId,
+    /// Parameter list
+    pub parameters: Box<[FunctionParameter]>,
+    /// Trailing `...` argument
+    ///
+    /// This can only appear once, at the end of the parameter list.
+    pub rest: Option<FunctionParameterRest>,
+}
+
+impl Node for FunctionParameters {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// One parameter in a function definition
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionParameter {
+    pub id: NodeId,
+    /// Identifier(s) being bound
+    pub binding: Binding,
+    /// Default expression to bind when a corresponding argument is not passed
+    pub init: Option<Box<Expression>>,
+}
+
+impl Node for FunctionParameter {
+    fn id(&self) -> NodeId {
+        self.id
+    }
+}
+
+/// Trailing `...` function parameter
+#[derive(Clone, Debug, PartialEq)]
+pub struct FunctionParameterRest {
+    pub id: NodeId,
+    /// Identifier(s) being bound
+    pub binding: Binding,
+}
+
+impl Node for FunctionParameterRest {
     fn id(&self) -> NodeId {
         self.id
     }
@@ -292,27 +340,6 @@ impl Node for FunctionBody {
             FunctionBody::Expression(expression) => expression.id(),
             FunctionBody::Block(block) => block.id(),
         }
-    }
-}
-
-/// One parameter in a function definition
-#[derive(Clone, Debug, PartialEq)]
-pub struct FunctionParameter {
-    pub id: NodeId,
-    /// Identifier(s) being bound
-    pub binding: Binding,
-    /// Default expression to bind when a corresponding argument is not passed
-    pub init: Option<Box<Expression>>,
-    /// `true` if this is a `...` argument
-    ///
-    /// Cannot be `true` if `init` is `Some`, because varargs can't have a
-    /// default value.
-    pub varargs: bool,
-}
-
-impl Node for FunctionParameter {
-    fn id(&self) -> NodeId {
-        self.id
     }
 }
 

@@ -1,18 +1,31 @@
-//! AST to stack machine compilation
+//! Compile AST to stack machine instructions
 
 use crate::{
     Program, Value,
     ast::{
         ArrayLiteral, BinaryOperator, Binding, BindingKind, Block, Declaration,
         ExportDeclaration, ExportDeclarationKind, Expression, ExpressionKind,
-        Identifier, If, ImportDeclaration, Literal, Module, Node,
-        ObjectLiteral, ObjectPropertyKind, PropertyName, PropertyNameKind,
-        Statement, StatementKind, Variable,
+        Identifier, IdentifierNode, If, ImportDeclaration, Literal, Module,
+        Node, NodeId, ObjectLiteral, ObjectPropertyKind, PropertyName,
+        PropertyNameKind, Statement, StatementKind, Variable,
     },
+    error::{ParseError, ParseErrorKind, ParseErrors},
+    source::SpanTable,
     value::Number,
 };
 
+/// TODO
 pub struct Compiler {
+    /// Scope depth of the AST node currently being compiled
+    ///
+    /// `0` for the global scope and increasing by `1` for each block/function
+    /// body (each pair of `{}`).
+    current_scope: u16,
+    /// Error(s) that have occurred during compilation
+    ///
+    /// If this is non-empty at the end of compilation, the compilation will
+    /// fail.
+    errors: Vec<ParseError>,
     /// Compiled set of instructions
     ///
     /// This is the final result of compilation.
@@ -25,32 +38,58 @@ pub struct Compiler {
     /// `depth` of the previous element. This means for any depth `n`, its
     /// locals will be contiguous in this list.
     locals: Vec<Local>,
-    /// Scope depth of the AST node currently being compiled
-    ///
-    /// `0` for the global scope and increasing by `1` for each block/function
-    /// body (each pair of `{}`).
-    current_scope: u16,
+    /// TODO
+    spans: SpanTable,
 }
 
 impl Compiler {
     /// Compile a parsed program into a stack machine program
-    pub fn compile(program: &Program) -> Vec<Instruction> {
+    ///
+    /// TODO explain errors
+    pub fn compile(program: Program) -> Result<Vec<Instruction>, ParseErrors> {
         let mut compiler = Self {
+            current_scope: 0,
+            errors: vec![],
             instructions: vec![],
             locals: vec![],
-            current_scope: 0,
+            spans: program.spans,
         };
-        program.root().compile(&mut compiler);
-        compiler.instructions
+        program.modules.root.compile(&mut compiler);
+        if compiler.errors.is_empty() {
+            Ok(compiler.instructions)
+        } else {
+            Err(ParseErrors {
+                errors: compiler.errors,
+                source_table: program.sources,
+            })
+        }
     }
 
     /// Declare an identifier for a local on the stack
-    fn declare(&mut self, identifier: Identifier) {
-        // TODO check if local already exists at this scope - shadowing illegal
-        self.locals.push(Local {
-            identifier,
-            depth: self.current_scope,
-        });
+    ///
+    /// Return an error if the identifier is already declared in the current
+    /// scope.
+    fn declare(
+        &mut self,
+        identifier: &IdentifierNode,
+    ) -> Result<(), ParseErrorKind> {
+        // If the identifier already exists *at the same scope*, that's illegal
+        if let Some(other) = self.locals.iter().find(|l| {
+            l.identifier == identifier.identifier
+                && l.scope == self.current_scope
+        }) {
+            Err(ParseErrorKind::DuplicateBinding {
+                identifier: identifier.identifier.clone(),
+                other: self.spans.get(other.node_id).expect("TODO"),
+            })
+        } else {
+            self.locals.push(Local {
+                identifier: identifier.identifier.clone(),
+                scope: self.current_scope,
+                node_id: identifier.id(),
+            });
+            Ok(())
+        }
     }
 
     /// Declare a new nested lexical scope
@@ -74,7 +113,7 @@ impl Compiler {
         let index = self
             .locals
             .iter()
-            .position(|local| local.depth > self.current_scope)
+            .position(|local| local.scope > self.current_scope)
             .unwrap_or(self.locals.len());
         let len = self.locals.drain(index..).count();
         for _ in 0..len {
@@ -103,9 +142,16 @@ impl Compiler {
     fn push(&mut self, instruction: Instruction) {
         self.instructions.push(instruction);
     }
+
+    /// Generate and register a compile error at a node
+    fn register_error(&mut self, node: &impl Node, error: ParseErrorKind) {
+        let span = self.spans.get(node.id()).expect("TODO how handle");
+        self.errors.push(ParseError { error, span });
+    }
 }
 
 /// TODO
+#[derive(Debug)]
 pub enum Instruction {
     /// Pop the top two values and apply an operation to them
     ///
@@ -169,31 +215,61 @@ pub enum Instruction {
 }
 
 /// TODO
+#[derive(Debug)]
 struct Local {
     /// TODO
     identifier: Identifier,
     /// TODO
-    depth: u16,
+    scope: u16,
+    /// ID of the declaring AST node
+    ///
+    /// This should be the ID of an [`IdentifierNode`], *not* the wrapping
+    /// declaration.
+    node_id: NodeId,
 }
 
 /// TODO
-trait Compile: Node {
-    /// TODO
-    fn compile(&self, compiler: &mut Compiler);
+trait Compile: Node + Sized {
+    /// Compile this node into instructions
+    ///
+    /// If an error occurs during compilation, it will be registered in the
+    /// compiler. Node types implement [`Compile::compile_impl`], which fails
+    /// fast if a child has an error. This registers the error instead of
+    /// propagating it so parent and sibling nodes can keep compiling.
+    fn compile(&self, compiler: &mut Compiler) {
+        if let Err(error) = self.compile_impl(compiler) {
+            compiler.register_error(self, error);
+        }
+    }
+
+    /// Compile this node into instructions, return any errors
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind>;
 }
 
 impl Compile for Module {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         for statement in &self.statements {
             statement.compile(compiler);
         }
+        Ok(())
     }
 }
 
 impl Compile for Statement {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         match &self.kind {
-            StatementKind::Block(block) => block.compile(compiler),
+            StatementKind::Block(block) => {
+                block.compile(compiler);
+            }
             StatementKind::Declaration(declaration) => {
                 declaration.compile(compiler);
             }
@@ -214,42 +290,56 @@ impl Compile for Statement {
             }
             StatementKind::Return(_) => todo!(),
         }
+        Ok(())
     }
 }
 
 impl Compile for Block {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         compiler.enter_scope();
         for statement in &self.statements {
             statement.compile(compiler);
         }
         compiler.exit_scope();
+        Ok(())
     }
 }
 
 impl Compile for Declaration {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         for variable in &self.variables {
             variable.compile(compiler);
         }
+        Ok(())
     }
 }
 
 impl Compile for Variable {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         // First put the value on the stack
         self.init.compile(compiler);
         // Then bind it
         self.binding.compile(compiler);
+        Ok(())
     }
 }
 
 impl Compile for Binding {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         match &self.kind {
-            BindingKind::Identifier(identifier) => {
-                compiler.declare(identifier.identifier.clone());
-            }
+            BindingKind::Identifier(identifier) => compiler.declare(identifier),
             BindingKind::Object { .. } => todo!("object binding"),
             BindingKind::Array { .. } => todo!("array binding"),
         }
@@ -257,8 +347,12 @@ impl Compile for Binding {
 }
 
 impl Compile for ExportDeclaration {
-    fn compile(&self, compiler: &mut Compiler) {
-        // TODO disallow at depth > 0
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
+        // Exports are only allowed at the root scope, but the parser will
+        // reject any other exports so we don't have to check here
         match &self.kind {
             ExportDeclarationKind::Declaration(declaration) => {
                 // Collect the set of names to export by checking what's added
@@ -278,11 +372,15 @@ impl Compile for ExportDeclaration {
                 compiler.push(Instruction::ExportDefault);
             }
         }
+        Ok(())
     }
 }
 
 impl Compile for Expression {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         match &self.kind {
             ExpressionKind::Parenthesized(expression) => {
                 expression.compile(compiler);
@@ -295,11 +393,14 @@ impl Compile for Expression {
                     Literal::String(s) => Value::String(s.as_str().into()),
                     Literal::Float(f) => Value::Number(Number::Float(*f)),
                     Literal::Int(i) => Value::Number(Number::Int(*i)),
+                    // These two do NOT get the push instruction at the bottom
                     Literal::Array(array_literal) => {
-                        return array_literal.compile(compiler);
+                        array_literal.compile(compiler);
+                        return Ok(());
                     }
                     Literal::Object(object_literal) => {
-                        return object_literal.compile(compiler);
+                        object_literal.compile(compiler);
+                        return Ok(());
                     }
                 };
                 compiler.push(Instruction::Push(value));
@@ -324,11 +425,15 @@ impl Compile for Expression {
             }
             ExpressionKind::Ternary(_) => todo!(),
         }
+        Ok(())
     }
 }
 
 impl Compile for ArrayLiteral {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         // Evaluate each element
         let mut spreads = vec![];
         for (i, element) in self.elements.iter().enumerate() {
@@ -341,11 +446,15 @@ impl Compile for ArrayLiteral {
             len: self.elements.len(),
             spreads: spreads.into(),
         });
+        Ok(())
     }
 }
 
 impl Compile for ObjectLiteral {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         // TODO explain
         let mut len_values = 0;
         let mut spreads = vec![];
@@ -372,11 +481,15 @@ impl Compile for ObjectLiteral {
             len_values,
             spreads: spreads.into(),
         });
+        Ok(())
     }
 }
 
 impl Compile for PropertyName {
-    fn compile(&self, compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         match &self.kind {
             PropertyNameKind::Identifier(identifier) => {
                 compiler.push(Instruction::Push(identifier.as_str().into()));
@@ -385,17 +498,24 @@ impl Compile for PropertyName {
                 expression.compile(compiler);
             }
         }
+        Ok(())
     }
 }
 
 impl Compile for If {
-    fn compile(&self, _compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        _compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         todo!()
     }
 }
 
 impl Compile for ImportDeclaration {
-    fn compile(&self, _compiler: &mut Compiler) {
+    fn compile_impl(
+        &self,
+        _compiler: &mut Compiler,
+    ) -> Result<(), ParseErrorKind> {
         todo!()
     }
 }

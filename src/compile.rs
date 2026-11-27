@@ -2,6 +2,7 @@
 
 mod function;
 mod parse;
+pub mod stack;
 
 pub use parse::SUPPORTED_EXTENSIONS;
 

@@ -2,6 +2,7 @@
 
 use crate::{
     NativeModuleName, Value,
+    ast::Identifier,
     compile::SUPPORTED_EXTENSIONS,
     source::{SourceTable, Span},
     value::{Number, ValueType},
@@ -191,7 +192,8 @@ impl StdError for ParseError {
 /// The categories of errors that can occuring during parsing
 ///
 /// This is contained by [`ParseError`], which carries the error info as well as
-/// source context.
+/// source context. This also includes compilation errors (converting AST to
+/// instructions).
 #[derive(Debug, thiserror::Error)]
 pub enum ParseErrorKind {
     /// Imported an absolute path: `import ... from '/data/lib.js'`
@@ -199,7 +201,17 @@ pub enum ParseErrorKind {
         "illegal import from absolute path '{}'; imports must be relative paths",
         path.display(),
     )]
-    ImportAbsolute { path: PathBuf },
+    AbsoluteImport { path: PathBuf },
+
+    /// TODO
+    #[error("`{identifier}` is already declared in this scope")]
+    DuplicateBinding {
+        identifier: Identifier,
+        /// Location of the first declaration
+        ///
+        /// TODO include this in the error message
+        other: Span,
+    },
 
     /// Attempted to import a module with an unrecognized file extension
     #[error(
@@ -207,7 +219,7 @@ pub enum ParseErrorKind {
         Supported extensions are: {SUPPORTED_EXTENSIONS:?}",
         path = path.display()
     )]
-    ImportInvalidExtension { path: PathBuf },
+    IllegalImportExtension { path: PathBuf },
 
     /// [oxc_parser] failed to parse the source
     ///
@@ -577,14 +589,17 @@ impl StdError for RuntimeError {
 /// its stack trace.
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeErrorKind {
+    // TODO remove
     /// Attempted to export the same name twice
     #[error("`{name}` is already exported")]
     AlreadyExported { name: String },
 
+    // TODO remove
     /// Attempted to export from within a subscope
     #[error("Export only allowed in program root")]
     IllegalExport,
 
+    // TODO remove
     /// Attempted to return while not in a function
     #[error("Cannot return while not in function")]
     IllegalReturn,
@@ -620,6 +635,7 @@ pub enum RuntimeErrorKind {
         property: Box<Value>,
     },
 
+    // TODO remove
     /// Reference to an identifier that isn't bound
     #[error("`{name}` is not defined")]
     Reference { name: String },

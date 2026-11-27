@@ -94,8 +94,6 @@ impl ParseContext<'_> {
         node: &impl GetSpan,
         error: ParseErrorKind,
     ) -> Reg {
-        // Map the span from oxc -> PS -> miette
-        // The intermediate mapping is helpful to handle source ID encoding
         let span = self.map_span(node.span());
         self.errors.push(ParseError { error, span });
         Reg
@@ -461,7 +459,7 @@ fn resolve_module(
     let path = Path::new(specifier);
 
     if path.is_absolute() {
-        return Err(ParseErrorKind::ImportAbsolute {
+        return Err(ParseErrorKind::AbsoluteImport {
             path: path.to_owned(),
         });
     }
@@ -481,7 +479,7 @@ fn resolve_module(
     {
         Ok(path)
     } else {
-        Err(ParseErrorKind::ImportInvalidExtension { path })
+        Err(ParseErrorKind::IllegalImportExtension { path })
     }
 }
 
@@ -1814,7 +1812,8 @@ fn transform_ident(
     })
 }
 
-/// Indicator that an error has been registered via [`ParseContext::error`]
+/// Indicator that an error has been registered via
+/// [`ParseContext::register_error`]
 ///
 /// This is the error variant for all transformations because it forces
 /// transformers to register their errors with the context.

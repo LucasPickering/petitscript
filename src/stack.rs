@@ -1,23 +1,18 @@
 //! Stack machine interpreter
 
-mod compile;
-
 use crate::{
     Exports, Program, Value,
     ast::{BinaryOperator, Identifier},
+    compile::stack::{Compiler, Instruction},
     error::RuntimeErrorKind,
-    stack::compile::{Compiler, Instruction},
     value::{Array, Object},
 };
 use std::vec::Drain;
 
 /// TODO
 pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
-    let instructions = Compiler::compile(&program);
-    let mut stack = StackMachine {
-        stack: vec![],
-        exports: Some(Exports::default()),
-    };
+    let instructions = Compiler::compile(program).expect("TODO");
+    let mut stack = StackMachine::default();
     for instruction in instructions {
         stack.execute(instruction)?;
     }
@@ -33,7 +28,7 @@ pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
     );
     */
 
-    Ok(stack.exports.unwrap())
+    Ok(stack.exports)
 }
 
 /// A stack-based virtual machine for executing a compiled PetitScript program
@@ -54,9 +49,8 @@ struct StackMachine {
     /// Exported values
     ///
     /// This is built procedurally as we execute and is the final result of
-    /// execution. `None` for invocations that don't support exporting
-    /// (function calls).
-    exports: Option<Exports>,
+    /// execution.
+    exports: Exports,
 }
 
 impl StackMachine {
@@ -127,7 +121,7 @@ impl StackMachine {
     /// Pop the top value and export it as the default
     fn export_default(&mut self) -> Result<(), RuntimeErrorKind> {
         let value = self.pop();
-        self.exports_mut()?.export_default(value)
+        self.exports.export_default(value)
     }
 
     /// Export a named value
@@ -137,7 +131,7 @@ impl StackMachine {
         slot: usize,
     ) -> Result<(), RuntimeErrorKind> {
         let value = self.stack[slot].clone();
-        self.exports_mut()?.export(name.into(), value)
+        self.exports.export(name.into(), value)
     }
 
     /// Apply a binary operator
@@ -162,14 +156,6 @@ impl StackMachine {
             BinaryOperator::NullishCoalesce => todo!(),
         };
         self.push(output);
-    }
-
-    /// Get a mutable reference to the export map
-    ///
-    /// Return an error if exports aren't allowed in the execution context.
-    fn exports_mut(&mut self) -> Result<&mut Exports, RuntimeErrorKind> {
-        // TODO disallow outside of root scope
-        self.exports.as_mut().ok_or(RuntimeErrorKind::IllegalExport)
     }
 
     /// TODO
@@ -265,5 +251,17 @@ export const z = x * y;";
         let program = Program::parse(source).unwrap();
         let exports = run(program).unwrap();
         assert_eq!(exports, Exports::named([("x", 3), ("y", 4), ("z", 12)]));
+    }
+
+    /// Test compilation error cases
+    #[test_case(
+        "const x = 3; const x = 3;", "`x` is already declared in this scope";
+        "binding duplicate"
+    )]
+    fn compile_errors(source: &str, expected_error: &str) {
+        let program = Program::parse(source).unwrap();
+        let errors = Compiler::compile(program).unwrap_err();
+        assert_eq!(errors.errors.len(), 1, "Expected exactly 1 error");
+        assert_eq!(errors.errors[0].to_string(), expected_error);
     }
 }

@@ -13,9 +13,7 @@ use std::vec::Drain;
 pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
     let instructions = Compiler::compile(program).expect("TODO");
     let mut stack = StackMachine::default();
-    for instruction in instructions {
-        stack.execute(instruction)?;
-    }
+    stack.execute(&instructions)?;
 
     /*
     TODO keep this? needs to be adapted for locals
@@ -40,43 +38,68 @@ pub fn run(program: Program) -> Result<Exports, RuntimeErrorKind> {
 /// represented on disk. Programs are always parsed and compiled JIT.
 #[derive(Debug, Default)]
 struct StackMachine {
+    /// Exported values
+    ///
+    /// This is built procedurally as we execute and is the final result of
+    /// execution.
+    exports: Exports,
+    /// Index of the next instruction to execute
+    ///
+    /// Execution ends when this reaches the end of the instruction list.
+    program_counter: usize,
     /// Working stack of values
     ///
     /// The top value of this is called the "active" value. This stores both
     /// temporaries (for expression evaluation) as well as locals. This is akin
     /// to The Stack (of Stack & Heap fame) for native programs.
     stack: Vec<Value>,
-    /// Exported values
-    ///
-    /// This is built procedurally as we execute and is the final result of
-    /// execution.
-    exports: Exports,
 }
 
 impl StackMachine {
-    /// Execute one instruction
+    /// Execute the machine to completion
     fn execute(
         &mut self,
-        instruction: Instruction,
+        instructions: &[Instruction],
     ) -> Result<(), RuntimeErrorKind> {
+        while self.program_counter < instructions.len() {
+            self.execute_one(&instructions[self.program_counter])?;
+        }
+        Ok(())
+    }
+
+    /// Execute one instruction
+    ///
+    /// This will automatically advance the program counter
+    fn execute_one(
+        &mut self,
+        instruction: &Instruction,
+    ) -> Result<(), RuntimeErrorKind> {
+        let pc = self.program_counter;
         match instruction {
             Instruction::BinaryOperation(operator) => {
-                self.binary_operator(operator);
+                self.binary_operator(*operator);
             }
             Instruction::ExportDefault => self.export_default()?,
             Instruction::ExportNamed { name, slot } => {
-                self.export_named(name, slot)?;
+                self.export_named(name.clone(), *slot)?;
+            }
+            Instruction::Jump(offset) => self.jump(*offset),
+            Instruction::JumpIfNot(offset) => {
+                let value = self.pop();
+                if !value.to_bool() {
+                    self.jump(*offset);
+                }
             }
             Instruction::Pop => {
                 self.pop();
             }
-            Instruction::Push(value) => self.push(value),
+            Instruction::Push(value) => self.push(value.clone()),
             Instruction::PushArray { len, spreads } => {
                 // Elements are sliced off in the order they were pushed, so we
                 // don't need to reverse
-                let mut values = self.pop_n(len);
+                let mut values = self.pop_n(*len);
                 let mut array = Array::default();
-                for i in 0..len {
+                for i in 0..*len {
                     let value = values.next();
                     // These are optimized to avoid allocations where possible
                     if spreads.contains(&i) {
@@ -94,9 +117,9 @@ impl StackMachine {
                 len_values,
                 spreads,
             } => {
-                let mut values = self.pop_n(len_values);
+                let mut values = self.pop_n(*len_values);
                 let mut object = Object::default();
-                for i in 0..len_properties {
+                for i in 0..*len_properties {
                     if spreads.contains(&i) {
                         let value = values.next();
                         let new_object = value.try_into_object()?;
@@ -112,26 +135,17 @@ impl StackMachine {
                 self.push(object.into());
             }
             Instruction::PushReference { slot } => {
-                self.push(self.stack[slot].clone());
+                self.push(self.stack[*slot].clone());
             }
         }
+
+        // If the PC wasn't modified (i.e. it wasn't a jump), advance it
+        // automatically
+        if self.program_counter == pc {
+            self.program_counter += 1;
+        }
+
         Ok(())
-    }
-
-    /// Pop the top value and export it as the default
-    fn export_default(&mut self) -> Result<(), RuntimeErrorKind> {
-        let value = self.pop();
-        self.exports.export_default(value)
-    }
-
-    /// Export a named value
-    fn export_named(
-        &mut self,
-        name: Identifier,
-        slot: usize,
-    ) -> Result<(), RuntimeErrorKind> {
-        let value = self.stack[slot].clone();
-        self.exports.export(name.into(), value)
     }
 
     /// Apply a binary operator
@@ -156,6 +170,29 @@ impl StackMachine {
             BinaryOperator::NullishCoalesce => todo!(),
         };
         self.push(output);
+    }
+
+    /// Pop the top value and export it as the default
+    fn export_default(&mut self) -> Result<(), RuntimeErrorKind> {
+        let value = self.pop();
+        self.exports.export_default(value)
+    }
+
+    /// Export a named value
+    fn export_named(
+        &mut self,
+        name: Identifier,
+        slot: usize,
+    ) -> Result<(), RuntimeErrorKind> {
+        let value = self.stack[slot].clone();
+        self.exports.export(name.into(), value)
+    }
+
+    /// Jump a fixed number of instructions backward/forward
+    fn jump(&mut self, offset: i16) {
+        self.program_counter
+            .checked_add_signed(offset.into())
+            .expect("Out-of-bounds jump");
     }
 
     /// TODO
@@ -264,4 +301,7 @@ export const z = x * y;";
         assert_eq!(errors.errors.len(), 1, "Expected exactly 1 error");
         assert_eq!(errors.errors[0].to_string(), expected_error);
     }
+
+    // TODO test scoping
+    // TODO test ifs
 }

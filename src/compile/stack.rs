@@ -28,7 +28,8 @@ pub struct Compiler {
     errors: Vec<ParseError>,
     /// Compiled set of instructions
     ///
-    /// This is the final result of compilation.
+    /// This is the built progressively during compilation and will become the
+    /// final output. It is **append-only**.
     instructions: Vec<Instruction>,
     /// List of bindings accessible in the current scope
     ///
@@ -62,6 +63,26 @@ impl Compiler {
                 errors: compiler.errors,
                 source_table: program.sources,
             })
+        }
+    }
+
+    /// Backpatch the offset of a jump instruction to jump to the end of the
+    /// instruction list
+    ///
+    /// Sometimes jumps have to be inserted before the code they intend to
+    /// jump over. They're initially inserted with an offset of 0, then
+    /// backpatched once the subsequent code has been generated. This should be
+    /// called immediately after generating the code to skip, so the jump offset
+    /// will point to the next generated instruction.
+    fn backpatch_jump(&mut self, index: usize) {
+        let len = self.instructions.len();
+        match &mut self.instructions[index] {
+            Instruction::Jump(offset) | Instruction::JumpIfNot(offset) => {
+                *offset = (len - index) as i16;
+            }
+            instruction => panic!(
+                "Cannot backpatch instruction {instruction:?} at {index} (not a jump)"
+            ),
         }
     }
 
@@ -158,7 +179,7 @@ pub enum Instruction {
     /// Top value is the **right-hand** side, second value is left-hand side.
     /// Result is pushed back onto the stack.
     BinaryOperation(BinaryOperator),
-    /// Move the top value to the default export
+    /// Move the active value to the default export
     ///
     /// Error if there is already a default export. Because `export default`
     /// applies to an expression rather than a bound name, this consumes a
@@ -173,6 +194,15 @@ pub enum Instruction {
         /// Stack slot containing the value to export
         slot: usize,
     },
+    /// Jump a fixed number of instructions backward or forward
+    ///
+    /// Negative for backward, positive for forward. The program counter will
+    /// *not* be automatically incremented after a jump, unless the offset is 0.
+    Jump(i16),
+    /// Jump a if the active value is falsy
+    ///
+    /// This will **pop the active value**. See [`Instruction::Jump`].
+    JumpIfNot(i16),
     /// Pop the active value
     ///
     /// The popped value is thrown away.
@@ -417,6 +447,7 @@ impl Compile for Expression {
             ExpressionKind::Unary(_) => todo!(),
             ExpressionKind::Binary(binary_operation) => {
                 // Push the two operands on the stack
+                // TODO some binary operators must short-circuit
                 binary_operation.lhs.compile(compiler);
                 binary_operation.rhs.compile(compiler);
                 compiler.push(Instruction::BinaryOperation(
@@ -505,9 +536,39 @@ impl Compile for PropertyName {
 impl Compile for If {
     fn compile_impl(
         &self,
-        _compiler: &mut Compiler,
+        compiler: &mut Compiler,
     ) -> Result<(), ParseErrorKind> {
-        todo!()
+        // https://craftinginterpreters.com/jumping-back-and-forth.html
+        //
+        // PUSH <condition>
+        // JUMP_IF_NOT --------+
+        // ...then body...     |
+        // JUMP -----------+   |
+        // ...else body... | <-+
+        // ...rest... <----+
+        self.condition.compile(compiler);
+
+        // We'll need to backpatch this offset
+        let if_index = compiler.instructions.len();
+        compiler.push(Instruction::JumpIfNot(0));
+
+        self.body.compile(compiler);
+
+        if let Some(else_body) = &self.else_body {
+            // Add a jump from the end of the `then` to skip the `else`
+            let else_index = compiler.instructions.len();
+            compiler.push(Instruction::Jump(0));
+
+            // Initial jump must point to *after* the second jump
+            compiler.backpatch_jump(if_index);
+
+            else_body.compile(compiler);
+            compiler.backpatch_jump(else_index);
+        } else {
+            compiler.backpatch_jump(if_index);
+        }
+
+        Ok(())
     }
 }
 
